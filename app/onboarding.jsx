@@ -175,11 +175,20 @@ const GOALS = [
 ];
 
 const QUICK_CHANNELS = [
-  { id: "klaviyo",   label: "Klaviyo",    sub: "Email & SMS",       color: "#36c" },
-  { id: "shopify",   label: "Shopify",    sub: "Commerce & data",   color: "#96bf48" },
-  { id: "instagram", label: "Instagram",  sub: "Organic social",    color: "#e1306c" },
-  { id: "meta",      label: "Meta Ads",   sub: "Paid social",       color: "#1877f2" },
-  { id: "google",    label: "Google Ads", sub: "Search & Pmax",     color: "#4285f4" },
+  // Organic social
+  { id: "instagram",  label: "Instagram",   sub: "Organic social — feed, reels, stories", color: "#e1306c" },
+  { id: "tiktok",     label: "TikTok",      sub: "Organic social — short video",          color: "#010101" },
+  { id: "facebook",   label: "Facebook",    sub: "Organic social — pages & groups",       color: "#1877f2" },
+  { id: "pinterest",  label: "Pinterest",   sub: "Organic social — pins & boards",        color: "#e60023" },
+  { id: "youtube",    label: "YouTube",     sub: "Organic video — shorts & long-form",    color: "#ff0000" },
+  // Paid social
+  { id: "meta_ads",   label: "Meta Ads",    sub: "Paid social — Advantage+",              color: "#0866ff" },
+  { id: "tiktok_ads", label: "TikTok Ads",  sub: "Paid social — spark ads",               color: "#69c9d0" },
+  // Search
+  { id: "google",     label: "Google Ads",  sub: "Search, Shopping & Pmax",               color: "#4285f4" },
+  // Email & commerce
+  { id: "klaviyo",    label: "Klaviyo",     sub: "Email & SMS",                           color: "#36c" },
+  { id: "shopify",    label: "Shopify",     sub: "Commerce & data",                       color: "#96bf48" },
 ];
 
 // ─── Progress dots ─────────────────────────────────────────────────────────
@@ -634,7 +643,7 @@ function OnboardingWizard({ auth, onComplete }) {
         </div>
 
         {/* Decorative glyph */}
-        <div aria-hidden="true" style={{ position: "absolute", right: -60, bottom: -100, fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: 480, lineHeight: 1, color: "var(--paper)", opacity: 0.04, pointerEvents: "none", userSelect: "none" }}>M</div>
+        <div aria-hidden="true" style={{ position: "absolute", right: -60, bottom: -100, fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: 480, lineHeight: 1, color: "var(--paper)", opacity: 0.04, pointerEvents: "none", userSelect: "none" }}>F</div>
       </div>
 
       {/* Right — form pane */}
