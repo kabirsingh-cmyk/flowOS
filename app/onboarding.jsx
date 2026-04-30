@@ -597,7 +597,8 @@ function OnboardingWizard({ auth, onComplete }) {
         budget:     result.budget    || null,
         revenue:    result.revenue   || null,
         updated_at: new Date().toISOString(),
-      }, { onConflict: "user_id" });
+      }, { onConflict: "user_id" })
+      .then(({ error }) => { if (error) console.error("[FlowOS] brand save:", error); });
     });
     onComplete(result);
   };
