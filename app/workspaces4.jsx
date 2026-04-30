@@ -1,5 +1,8 @@
 // MVEDA workspaces — part 4: Connections + Brand Import flow
-const { useState: useState4, useEffect: useEffect4, useMemo: useMemo4 } = React;
+const { useState: useState4, useEffect: useEffect4, useMemo: useMemo4, useRef: useRef4 } = React;
+
+// Social platforms that use real Composio OAuth (vs simulated connect for everything else)
+const COMPOSIO_SOCIAL = { ig: "instagram", tt: "tiktok", pn: "pinterest", yt: "youtube" };
 
 // ────────────────────────────── BRAND IMPORT MODAL ──────────────────────────────
 function BrandImportModal({ open, onClose, onApply }) {
@@ -251,6 +254,32 @@ function Connections({ state, actions }) {
   const [connectingId, setConnectingId] = useState4(null);
   const [authStep, setAuthStep] = useState4(null); // {connector, step}
 
+  // On mount, hydrate store connector state from Supabase channels table
+  useEffect4(() => {
+    (async () => {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session?.user) return;
+      const { data } = await sb.from("channels")
+        .select("platform, account_handle, followers_count, composio_connection_id, status")
+        .eq("user_id", session.user.id)
+        .eq("status", "connected");
+      if (!data?.length) return;
+      // Map platform → connector ID
+      const platformToId = { instagram: "ig", tiktok: "tt", pinterest: "pn", youtube: "yt" };
+      data.forEach(ch => {
+        const id = platformToId[ch.platform];
+        if (id) {
+          actions.setConnector(id, {
+            connected:  true,
+            status:     "ok",
+            note:       `${ch.account_handle || ch.platform} · OAuth granted`,
+            syncCount:  ch.followers_count ? `${Number(ch.followers_count).toLocaleString()} followers` : "connected",
+          });
+        }
+      });
+    })();
+  }, []); // eslint-disable-line
+
   const catalog = SEED.connectorCatalog;
   const categories = ["Social", "Email", "SMS", "Search Ads", "Social Ads", "Creative AI", "Commerce", "Analytics", "SEO", "Affiliate", "Reviews · CX", "Experimentation", "MCP · Custom"];
   const byCat = useMemo4(() => {
@@ -259,10 +288,96 @@ function Connections({ state, actions }) {
     return out;
   }, [catalog]);
 
-  const startConnect = (connector) => {
-    setAuthStep({ connector, step: "auth" });
+  const [pendingOAuth, setPendingOAuth] = useState4(null); // { connector, connectionId, platform }
+
+  const startConnect = async (connector) => {
+    const platform = COMPOSIO_SOCIAL[connector.id];
+
+    if (platform) {
+      // ── Real Composio OAuth for social platforms ─────────────────────────
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session?.user) { alert("Please sign in first."); return; }
+
+      setAuthStep({ connector, step: "oauth_loading" });
+      try {
+        const res = await fetch("/api/social", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action:      "initiate_connect",
+            platform,
+            userId:      session.user.id,
+            redirectUri: window.location.origin,
+          }),
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        setPendingOAuth({ connector, connectionId: data.connectionId, platform });
+        // Open OAuth window — user authorizes in a new tab
+        window.open(data.redirectUrl, "_blank", "width=620,height=740,noopener");
+        setAuthStep({ connector, step: "oauth_waiting", connectionId: data.connectionId });
+      } catch (err) {
+        setAuthStep(null);
+        alert(`Could not start ${connector.name} connection: ${err.message}`);
+      }
+    } else {
+      // ── Simulated flow for non-social connectors ─────────────────────────
+      setAuthStep({ connector, step: "auth" });
+    }
   };
+
+  const confirmOAuthComplete = async (connector, connectionId, platform) => {
+    setAuthStep({ connector, step: "syncing" });
+    try {
+      const res = await fetch("/api/social", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "connection_status", connectionId }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      if (data.status !== "ACTIVE") {
+        setAuthStep({ connector, step: "oauth_waiting", connectionId });
+        alert(`Authorization not yet complete (status: ${data.status}). Finish the ${connector.name} login in the other tab, then try again.`);
+        return;
+      }
+
+      // Save to Supabase channels table
+      const { data: { session } } = await sb.auth.getSession();
+      await sb.from("channels").upsert({
+        user_id:                session.user.id,
+        platform,
+        composio_connection_id: connectionId,
+        account_handle:         data.handle || null,
+        account_id:             data.platformAccountId || null,
+        followers_count:        data.followers || null,
+        status:                 "connected",
+        updated_at:             new Date().toISOString(),
+      }, { onConflict: "user_id, platform" });
+
+      // Update in-memory store so the UI reflects connected state
+      actions.setConnector(connector.id, {
+        connected:  true,
+        status:     "ok",
+        note:       `${data.handle || platform} · OAuth granted`,
+        syncCount:  data.followers ? `${Number(data.followers).toLocaleString()} followers` : "connected",
+      }, {
+        logEvent: `connected · ${connector.name}`,
+        notify:   { tone: "ok", text: `${connector.name} connected` },
+      });
+    } catch (err) {
+      alert(`Verification failed: ${err.message}`);
+      setAuthStep({ connector, step: "oauth_waiting", connectionId });
+      return;
+    }
+    setPendingOAuth(null);
+    setAuthStep(null);
+  };
+
   const completeConnect = (connector) => {
+    // Simulated connect for non-social connectors
     setAuthStep({ connector, step: "syncing" });
     setTimeout(() => {
       actions.setConnector(connector.id, {
@@ -276,7 +391,18 @@ function Connections({ state, actions }) {
       setAuthStep(null);
     }, 1100);
   };
-  const disconnect = (connector) => {
+
+  const disconnect = async (connector) => {
+    const platform = COMPOSIO_SOCIAL[connector.id];
+    if (platform) {
+      // Remove from Supabase channels
+      const { data: { session } } = await sb.auth.getSession();
+      if (session?.user) {
+        await sb.from("channels")
+          .update({ status: "disconnected", updated_at: new Date().toISOString() })
+          .eq("user_id", session.user.id).eq("platform", platform);
+      }
+    }
     actions.setConnector(connector.id, {
       connected: false, status: "—", note: "not connected", syncCount: "—",
     }, { logEvent: `disconnected · ${connector.name}`, notify: { tone: "neutral", text: `${connector.name} disconnected` } });
@@ -416,18 +542,58 @@ function Connections({ state, actions }) {
       ))}
 
       <BrandImportModal open={importOpen} onClose={() => setImportOpen(false)} onApply={(preset) => actions.importBrand(preset)}/>
-      <ConnectorAuthModal step={authStep} onClose={() => setAuthStep(null)} onComplete={completeConnect}/>
+      <ConnectorAuthModal
+        step={authStep}
+        onClose={() => setAuthStep(null)}
+        onComplete={completeConnect}
+        onConfirmOAuth={confirmOAuthComplete}
+      />
     </div>
   );
 }
 
-function ConnectorAuthModal({ step, onClose, onComplete }) {
+function ConnectorAuthModal({ step, onClose, onComplete, onConfirmOAuth }) {
   const [apiKey, setApiKey] = useState4("");
   const [mcpUrl, setMcpUrl] = useState4("");
   useEffect4(() => { if (step?.step === "auth") { setApiKey(""); setMcpUrl(""); } }, [step]);
   if (!step) return null;
-  const { connector, step: phase } = step;
-  const isMcp = connector.auth === "MCP";
+  const { connector, step: phase, connectionId } = step;
+  const isMcp = connector?.auth === "MCP";
+
+  // ── OAuth loading state ──────────────────────────────────────────────────
+  if (phase === "oauth_loading") {
+    return (
+      <Dialog open onClose={onClose} title={`Connecting · ${connector.name}`} width={420}>
+        <div style={{ padding: "20px 0", textAlign: "center" }}>
+          <div className="dot-pulse" style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--accent)", margin: "0 auto 14px" }}/>
+          <div style={{ fontSize: 14 }}>Opening {connector.name} authorization…</div>
+        </div>
+      </Dialog>
+    );
+  }
+
+  // ── Waiting for user to complete OAuth in another tab ───────────────────
+  if (phase === "oauth_waiting") {
+    return (
+      <Dialog open onClose={onClose} title={`Authorize · ${connector.name}`} width={480}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ padding: 16, background: "var(--accent-wash)", border: "1px solid var(--accent)", borderRadius: 6, fontSize: 13, lineHeight: 1.6 }}>
+            A new tab has opened for <strong>{connector.name}</strong> authorization.<br/>
+            Complete the login there, then click the button below.
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.5 }}>
+            If the window didn't open, check your pop-up blocker. The tab will redirect to FlowOS when done — then come back here and confirm.
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+            <Btn variant="primary" onClick={() => onConfirmOAuth(connector, connectionId, COMPOSIO_SOCIAL[connector.id])}>
+              <Icon name="check" size={12}/> I've authorized {connector.name} →
+            </Btn>
+          </div>
+        </div>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open onClose={onClose} title={`Connect · ${connector.name}`} width={520}>

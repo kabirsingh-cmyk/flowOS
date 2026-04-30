@@ -1,6 +1,6 @@
 // MVEDA — additional canvas surfaces
 // SMS · SEO · Affiliate · Retention · CX · Seasonal · A/B · Team · Discount Ops · Mobile
-const { useState: useStateF, useMemo: useMemoF } = React;
+const { useState: useStateF, useMemo: useMemoF, useEffect: useEffectF, useRef: useRefF } = React;
 
 // ─────────────────────────── shared layout helpers ───────────────────────────
 function FeaturePage({ kicker, title, children, right }) {
@@ -754,31 +754,125 @@ const STATUS_META = {
 };
 
 function OrganicSocialStudio({ state, actions }) {
-  const [tab, setTab] = useStateF("all");
+  const [tab, setTab]           = useStateF("all");
   const [composing, setComposing] = useStateF(false);
-  const [draft, setDraft] = useStateF({ platform: "instagram", type: "Reel", caption: "", scheduledAt: "" });
+  const [draft, setDraft]       = useStateF({ platform: "instagram", type: "Reel", caption: "", scheduledAt: "" });
   const [genLoading, setGenLoading] = useStateF(false);
-  const [genDone, setGenDone] = useStateF(null);
+  const [genDone, setGenDone]   = useStateF(null);
 
-  const queue = SEED.organicQueue || [];
-  const accounts = SEED.organicAccounts || {};
-  const filtered = tab === "all" ? queue : queue.filter(p => p.platform === tab);
-  const scheduled = queue.filter(p => p.status === "scheduled").length;
-  const needsImage = queue.filter(p => p.status === "needs_image").length;
+  // ── Real data from Supabase ────────────────────────────────────────────────
+  const [posts, setPosts]       = useStateF([]);
+  const [channels, setChannels] = useStateF({}); // { platform: channelRow }
+  const [dbLoading, setDbLoading] = useStateF(true);
+  const [saving, setSaving]     = useStateF(false);
+  const [publishing, setPublishing] = useStateF(null); // postId being published
 
-  // Check which creative AI tools are connected
+  useEffectF(() => {
+    (async () => {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session?.user) { setDbLoading(false); return; }
+      const uid = session.user.id;
+
+      // Load connected social channels
+      const { data: chData } = await sb.from("channels")
+        .select("*").eq("user_id", uid).eq("status", "connected");
+      if (chData) {
+        const map = {};
+        chData.forEach(ch => { map[ch.platform] = ch; });
+        setChannels(map);
+      }
+
+      // Load posts (newest first)
+      const { data: postData } = await sb.from("posts")
+        .select("*").eq("user_id", uid)
+        .order("created_at", { ascending: false }).limit(50);
+      setPosts(postData || []);
+      setDbLoading(false);
+    })();
+  }, []);
+
   const connectedImageGen = ["runware", "fal", "runway"].find(id => state.connectors?.[id]?.connected);
   const connectedVideoGen = ["luma", "kling", "pika", "higgsfield", "runway"].find(id => state.connectors?.[id]?.connected);
 
   const simulateImageGen = () => {
     setGenLoading(true);
-    setTimeout(() => {
-      setGenLoading(false);
-      setGenDone("product-shot-gen.jpg");
-    }, 2200);
+    setTimeout(() => { setGenLoading(false); setGenDone("product-shot-gen.jpg"); }, 2200);
+  };
+
+  // ── Save post to Supabase ──────────────────────────────────────────────────
+  const savePost = async (status = "draft") => {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session?.user) return;
+    setSaving(true);
+
+    const ch = channels[draft.platform];
+    const { data, error } = await sb.from("posts").insert({
+      user_id:      session.user.id,
+      channel_id:   ch?.id || null,
+      platform:     draft.platform,
+      post_type:    draft.type,
+      caption:      draft.caption || "",
+      media_urls:   genDone ? [genDone] : [],
+      status,
+      scheduled_at: draft.scheduledAt ? new Date(draft.scheduledAt).toISOString() : null,
+      updated_at:   new Date().toISOString(),
+    }).select().single();
+
+    if (!error && data) {
+      setPosts(prev => [data, ...prev]);
+      actions.notify("ok", status === "scheduled" ? "Post scheduled" : "Draft saved");
+    } else {
+      actions.notify("warn", error?.message || "Could not save post");
+    }
+    setSaving(false);
+    setComposing(false);
+    setGenDone(null);
+    setDraft({ platform: "instagram", type: "Reel", caption: "", scheduledAt: "" });
+  };
+
+  // ── Publish post now via Composio ──────────────────────────────────────────
+  const publishNow = async (post) => {
+    const ch = channels[post.platform];
+    if (!ch?.composio_connection_id) {
+      actions.notify("warn", `${post.platform} not connected — open Connections first`);
+      return;
+    }
+    setPublishing(post.id);
+    try {
+      const res = await fetch("/api/social", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action:       "publish_post",
+          platform:     post.platform,
+          connectionId: ch.composio_connection_id,
+          caption:      post.caption,
+          mediaUrls:    post.media_urls || [],
+          postType:     post.post_type,
+        }),
+      });
+      const result = await res.json();
+      if (result.error) throw new Error(result.error);
+
+      // Mark as published in Supabase
+      await sb.from("posts").update({
+        status:           "published",
+        published_at:     new Date().toISOString(),
+        platform_post_id: result.platformPostId || null,
+      }).eq("id", post.id);
+
+      setPosts(prev => prev.map(p => p.id === post.id ? { ...p, status: "published" } : p));
+      actions.notify("ok", "Published!");
+    } catch (err) {
+      actions.notify("warn", `Publish failed: ${err.message}`);
+    }
+    setPublishing(null);
   };
 
   const TABS = ["all", "instagram", "tiktok", "pinterest", "youtube"];
+  const filtered = tab === "all" ? posts : posts.filter(p => p.platform === tab);
+  const scheduled = posts.filter(p => p.status === "scheduled").length;
+  const connectedCount = Object.keys(channels).length;
 
   return (
     <FeaturePage kicker="Organic · Social" title="Social Studio"
@@ -789,47 +883,53 @@ function OrganicSocialStudio({ state, actions }) {
         </div>
       }>
 
-      {/* Account status strip */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
-        {Object.entries(accounts).map(([platform, acc]) => {
-          const pm = PLATFORM_META[platform] || {};
-          return (
-            <Card key={platform} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 6, background: pm.color, color: "#fff", display: "grid", placeItems: "center", fontSize: 10, fontWeight: 600, fontFamily: "var(--font-mono)", flexShrink: 0 }}>{pm.dot}</div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{acc.handle}</div>
-                <div style={{ fontSize: 11, color: "var(--muted)" }}>{acc.followers} followers</div>
-              </div>
-              <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--success)", flexShrink: 0 }}/>
-            </Card>
-          );
-        })}
-      </div>
+      {/* Connected accounts strip */}
+      {connectedCount > 0 ? (
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(connectedCount, 4)}, 1fr)`, gap: 10 }}>
+          {Object.entries(channels).map(([platform, ch]) => {
+            const pm = PLATFORM_META[platform] || {};
+            return (
+              <Card key={platform} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 6, background: pm.color, color: "#fff", display: "grid", placeItems: "center", fontSize: 10, fontWeight: 600, fontFamily: "var(--font-mono)", flexShrink: 0 }}>{pm.dot}</div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ch.account_handle || platform}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)" }}>{ch.followers_count ? ch.followers_count.toLocaleString() + " followers" : "connected"}</div>
+                </div>
+                <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--success)", flexShrink: 0 }}/>
+              </Card>
+            );
+          })}
+        </div>
+      ) : (
+        <div style={{ background: "var(--accent-wash)", border: "1px solid var(--accent)", borderRadius: 8, padding: "14px 18px", display: "flex", alignItems: "center", gap: 14 }}>
+          <Icon name="sliders" size={16}/>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>No social accounts connected yet</div>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Open Connections (left rail) → Social to authorize Instagram, TikTok, Pinterest, or YouTube.</div>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
-        <StatTile label="Queued this week" value={scheduled} hint="posts scheduled"/>
-        <StatTile label="Needs image"       value={needsImage} hint={needsImage > 0 ? "generate or upload" : "all have visuals"} delta={needsImage > 0 ? `${needsImage} pending` : "+0"} />
-        <StatTile label="Avg engagement"    value="4.2%"  hint="last 30d · IG organic" delta="+0.4pp"/>
-        <StatTile label="Best post time"    value="08:00" hint="BST · Tue & Thu for ritual content"/>
+        <StatTile label="Queued"       value={scheduled} hint="posts scheduled"/>
+        <StatTile label="Total posts"  value={posts.length} hint="across all platforms"/>
+        <StatTile label="Connected"    value={connectedCount} hint="social accounts"/>
+        <StatTile label="Best time"    value="08:00" hint="BST · Tue & Thu"/>
       </div>
 
-      {/* Creative AI banner — if image gen not connected */}
+      {/* Creative AI banner */}
       {!connectedImageGen && (
-        <div style={{ background: "var(--accent-wash)", border: "1px solid var(--accent)", borderRadius: 8, padding: "12px 16px", display: "flex", alignItems: "center", gap: 14 }}>
-          <Icon name="spark" size={16}/>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>Connect an image generator to auto-create visuals</div>
-            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Runware, fal.ai, and Runway work directly with Drafter — one prompt, post-ready image.</div>
-          </div>
-          <Btn size="sm" variant="primary" onClick={() => {}}>Connect in Connections →</Btn>
+        <div style={{ background: "var(--paper-2)", border: "1px solid var(--rule)", borderRadius: 8, padding: "12px 16px", display: "flex", alignItems: "center", gap: 14 }}>
+          <Icon name="spark" size={15}/>
+          <div style={{ flex: 1, fontSize: 12.5, color: "var(--muted)" }}>Connect Runware, fal.ai, or Runway in Connections to generate images from captions.</div>
         </div>
       )}
       {connectedImageGen && (
         <div style={{ background: "var(--success-wash)", border: "1px solid var(--success)", borderRadius: 8, padding: "12px 16px", display: "flex", alignItems: "center", gap: 14 }}>
           <Icon name="check" size={14}/>
           <div style={{ flex: 1, fontSize: 13 }}>
-            <strong>{connectedImageGen === "fal" ? "fal.ai" : connectedImageGen.charAt(0).toUpperCase() + connectedImageGen.slice(1)}</strong> connected — Drafter will auto-generate images when you compose a post.
+            <strong>{connectedImageGen === "fal" ? "fal.ai" : connectedImageGen.charAt(0).toUpperCase() + connectedImageGen.slice(1)}</strong> connected — Drafter can generate images.
             {connectedVideoGen && <> · <strong>{connectedVideoGen}</strong> ready for video.</>}
           </div>
         </div>
@@ -848,49 +948,60 @@ function OrganicSocialStudio({ state, actions }) {
           }}>{t === "all" ? "All channels" : t}</button>
         ))}
         <div style={{ flex: 1 }}/>
-        <div style={{ fontSize: 12, color: "var(--muted)", display: "flex", alignItems: "center" }}>{filtered.length} posts</div>
+        <div style={{ fontSize: 12, color: "var(--muted)", display: "flex", alignItems: "center" }}>
+          {dbLoading ? "Loading…" : `${filtered.length} posts`}
+        </div>
       </div>
 
       {/* Post queue */}
       <div style={{ display: "flex", flexDirection: "column", gap: 0, border: "1px solid var(--rule)", borderRadius: 6, overflow: "hidden" }}>
-        {filtered.length === 0 && (
-          <div style={{ padding: 32, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No posts for this channel. Compose one?</div>
+        {dbLoading && (
+          <div style={{ padding: 32, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Loading posts…</div>
+        )}
+        {!dbLoading && filtered.length === 0 && (
+          <div style={{ padding: 32, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
+            No posts yet. Hit <strong>Compose</strong> to create your first one.
+          </div>
         )}
         {filtered.map((post, i) => {
           const pm = PLATFORM_META[post.platform] || {};
           const sm = STATUS_META[post.status] || STATUS_META.draft;
+          const isPublishing = publishing === post.id;
+          const ch = channels[post.platform];
           return (
             <div key={post.id} style={{
               display: "flex", alignItems: "center", gap: 14, padding: "12px 16px",
               borderTop: i === 0 ? "none" : "1px solid var(--rule)",
               background: "var(--paper)",
             }}>
-              {/* Platform dot */}
               <div style={{ width: 28, height: 28, borderRadius: 5, background: pm.color, color: "#fff", display: "grid", placeItems: "center", fontSize: 9, fontWeight: 700, fontFamily: "var(--font-mono)", flexShrink: 0 }}>{pm.dot}</div>
 
-              {/* Image indicator */}
-              <div style={{ width: 28, height: 28, borderRadius: 4, background: post.hasImage ? "var(--paper-3)" : "var(--warn-wash)", border: "1px solid var(--rule)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-                <Icon name={post.hasImage ? "image" : "plus"} size={11} style={{ color: post.hasImage ? "var(--muted)" : "var(--warn)" }}/>
+              <div style={{ width: 28, height: 28, borderRadius: 4, background: (post.media_urls?.length > 0) ? "var(--paper-3)" : "var(--warn-wash)", border: "1px solid var(--rule)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                <Icon name={(post.media_urls?.length > 0) ? "image" : "plus"} size={11}/>
               </div>
 
-              {/* Caption */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, fontStyle: "italic", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--ink)" }}>"{post.caption}"</div>
-                <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 3 }}>{post.type} · {post.scheduledAt || "Not scheduled"}</div>
+                <div style={{ fontSize: 12.5, fontStyle: "italic", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--ink)" }}>
+                  {post.caption ? `"${post.caption}"` : <span style={{ color: "var(--muted)" }}>No caption</span>}
+                </div>
+                <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 3 }}>
+                  {post.post_type} · {post.scheduled_at ? new Date(post.scheduled_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Not scheduled"}
+                </div>
               </div>
 
-              {/* Status badge */}
               <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 3, background: sm.bg, color: sm.color, whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }}>{sm.label}</span>
 
-              {/* Actions */}
               <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
-                {post.status === "needs_image" && connectedImageGen && (
-                  <Btn size="sm" variant="primary" onClick={simulateImageGen}>
-                    <Icon name="spark" size={10}/> Gen image
+                {post.status !== "published" && ch?.composio_connection_id && (
+                  <Btn size="sm" variant="primary" onClick={() => publishNow(post)} disabled={isPublishing}>
+                    <Icon name="send" size={10}/> {isPublishing ? "Posting…" : "Post now"}
                   </Btn>
                 )}
-                <Btn size="sm"><Icon name="edit" size={10}/> Edit</Btn>
-                {post.status === "draft" && <Btn size="sm" variant="ghost"><Icon name="send" size={10}/> Schedule</Btn>}
+                {post.status !== "published" && !ch?.composio_connection_id && (
+                  <Btn size="sm" variant="ghost" title="Connect this platform in Connections">
+                    <Icon name="sliders" size={10}/> Connect
+                  </Btn>
+                )}
               </div>
             </div>
           );
@@ -906,16 +1017,15 @@ function OrganicSocialStudio({ state, actions }) {
               <Btn size="sm" variant="ghost" onClick={() => { setComposing(false); setGenDone(null); }}><Icon name="x" size={11}/> Close</Btn>
             </div>
 
-            {/* Platform + type */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Platform</span>
-                <select value={draft.platform} onChange={e => setDraft(d => ({ ...d, platform: e.target.value }))}
+                <select value={draft.platform} onChange={e => setDraft(d => ({ ...d, platform: e.target.value, type: "Post" }))}
                   style={{ padding: "8px 10px", border: "1px solid var(--rule-strong)", borderRadius: 5, fontSize: 13, fontFamily: "var(--font-sans)", background: "var(--paper)" }}>
-                  <option value="instagram">Instagram</option>
-                  <option value="tiktok">TikTok</option>
-                  <option value="pinterest">Pinterest</option>
-                  <option value="youtube">YouTube</option>
+                  <option value="instagram">Instagram {channels.instagram ? "✓" : ""}</option>
+                  <option value="tiktok">TikTok {channels.tiktok ? "✓" : ""}</option>
+                  <option value="pinterest">Pinterest {channels.pinterest ? "✓" : ""}</option>
+                  <option value="youtube">YouTube {channels.youtube ? "✓" : ""}</option>
                 </select>
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -930,15 +1040,15 @@ function OrganicSocialStudio({ state, actions }) {
               </label>
             </div>
 
-            {/* Caption */}
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Caption <span style={{ textTransform: "none", fontWeight: 400, letterSpacing: 0 }}>— ask Drafter to write this</span></span>
+              <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                Caption <span style={{ textTransform: "none", fontWeight: 400, letterSpacing: 0 }}>— ask Drafter to write this</span>
+              </span>
               <textarea value={draft.caption} onChange={e => setDraft(d => ({ ...d, caption: e.target.value }))}
                 rows={4} placeholder="Write a caption, or leave blank and ask Drafter in chat…"
                 style={{ padding: "10px 12px", border: "1px solid var(--rule-strong)", borderRadius: 5, fontSize: 13.5, fontFamily: "var(--font-serif)", fontStyle: "italic", lineHeight: 1.6, background: "var(--paper)", resize: "vertical" }}/>
             </label>
 
-            {/* Image gen */}
             <div>
               <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>Visual</div>
               {genDone ? (
@@ -951,22 +1061,29 @@ function OrganicSocialStudio({ state, actions }) {
                 </Btn>
               ) : (
                 <div style={{ padding: "10px 14px", background: "var(--paper-2)", borderRadius: 6, fontSize: 12.5, color: "var(--muted)" }}>
-                  Connect Runware, fal.ai, or Runway in Connections to generate images from captions.
+                  Connect Runware, fal.ai, or Runway in Connections to auto-generate images.
                 </div>
               )}
             </div>
 
-            {/* Schedule */}
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Schedule</span>
               <input type="datetime-local" value={draft.scheduledAt} onChange={e => setDraft(d => ({ ...d, scheduledAt: e.target.value }))}
                 style={{ padding: "8px 10px", border: "1px solid var(--rule-strong)", borderRadius: 5, fontSize: 13, fontFamily: "var(--font-sans)", background: "var(--paper)" }}/>
             </label>
 
+            {!channels[draft.platform] && (
+              <div style={{ padding: "10px 14px", background: "var(--warn-wash)", border: "1px solid var(--warn)", borderRadius: 6, fontSize: 12.5, color: "var(--ink-2)" }}>
+                <Icon name="sliders" size={11}/> {draft.platform.charAt(0).toUpperCase() + draft.platform.slice(1)} not connected — you can save a draft but posting requires authorization via Connections.
+              </div>
+            )}
+
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
               <Btn variant="ghost" onClick={() => { setComposing(false); setGenDone(null); }}>Cancel</Btn>
-              <Btn>Save draft</Btn>
-              <Btn variant="primary"><Icon name="send" size={11}/> Schedule</Btn>
+              <Btn onClick={() => savePost("draft")} disabled={saving}>Save draft</Btn>
+              <Btn variant="primary" onClick={() => savePost(draft.scheduledAt ? "scheduled" : "draft")} disabled={saving}>
+                <Icon name="send" size={11}/> {saving ? "Saving…" : draft.scheduledAt ? "Schedule" : "Save"}
+              </Btn>
             </div>
           </div>
         </div>
