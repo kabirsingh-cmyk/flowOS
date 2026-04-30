@@ -177,7 +177,10 @@ export default async function handler(req) {
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    return Response.json({ type: "fallback" });
+    return new Response(JSON.stringify({ type: "fallback" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   let body;
