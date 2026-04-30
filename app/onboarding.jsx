@@ -582,7 +582,23 @@ function OnboardingWizard({ auth, onComplete }) {
 
   const finish = (extra) => {
     const result = { ...form, ...extra, completedAt: Date.now() };
+    // Save locally for fast palette rehydration on next load
     try { localStorage.setItem("flowos_onboarding", JSON.stringify(result)); } catch {}
+    // Save brand to Supabase (fire-and-forget — don't block the UI)
+    sb.auth.getSession().then(({ data: { session } }) => {
+      if (!session?.user) return;
+      sb.from("brands").upsert({
+        user_id:    session.user.id,
+        name:       result.storeName || "My Brand",
+        industry:   result.industry  || null,
+        website:    result.website   || null,
+        palette:    result.chosenPalette || null,
+        goal:       result.goal      || null,
+        budget:     result.budget    || null,
+        revenue:    result.revenue   || null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "user_id" });
+    });
     onComplete(result);
   };
 

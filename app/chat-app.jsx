@@ -499,56 +499,84 @@ function Thread({ messages, channel, onOpenArtifact, onConfirm, onAction, typing
   );
 }
 
+// ────────────────────────────── AUTH HELPERS ──────────────────────────────
+function mapUser(sbUser) {
+  const raw = sbUser.user_metadata?.name || sbUser.email.split("@")[0];
+  const name = raw.split(/[._-]/).map(w => w[0]?.toUpperCase() + w.slice(1)).join(" ");
+  return { id: sbUser.id, email: sbUser.email, name, via: "email", at: Date.now() };
+}
+
 // ────────────────────────────── MAIN APP ──────────────────────────────
 function ChatOS() {
-  const [auth, setAuth] = useStateApp(() => {
-    try {
-      const saved = localStorage.getItem("flowos_auth");
-      return saved ? JSON.parse(saved) : null;
-    } catch { return null; }
-  });
+  const [auth, setAuth]           = useStateApp("loading"); // "loading" | null | user-object
+  const [onboarded, setOnboarded] = useStateApp(false);
 
-  const [onboarded, setOnboarded] = useStateApp(() => {
+  const checkOnboarded = async (userId) => {
     try {
-      return !!localStorage.getItem("flowos_onboarding");
-    } catch { return false; }
-  });
-
-  // Rehydrate brand palette on mount if onboarding was previously completed
-  useEffectApp(() => {
+      const { data } = await sb.from("brands").select("id, palette").eq("user_id", userId).limit(1);
+      if (data && data.length > 0) {
+        setOnboarded(true);
+        if (data[0].palette) applyPalette(data[0].palette);
+        return;
+      }
+    } catch {}
+    // Fall back to localStorage
     try {
       const saved = localStorage.getItem("flowos_onboarding");
       if (saved) {
+        setOnboarded(true);
         const ob = JSON.parse(saved);
         if (ob.chosenPalette) applyPalette(ob.chosenPalette);
       }
     } catch {}
+  };
+
+  useEffectApp(() => {
+    // Check for existing session on mount
+    sb.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setAuth(mapUser(session.user));
+        checkOnboarded(session.user.id);
+      } else {
+        setAuth(null);
+      }
+    });
+
+    // Listen for sign-in / sign-out events
+    const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setAuth(mapUser(session.user));
+        checkOnboarded(session.user.id);
+      } else {
+        setAuth(null);
+        setOnboarded(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const handleLogin = (user) => {
-    try { localStorage.setItem("flowos_auth", JSON.stringify(user)); } catch {}
-    setAuth(user);
-  };
-  const handleLogout = () => {
-    try {
-      localStorage.removeItem("flowos_auth");
-      localStorage.removeItem("flowos_onboarding");
-    } catch {}
-    // Reset brand palette back to defaults
+  const handleLogout = async () => {
+    await sb.auth.signOut();
+    try { localStorage.removeItem("flowos_onboarding"); } catch {}
     Object.keys(BRAND_PALETTES[0].vars).forEach(k => document.documentElement.style.removeProperty(k));
     setOnboarded(false);
-    setAuth(null);
   };
 
-  const handleOnboardingComplete = (result) => {
-    setOnboarded(true);
-  };
+  // Loading — checking session
+  if (auth === "loading") {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--paper-2)", color: "var(--muted)", fontSize: 13, fontFamily: "var(--font-sans)", letterSpacing: "0.04em" }}>
+        Loading…
+      </div>
+    );
+  }
 
   if (!auth) {
     return (
       <>
         <style>{ANIM_STYLE}</style>
-        <LoginScreen onLogin={handleLogin}/>
+        <LoginScreen />
       </>
     );
   }
@@ -557,7 +585,7 @@ function ChatOS() {
     return (
       <>
         <style>{ANIM_STYLE}</style>
-        <OnboardingWizard auth={auth} onComplete={handleOnboardingComplete}/>
+        <OnboardingWizard auth={auth} onComplete={() => setOnboarded(true)}/>
       </>
     );
   }
