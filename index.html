@@ -2,558 +2,76 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>MVEDA — Marketing OS</title>
+<title>FlowOS — AI that creates, posts, and measures across every channel</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="styles/tokens.css" />
 <style>
-  body { background: var(--paper); }
-  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 32px; }
+  html, body { height: 100%; overflow: hidden; }
+  body { background: var(--paper-2); }
+  #root { height: 100vh; }
 
-  /* Top bar */
-  .top {
-    position: sticky; top: 0; z-index: 10;
-    background: color-mix(in oklch, var(--paper) 88%, transparent);
-    backdrop-filter: blur(14px) saturate(1.2);
-    border-bottom: 1px solid var(--rule);
-  }
-  .top-inner { display: flex; align-items: center; justify-content: space-between; height: 56px; }
-  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: -0.01em; }
-  .brand-mark {
-    width: 22px; height: 22px; border-radius: 5px;
-    background: var(--ink);
-    display: grid; place-items: center; color: var(--paper);
-    font-family: var(--font-serif); font-size: 16px; line-height: 1;
-  }
-  .brand-name { font-size: 15px; }
-  .brand-sub { color: var(--muted); font-size: 12px; margin-left: 6px; letter-spacing: 0.02em; text-transform: uppercase; }
-  .nav { display: flex; gap: 28px; font-size: 13px; }
-  .nav a { text-decoration: none; color: var(--ink-2); }
-  .nav a:hover { color: var(--ink); }
-  .top-cta { display: flex; gap: 10px; align-items: center; }
-
-  .btn {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 8px 14px; border-radius: var(--radius);
-    border: 1px solid var(--rule-strong); background: var(--paper);
-    text-decoration: none; color: var(--ink);
-    font-size: 13px; font-weight: 500;
-    cursor: pointer; transition: all .15s ease;
-  }
-  .btn:hover { border-color: var(--ink-2); }
-  .btn-primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-  .btn-primary:hover { background: var(--ink-2); border-color: var(--ink-2); }
-  .btn-accent { background: var(--accent); color: var(--paper); border-color: var(--accent); }
-
-  /* Hero */
-  .hero { padding: 88px 0 72px; position: relative; }
-  .eyebrow {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 5px 10px; border: 1px solid var(--rule-strong); border-radius: 999px;
-    font-size: 11.5px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase;
-  }
-  .eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
-  .h1 {
-    margin: 24px 0 20px;
-    font-family: var(--font-sans);
-    font-size: clamp(48px, 7vw, 96px);
-    line-height: 0.98;
-    letter-spacing: -0.035em;
-    font-weight: 500;
-    max-width: 14ch;
-  }
-  .h1 em {
-    font-family: var(--font-serif);
-    font-style: italic;
-    font-weight: 400;
-    letter-spacing: -0.01em;
-    color: var(--accent-ink);
-  }
-  .lede {
-    font-size: 19px;
-    line-height: 1.5;
-    max-width: 54ch;
-    color: var(--ink-2);
-  }
-  .hero-actions { margin-top: 36px; display: flex; gap: 12px; align-items: center; }
-  .hero-actions .note { font-size: 12px; color: var(--muted); margin-left: 8px; }
-
-  /* Ticker */
-  .ticker {
-    display: flex; gap: 40px; padding: 20px 0;
-    border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
-    margin-top: 64px;
-    overflow: hidden;
-    font-family: var(--font-mono);
-    font-size: 11.5px; color: var(--muted);
-    text-transform: uppercase; letter-spacing: 0.08em;
-  }
-  .ticker-inner { display: flex; gap: 40px; animation: marq 40s linear infinite; white-space: nowrap; }
-  .ticker span { display: inline-flex; align-items: center; gap: 8px; }
-  .ticker span::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
-  @keyframes marq { to { transform: translateX(-50%); } }
-
-  /* Section base */
-  section { padding: 96px 0; border-bottom: 1px solid var(--rule); }
-  .section-label {
-    font-family: var(--font-mono); font-size: 11px; color: var(--muted);
-    text-transform: uppercase; letter-spacing: 0.12em;
-    display: flex; align-items: center; gap: 10px;
-  }
-  .section-label::before {
-    content: ""; width: 24px; height: 1px; background: var(--muted);
-  }
-  .section-h {
-    margin: 18px 0 0;
-    font-size: clamp(32px, 4.2vw, 56px);
-    line-height: 1.02;
-    letter-spacing: -0.028em;
-    font-weight: 500;
-    max-width: 20ch;
-  }
-  .section-h em { font-family: var(--font-serif); font-style: italic; font-weight: 400; color: var(--accent-ink); }
-  .section-lede { max-width: 60ch; color: var(--ink-2); font-size: 17px; margin-top: 18px; }
-
-  /* Grid: pillars */
-  .pillars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--rule); margin-top: 56px; border: 1px solid var(--rule); }
-  .pillar { background: var(--paper); padding: 28px 24px; min-height: 220px; display: flex; flex-direction: column; justify-content: space-between; }
-  .pillar-num { font-family: var(--font-mono); font-size: 11px; color: var(--muted); letter-spacing: 0.08em; }
-  .pillar-title { font-size: 18px; font-weight: 500; letter-spacing: -0.01em; margin-top: 14px; }
-  .pillar-body { font-size: 13.5px; color: var(--muted); line-height: 1.55; margin-top: 10px; }
-
-  /* Surfaces block — illustration of the app */
-  .os-shell {
-    margin-top: 56px;
-    border: 1px solid var(--rule-strong);
-    border-radius: 10px;
-    overflow: hidden;
-    background: var(--paper-2);
-    box-shadow: 0 32px 80px -40px oklch(20% 0.02 80 / 0.25);
-  }
-  .os-chrome {
-    display: flex; align-items: center; gap: 10px;
-    padding: 10px 14px; border-bottom: 1px solid var(--rule);
-    background: var(--paper);
-  }
-  .os-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--rule-strong); }
-  .os-addr { font-family: var(--font-mono); font-size: 11px; color: var(--muted); margin-left: 10px; }
-  .os-body { display: grid; grid-template-columns: 200px 1fr 280px; min-height: 460px; }
-  .os-nav { border-right: 1px solid var(--rule); padding: 16px 10px; font-size: 12.5px; }
-  .os-nav .grp { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; padding: 10px 8px 6px; }
-  .os-nav .i { padding: 6px 8px; border-radius: 4px; color: var(--ink-2); display: flex; align-items: center; justify-content: space-between; }
-  .os-nav .i.on { background: var(--paper-2); color: var(--ink); }
-  .os-nav .i .n { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); }
-
-  .os-main { padding: 24px; }
-  .os-h { font-size: 22px; letter-spacing: -0.02em; font-weight: 500; }
-  .os-sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
-  .os-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 22px; }
-  .os-card { border: 1px solid var(--rule); background: var(--paper); border-radius: 6px; padding: 14px; }
-  .os-card-h { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--font-mono); }
-  .os-kpi { font-size: 28px; letter-spacing: -0.025em; font-weight: 500; margin-top: 10px; }
-  .os-kpi-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
-  .spark { margin-top: 10px; height: 28px; width: 100%; display: block; }
-
-  .os-queue { padding: 18px 16px; border-left: 1px solid var(--rule); background: var(--paper); }
-  .os-queue h4 { font-size: 11px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin: 0 0 14px; }
-  .queue-item { padding: 10px 0; border-bottom: 1px dashed var(--rule); }
-  .queue-item:last-child { border-bottom: 0; }
-  .queue-item .t { font-size: 13px; font-weight: 500; }
-  .queue-item .m { font-size: 11.5px; color: var(--muted); margin-top: 3px; font-family: var(--font-mono); }
-  .chip { display: inline-flex; padding: 2px 7px; border-radius: 3px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
-  .chip-warn { background: var(--warn-wash); color: oklch(38% 0.09 75); }
-  .chip-ok { background: var(--success-wash); color: oklch(35% 0.09 155); }
-  .chip-danger { background: var(--danger-wash); color: oklch(38% 0.12 25); }
-
-  /* Workspaces */
-  .ws-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--rule); margin-top: 56px; border: 1px solid var(--rule); }
-  .ws { background: var(--paper); padding: 22px; min-height: 160px; display: flex; flex-direction: column; justify-content: space-between; }
-  .ws-num { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); }
-  .ws-name { font-size: 16px; font-weight: 500; letter-spacing: -0.01em; margin-top: 10px; }
-  .ws-desc { font-size: 12.5px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
-
-  /* Quote */
-  .quote-block { display: grid; grid-template-columns: 1fr 1.3fr; gap: 80px; align-items: end; margin-top: 56px; }
-  .quote {
-    font-family: var(--font-serif);
-    font-size: clamp(28px, 3.4vw, 44px);
-    line-height: 1.15;
-    letter-spacing: -0.012em;
-    font-style: italic;
-    font-weight: 400;
-    color: var(--ink);
-  }
-  .quote::before { content: "\201C"; color: var(--accent); margin-right: 4px; }
-  .quote-meta { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
-
-  /* Two-col spec row */
-  .spec { display: grid; grid-template-columns: 1.1fr 1fr; gap: 80px; margin-top: 56px; }
-  .spec-list { display: flex; flex-direction: column; }
-  .spec-row { display: grid; grid-template-columns: 60px 1fr auto; gap: 14px; padding: 18px 0; border-top: 1px solid var(--rule); font-size: 14px; align-items: baseline; }
-  .spec-row:last-child { border-bottom: 1px solid var(--rule); }
-  .spec-k { font-family: var(--font-mono); color: var(--muted); font-size: 11px; letter-spacing: 0.06em; }
-  .spec-v-sub { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
-  .spec-badge { font-family: var(--font-mono); font-size: 10.5px; color: var(--accent-ink); padding: 2px 8px; background: var(--accent-wash); border-radius: 3px; }
-
-  /* CTA */
-  .cta {
-    text-align: center; padding: 120px 0;
-    background: var(--ink); color: var(--paper);
-    border-bottom: 0;
-  }
-  .cta .section-label { color: oklch(70% 0.01 80); justify-content: center; }
-  .cta .section-label::before { background: oklch(70% 0.01 80); }
-  .cta h2 {
-    font-size: clamp(44px, 6vw, 80px);
-    letter-spacing: -0.03em;
-    line-height: 1;
-    font-weight: 500;
-    margin: 22px auto 0;
-    max-width: 18ch;
-  }
-  .cta h2 em { font-family: var(--font-serif); font-style: italic; font-weight: 400; color: oklch(80% 0.08 32); }
-  .cta .btn { margin-top: 40px; }
-  .cta .btn-paper { background: var(--paper); color: var(--ink); border-color: var(--paper); }
-
-  footer { padding: 36px 0; border: 0; }
-  .foot { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); }
-
-  /* Annotation labels on mock screens */
-  .anno {
-    font-family: var(--font-mono); font-size: 10px;
-    text-transform: uppercase; letter-spacing: 0.08em;
-    color: var(--muted);
+  /* Legacy workspace styles kept — workspaces still render inside the canvas pane */
+  .scroll { flex: 1; overflow: auto; background: var(--paper-2); position: relative; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 18px; background: var(--paper); border-bottom: 1px solid var(--rule); min-height: 48px; }
+  .breadcrumb { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+  .breadcrumb .cur { color: var(--ink); font-weight: 500; }
+  .tb-right { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+  .tb-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border: 1px solid var(--rule);
+    border-radius: 999px; font-size: 11.5px; color: var(--muted);
   }
 
-  @media (max-width: 1000px) {
-    .pillars, .ws-grid { grid-template-columns: repeat(2, 1fr); }
-    .os-body { grid-template-columns: 1fr; }
-    .os-nav, .os-queue { display: none; }
-    .quote-block, .spec { grid-template-columns: 1fr; gap: 32px; }
-  }
+  /* Typing pulse */
+  @keyframes pulse { 0%, 100% { opacity: 0.3 } 50% { opacity: 1 } }
+  .dot-pulse { animation: pulse 1.2s ease-in-out infinite; }
 </style>
 </head>
 <body>
+<template id="__bundler_thumbnail" data-bg-color="#f4ede1">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#f4ede1"/>
+    <g transform="translate(600 400)">
+      <text text-anchor="middle" font-family="Cormorant Garamond, Georgia, serif" font-style="italic" font-weight="500" font-size="220" fill="#2a1f17" y="40">F</text>
+      <text text-anchor="middle" font-family="Jost, sans-serif" font-size="28" letter-spacing="18" fill="#7a5a3a" y="130">FlowOS</text>
+      <text text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="14" letter-spacing="6" fill="#9a7a52" y="170">AI MARKETING · OS</text>
+    </g>
+  </svg>
+</template>
 
-<header class="top">
-  <div class="wrap top-inner">
-    <div class="brand">
-      <div class="brand-mark">M</div>
-      <span class="brand-name">MVEDA</span>
-      <span class="brand-sub">Marketing&nbsp;OS</span>
-    </div>
-    <nav class="nav">
-      <a href="#system">System</a>
-      <a href="#workspaces">Workspaces</a>
-      <a href="#governance">Governance</a>
-      <a href="#phases">Roadmap</a>
-    </nav>
-    <div class="top-cta">
-      <a class="btn" href="app.html">View the demo →</a>
-    </div>
-  </div>
-</header>
+<div id="root"></div>
 
-<main>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 
-<!-- HERO -->
-<section class="hero" style="border-bottom: 0;">
-  <div class="wrap">
-    <span class="eyebrow"><span class="dot"></span> Internal release · v0.9 · April 2026</span>
-    <h1 class="h1">
-      An operating system<br/>
-      for marketing that <em>actually<br/>answers to you.</em>
-    </h1>
-    <p class="lede">
-      MVEDA runs social, email, and AI creative inside one governed workflow. Strategy, planning,
-      drafting, publishing, and listening all sit on a shared brand memory — so the system stays
-      on-brand while you stay in control of what ships.
-    </p>
-    <div class="hero-actions">
-      <a class="btn btn-primary" href="app.html">Open the demo</a>
-      <a class="btn" href="#system">How it works</a>
-      <span class="note mono">No seat required · internal preview</span>
-    </div>
+<script type="text/babel" src="app/seed.jsx"></script>
+<script type="text/babel" src="app/ui.jsx"></script>
+<script type="text/babel" src="app/ui2.jsx"></script>
+<script type="text/babel" src="app/store.jsx"></script>
+<script type="text/babel" src="app/workspaces1.jsx"></script>
+<script type="text/babel" src="app/workspaces2.jsx"></script>
+<script type="text/babel" src="app/workspaces3.jsx"></script>
+<script type="text/babel" src="app/workspaces4.jsx"></script>
 
-    <div class="ticker" aria-hidden="true">
-      <div class="ticker-inner">
-        <span>Supervisor · online</span>
-        <span>Policy Guard · 14 decisions today</span>
-        <span>Trend Scout · weekly brief ready</span>
-        <span>HeyGen · 3 assets in review</span>
-        <span>fal.ai · 11 renders queued</span>
-        <span>Klaviyo · synced 2m ago</span>
-        <span>Instagram · connected</span>
-        <span>LinkedIn · connected</span>
-        <span>Audit log · 2,481 events</span>
-        <span>Supervisor · online</span>
-        <span>Policy Guard · 14 decisions today</span>
-        <span>Trend Scout · weekly brief ready</span>
-        <span>HeyGen · 3 assets in review</span>
-        <span>fal.ai · 11 renders queued</span>
-        <span>Klaviyo · synced 2m ago</span>
-        <span>Instagram · connected</span>
-        <span>LinkedIn · connected</span>
-        <span>Audit log · 2,481 events</span>
-      </div>
-    </div>
-  </div>
-</section>
+<script type="text/babel" src="app/chat-data.jsx"></script>
+<script type="text/babel" src="app/chat-ui.jsx"></script>
+<script type="text/babel" src="app/channel-strategy.jsx"></script>
+<script type="text/babel" src="app/features.jsx"></script>
+<script type="text/babel" src="app/login.jsx"></script>
+<script type="text/babel" src="app/onboarding.jsx"></script>
+<script type="text/babel" src="app/ai.jsx"></script>
+<script type="text/babel" src="app/chat-app.jsx"></script>
 
-<!-- PILLARS -->
-<section id="system">
-  <div class="wrap">
-    <span class="section-label">01 — The system</span>
-    <h2 class="section-h">Seven layers. <em>One</em> governed loop.</h2>
-    <p class="section-lede">
-      Strategy, context, planning, execution, intelligence, integration, and audit.
-      Every externally visible action passes through policy before it ships.
-    </p>
-
-    <div class="pillars">
-      <div class="pillar">
-        <div>
-          <div class="pillar-num">01 / Context</div>
-          <div class="pillar-title">Brand memory that holds the line</div>
-          <div class="pillar-body">Durable vocabulary, values, claims, and prohibited territory. Versioned. Approval-gated. Brand-scoped.</div>
-        </div>
-      </div>
-      <div class="pillar">
-        <div>
-          <div class="pillar-num">02 / Voice</div>
-          <div class="pillar-title">Dynamic tone modes</div>
-          <div class="pillar-body">Two to five modes per brand, each with rhythm, vocabulary, and examples. Assigned per campaign, validated per draft.</div>
-        </div>
-      </div>
-      <div class="pillar">
-        <div>
-          <div class="pillar-num">03 / Execution</div>
-          <div class="pillar-title">Copy, email, and AI creative in one queue</div>
-          <div class="pillar-body">Captions, subject lines, UGC-style scripts, HeyGen videos, fal.ai renders — all drafted, all reviewable, all logged.</div>
-        </div>
-      </div>
-      <div class="pillar">
-        <div>
-          <div class="pillar-num">04 / Governance</div>
-          <div class="pillar-title">Policy Guard in front of every send</div>
-          <div class="pillar-body">Allow, revise, or require-approval — with the reasoning attached. Hard boundaries are non-negotiable.</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- OS mock -->
-<section>
-  <div class="wrap">
-    <span class="section-label">02 — The surface</span>
-    <h2 class="section-h">A single pane of glass, <em>not</em> a swivel chair.</h2>
-    <p class="section-lede">
-      The Command Center surfaces what needs attention today — pending approvals, connector health,
-      weekly trend brief, and the handful of signals that change what you'd ship next.
-    </p>
-
-    <div class="os-shell" aria-hidden="true">
-      <div class="os-chrome">
-        <div class="os-dot"></div><div class="os-dot"></div><div class="os-dot"></div>
-        <span class="os-addr">mveda.os / command-center</span>
-      </div>
-      <div class="os-body">
-        <aside class="os-nav">
-          <div class="grp">Today</div>
-          <div class="i on">Command Center <span class="n">4</span></div>
-          <div class="i">Inbox &amp; Escalation <span class="n">7</span></div>
-          <div class="i">Publishing Queue <span class="n">23</span></div>
-          <div class="grp">Build</div>
-          <div class="i">Campaign Planner</div>
-          <div class="i">Content Studio</div>
-          <div class="i">Creative Library</div>
-          <div class="grp">System</div>
-          <div class="i">Brand Memory</div>
-          <div class="i">Insights Center</div>
-          <div class="i">Autonomy Settings</div>
-        </aside>
-        <div class="os-main">
-          <div class="os-h">Good morning, Ana.</div>
-          <div class="os-sub">Monday, 20 April — 4 items need you before 11:00.</div>
-          <div class="os-grid">
-            <div class="os-card">
-              <div class="os-card-h"><span>Acceptance rate</span><span>7d</span></div>
-              <div class="os-kpi">84%</div>
-              <div class="os-kpi-sub">+6 pts vs. prior week</div>
-              <svg class="spark" viewBox="0 0 200 40" preserveAspectRatio="none">
-                <polyline fill="none" stroke="var(--accent)" stroke-width="1.5"
-                  points="0,28 20,24 40,26 60,20 80,22 100,16 120,18 140,12 160,14 180,8 200,10"/>
-              </svg>
-            </div>
-            <div class="os-card">
-              <div class="os-card-h"><span>Ships this week</span><span>WoW</span></div>
-              <div class="os-kpi">31 <span style="font-size:16px;color:var(--muted)">/ 36 planned</span></div>
-              <div class="os-kpi-sub">5 awaiting approval · 0 blocked</div>
-              <svg class="spark" viewBox="0 0 200 40" preserveAspectRatio="none">
-                <g fill="var(--ink-2)">
-                  <rect x="2"   y="22" width="10" height="18"/>
-                  <rect x="20"  y="16" width="10" height="24"/>
-                  <rect x="38"  y="20" width="10" height="20"/>
-                  <rect x="56"  y="12" width="10" height="28"/>
-                  <rect x="74"  y="18" width="10" height="22"/>
-                  <rect x="92"  y="14" width="10" height="26"/>
-                  <rect x="110" y="10" width="10" height="30"/>
-                  <rect x="128" y="16" width="10" height="24"/>
-                  <rect x="146" y="8"  width="10" height="32"/>
-                  <rect x="164" y="12" width="10" height="28"/>
-                  <rect x="182" y="6"  width="10" height="34"/>
-                </g>
-              </svg>
-            </div>
-            <div class="os-card" style="grid-column: span 2;">
-              <div class="os-card-h"><span>Weekly plan · Apr 20–26</span><span>tone mode mix</span></div>
-              <div style="display:flex; gap:0; margin-top:14px; height:28px; border-radius:4px; overflow:hidden;">
-                <div style="flex:3.2; background: var(--accent);"></div>
-                <div style="flex:2.1; background: oklch(58% 0.11 200);"></div>
-                <div style="flex:1.4; background: oklch(70% 0.1 140);"></div>
-                <div style="flex:0.9; background: oklch(78% 0.09 85);"></div>
-              </div>
-              <div style="display:flex; justify-content:space-between; margin-top:10px; font-family:var(--font-mono); font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em;">
-                <span>Direct · 42%</span><span>Witness · 28%</span><span>Invite · 18%</span><span>Wink · 12%</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <aside class="os-queue">
-          <h4>Needs you</h4>
-          <div class="queue-item">
-            <div class="t">Spring launch — email v2</div>
-            <div class="m">policy · claims not approved <span class="chip chip-warn">revise</span></div>
-          </div>
-          <div class="queue-item">
-            <div class="t">HeyGen — UGC ad 04</div>
-            <div class="m">asset review · human required <span class="chip chip-ok">ready</span></div>
-          </div>
-          <div class="queue-item">
-            <div class="t">Trend brief — week 17</div>
-            <div class="m">3 incorporate · 2 monitor <span class="chip chip-ok">new</span></div>
-          </div>
-          <div class="queue-item">
-            <div class="t">Crisis reply · press DM</div>
-            <div class="m">high-risk · manual <span class="chip chip-danger">urgent</span></div>
-          </div>
-        </aside>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- WORKSPACES -->
-<section id="workspaces">
-  <div class="wrap">
-    <span class="section-label">03 — Workspaces</span>
-    <h2 class="section-h">Eight surfaces, <em>one</em> mental model.</h2>
-    <p class="section-lede">Every workspace reads from the same brand memory, writes to the same audit log, and passes through the same policy gate.</p>
-
-    <div class="ws-grid">
-      <div class="ws"><div><div class="ws-num">01 — daily</div><div class="ws-name">Command Center</div><div class="ws-desc">Priorities, approvals, connector health, last-refresh signals.</div></div></div>
-      <div class="ws"><div><div class="ws-num">02 — context</div><div class="ws-name">Brand Memory</div><div class="ws-desc">Vocabulary, values, claims, tone modes, prohibited territory — versioned.</div></div></div>
-      <div class="ws"><div><div class="ws-num">03 — plan</div><div class="ws-name">Campaign Planner</div><div class="ws-desc">Briefs, calendar, tone assignment, channel mix, deadlines.</div></div></div>
-      <div class="ws"><div><div class="ws-num">04 — make</div><div class="ws-name">Content Studio</div><div class="ws-desc">Drafts, variants, scripts, asset requests, side-by-side review.</div></div></div>
-      <div class="ws"><div><div class="ws-num">05 — ship</div><div class="ws-name">Publishing Queue</div><div class="ws-desc">Scheduled social and email, with override, pause, and receipts.</div></div></div>
-      <div class="ws"><div><div class="ws-num">06 — learn</div><div class="ws-name">Insights Center</div><div class="ws-desc">Performance by channel, campaign, asset, and tone mode.</div></div></div>
-      <div class="ws"><div><div class="ws-num">07 — listen</div><div class="ws-name">Inbox &amp; Escalation</div><div class="ws-desc">Inbound triage with risk classification and drafted replies.</div></div></div>
-      <div class="ws"><div><div class="ws-num">08 — control</div><div class="ws-name">Autonomy Settings</div><div class="ws-desc">Per-channel autonomy, approvers, thresholds, hard boundaries.</div></div></div>
-    </div>
-  </div>
-</section>
-
-<!-- GOVERNANCE / QUOTE -->
-<section id="governance">
-  <div class="wrap">
-    <span class="section-label">04 — Governance</span>
-    <h2 class="section-h">Autonomy is <em>a dial,</em> not a switch.</h2>
-
-    <div class="quote-block">
-      <div class="quote-meta">
-        Operating principle<br/>
-        <span style="color: var(--ink); text-transform: none; letter-spacing: 0; font-family: var(--font-sans); font-size: 13px;">Strategy, paid spend, crisis responses, core brand memory, and AI video all require human approval — regardless of mode.</span>
-      </div>
-      <p class="quote">
-        Strategic, financial, legal, reputational, and crisis-sensitive actions never ship themselves. Everything else is a configuration, not a code change.
-      </p>
-    </div>
-
-    <div class="spec">
-      <div class="spec-list">
-        <div class="spec-row"><span class="spec-k">MODE 01</span><div><div>Manual / Copilot</div><div class="spec-v-sub">Drafts and recommendations only. Nothing leaves the building without you.</div></div><span class="spec-badge">default</span></div>
-        <div class="spec-row"><span class="spec-k">MODE 02</span><div><div>Assisted Autonomous</div><div class="spec-v-sub">Low-risk tasks run automatically. High-risk routes to approval.</div></div><span class="spec-badge">recommended</span></div>
-        <div class="spec-row"><span class="spec-k">MODE 03</span><div><div>Autonomous with Guardrails</div><div class="spec-v-sub">Approved patterns publish within configured limits. Audit everything.</div></div><span class="spec-badge">phase 2</span></div>
-      </div>
-      <div>
-        <div style="font-family: var(--font-mono); font-size: 11px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase;">Hard boundaries</div>
-        <ul style="margin-top: 20px; padding: 0; list-style: none; font-size: 14.5px; line-height: 1.9; color: var(--ink-2);">
-          <li>— Strategy changes</li>
-          <li>— Paid spend changes</li>
-          <li>— Crisis, legal, or PR responses</li>
-          <li>— Core brand memory edits</li>
-          <li>— New tone mode creation</li>
-          <li>— AI-generated video asset publish</li>
-          <li>— Anything the owner configures as high-risk</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- PHASES -->
-<section id="phases">
-  <div class="wrap">
-    <span class="section-label">05 — Roadmap</span>
-    <h2 class="section-h">Internal first. <em>External</em> ready.</h2>
-
-    <div class="spec" style="margin-top: 48px;">
-      <div class="spec-list">
-        <div class="spec-row"><span class="spec-k">P1 · NOW</span><div><div>Internal MVP</div><div class="spec-v-sub">Single brand surface, multi-brand-ready model. Weekly planning, drafting, policy, approvals, audit. Klaviyo, HeyGen, fal.ai.</div></div><span class="spec-badge">shipping</span></div>
-        <div class="spec-row"><span class="spec-k">P2 · Q3</span><div><div>Controlled autonomy</div><div class="spec-v-sub">Auto-publishing for approved low-risk content. Experimentation, recommendation loops, CRM enrichment.</div></div></div>
-        <div class="spec-row"><span class="spec-k">P3 · 2027</span><div><div>External scale</div><div class="spec-v-sub">Multi-brand UI exposed. Client workspaces, billing, reporting exports.</div></div></div>
-      </div>
-      <div>
-        <div style="font-family: var(--font-mono); font-size: 11px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase;">Integrations · phase 1</div>
-        <div style="margin-top: 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--rule); border: 1px solid var(--rule); font-size: 12px;">
-          <div style="background: var(--paper); padding: 14px;">Instagram</div>
-          <div style="background: var(--paper); padding: 14px;">LinkedIn</div>
-          <div style="background: var(--paper); padding: 14px;">TikTok</div>
-          <div style="background: var(--paper); padding: 14px;">Facebook</div>
-          <div style="background: var(--paper); padding: 14px;">YouTube</div>
-          <div style="background: var(--paper); padding: 14px;">Pinterest</div>
-          <div style="background: var(--paper); padding: 14px;">Mailchimp</div>
-          <div style="background: var(--paper); padding: 14px;">Klaviyo</div>
-          <div style="background: var(--paper); padding: 14px;">HeyGen</div>
-          <div style="background: var(--paper); padding: 14px;">fal.ai</div>
-          <div style="background: var(--paper); padding: 14px;">GA4</div>
-          <div style="background: var(--paper); padding: 14px;">HubSpot</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- CTA -->
-<section class="cta">
-  <div class="wrap">
-    <span class="section-label">06 — Demo</span>
-    <h2>See the <em>full loop.</em><br/>Plan, ship, listen, learn.</h2>
-    <a class="btn btn-paper" href="app.html">Open the MVEDA demo →</a>
-  </div>
-</section>
-
-</main>
-
-<footer>
-  <div class="wrap foot">
-    <div>© 2026 MVEDA · Internal build</div>
-    <div class="mono">v0.9.3 · rev 4a2f1c</div>
-  </div>
-</footer>
-
+<script>
+  // Tweak defaults — exposed via EDITMODE markers
+  const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+    "density": "balanced"
+  }/*EDITMODE-END*/;
+  document.documentElement.setAttribute("data-density", TWEAK_DEFAULTS.density);
+</script>
 </body>
 </html>
