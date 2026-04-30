@@ -2,5 +2,8 @@
   "name": "flowos",
   "version": "0.1.0",
   "description": "FlowOS — AI that creates, posts, and measures across every channel",
+  "scripts": {
+    "build": "echo 'Static site — no build required'"
+  },
   "engines": { "node": ">=18" }
 }
