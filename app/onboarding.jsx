@@ -586,7 +586,8 @@ function OnboardingWizard({ auth, onComplete }) {
     try { localStorage.setItem("flowos_onboarding", JSON.stringify(result)); } catch {}
     // Save brand to Supabase (fire-and-forget — don't block the UI)
     sb.auth.getSession().then(({ data: { session } }) => {
-      if (!session?.user) return;
+      console.log("[FlowOS] finish — session user:", session?.user?.id || "NONE");
+      if (!session?.user) { console.warn("[FlowOS] no session, brand not saved"); return; }
       sb.from("brands").upsert({
         user_id:    session.user.id,
         name:       result.storeName || "My Brand",
@@ -598,7 +599,10 @@ function OnboardingWizard({ auth, onComplete }) {
         revenue:    result.revenue   || null,
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id" })
-      .then(({ error }) => { if (error) console.error("[FlowOS] brand save:", error); });
+      .then(({ data, error }) => {
+        console.log("[FlowOS] brand upsert data:", data);
+        console.log("[FlowOS] brand upsert error:", error);
+      });
     });
     onComplete(result);
   };
