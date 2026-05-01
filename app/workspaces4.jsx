@@ -202,6 +202,7 @@ function BrandImportModal({ open, onClose, onApply }) {
 function ConnectorIcon({ id }) {
   // brand letter mark — color-shifted per category
   const map = {
+    ay: { fg: "oklch(44% 0.18 260)", letter: "A" },
     ig: { fg: "linear-gradient(135deg, oklch(70% 0.18 30), oklch(58% 0.2 320))", letter: "I" },
     tt: { fg: "var(--ink)", letter: "T" },
     fb: { fg: "oklch(48% 0.18 260)", letter: "f" },
@@ -281,7 +282,7 @@ function Connections({ state, actions }) {
   }, []); // eslint-disable-line
 
   const catalog = SEED.connectorCatalog;
-  const categories = ["Social", "Email", "SMS", "Search Ads", "Social Ads", "Creative AI", "Commerce", "Analytics", "SEO", "Affiliate", "Reviews · CX", "Experimentation", "MCP · Custom"];
+  const categories = ["Social", "Email", "SMS", "Search Ads", "Social Ads", "Commerce", "Analytics", "SEO", "Affiliate", "Experimentation", "Creative AI", "MCP · Custom"];
   const byCat = useMemo4(() => {
     const out = {};
     catalog.forEach(c => { (out[c.category] ||= []).push(c); });
@@ -470,6 +471,19 @@ function Connections({ state, actions }) {
               {byCat[cat]?.filter(c => state.connectors[c.id]?.connected).length || 0} / {byCat[cat]?.length || 0}
             </span>
           </div>
+          {/* Ayrshare explainer */}
+          {cat === "Social" && (
+            <div style={{ background: "var(--accent-wash)", border: "1px solid var(--accent)", borderRadius: 8, padding: "14px 18px", marginBottom: 12, display: "flex", gap: 14, alignItems: "flex-start" }}>
+              <ConnectorIcon id="ay"/>
+              <div>
+                <div style={{ fontSize: 13.5, fontWeight: 500, marginBottom: 4 }}>Social posting via Ayrshare</div>
+                <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
+                  Connect Ayrshare once with your API key — it handles OAuth for Instagram, TikTok, Facebook, YouTube, Pinterest, and LinkedIn so you never need to set up developer apps.
+                  Platform tiles below will activate automatically once Ayrshare is connected.
+                </div>
+              </div>
+            </div>
+          )}
           {/* MCP explainer */}
           {cat === "MCP · Custom" && (
             <div style={{ background: "var(--accent-wash)", border: "1px solid var(--accent)", borderRadius: 8, padding: "14px 18px", marginBottom: 12, display: "flex", gap: 14, alignItems: "flex-start" }}>

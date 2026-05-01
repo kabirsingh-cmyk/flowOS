@@ -44,125 +44,119 @@ const SEED = {
   brandImported: false, // toggled by the import flow
 
   // Connectors — what the user can connect via API
+  // Social platforms publish via Ayrshare (one API key, handles all OAuth)
   connectorCatalog: [
-    { id: "ig",       category: "Social",   name: "Instagram",       desc: "Posts, Reels, Stories, comments + DMs",   auth: "OAuth", icon: "ig" },
-    { id: "tt",       category: "Social",   name: "TikTok",          desc: "Videos, comments, sound trends",           auth: "OAuth", icon: "tt" },
-    { id: "fb",       category: "Social",   name: "Facebook",        desc: "Pages, comments + DMs",                    auth: "OAuth", icon: "fb" },
-    { id: "li",       category: "Social",   name: "LinkedIn",        desc: "Company posts, articles, comments",        auth: "OAuth", icon: "li" },
-    { id: "yt",       category: "Social",   name: "YouTube",         desc: "Long-form, Shorts, comments",              auth: "OAuth", icon: "yt" },
-    { id: "pn",       category: "Social",   name: "Pinterest",       desc: "Boards, idea pins",                        auth: "OAuth", icon: "pn" },
+    // ── Social (posting via Ayrshare) ────────────────────────────────────────
+    { id: "ayrshare",  category: "Social",     name: "Ayrshare",        desc: "Unified social publishing layer — connect once, post everywhere",  auth: "API key", icon: "ay" },
+    { id: "ig",        category: "Social",     name: "Instagram",        desc: "Posts, Reels, Stories · publishing via Ayrshare",                  auth: "Ayrshare", icon: "ig" },
+    { id: "tt",        category: "Social",     name: "TikTok",           desc: "Videos, Photo mode · publishing via Ayrshare",                     auth: "Ayrshare", icon: "tt" },
+    { id: "fb",        category: "Social",     name: "Facebook",         desc: "Pages & posts · publishing via Ayrshare",                          auth: "Ayrshare", icon: "fb" },
+    { id: "li",        category: "Social",     name: "LinkedIn",         desc: "Company posts, articles · publishing via Ayrshare",                auth: "Ayrshare", icon: "li" },
+    { id: "yt",        category: "Social",     name: "YouTube",          desc: "Shorts & long-form · publishing via Ayrshare",                     auth: "Ayrshare", icon: "yt" },
+    { id: "pn",        category: "Social",     name: "Pinterest",        desc: "Pins & boards · publishing via Ayrshare",                          auth: "Ayrshare", icon: "pn" },
 
-    { id: "klaviyo",  category: "Email",    name: "Klaviyo",         desc: "Lists, flows, campaigns, segmentation",    auth: "API key", icon: "kl" },
-    { id: "mailchimp",category: "Email",    name: "Mailchimp",       desc: "Audiences, automations, A/B tests",        auth: "API key", icon: "mc" },
+    // ── Email ────────────────────────────────────────────────────────────────
+    { id: "klaviyo",   category: "Email",      name: "Klaviyo",          desc: "Lists, flows, campaigns, segmentation",                            auth: "API key", icon: "kl" },
+    { id: "mailchimp", category: "Email",      name: "Mailchimp",        desc: "Audiences, automations, A/B tests",                                auth: "API key", icon: "mc" },
 
-    { id: "klaviyo_sms",category: "SMS",    name: "Klaviyo SMS",     desc: "TCPA consent, MMS, automations",           auth: "API key", icon: "kl" },
-    { id: "postscript", category: "SMS",    name: "Postscript",      desc: "Two-way SMS · Shopify-native",             auth: "API key", icon: "ps" },
-    { id: "attentive",  category: "SMS",    name: "Attentive",       desc: "Conversational SMS · enterprise SMB",      auth: "API key", icon: "at" },
+    // ── SMS ──────────────────────────────────────────────────────────────────
+    { id: "klaviyo_sms", category: "SMS",      name: "Klaviyo SMS",      desc: "TCPA consent, MMS, automations · same API key as Klaviyo",         auth: "API key", icon: "kl" },
+    { id: "attentive",   category: "SMS",      name: "Attentive",        desc: "Conversational SMS · enterprise & SMB",                            auth: "API key", icon: "at" },
 
-    { id: "googleads",category: "Search Ads",  name: "Google Ads",      desc: "Search, Performance Max, Display, YouTube",  auth: "OAuth",   icon: "g"  },
-    { id: "msads",    category: "Search Ads",  name: "Microsoft Ads",   desc: "Bing, Edge, Yahoo · Search + Audience",      auth: "OAuth",   icon: "ms" },
-    { id: "appleads", category: "Search Ads",  name: "Apple Search Ads",desc: "App Store keywords · iOS-only inventory",    auth: "OAuth",   icon: "ap" },
-    { id: "amazonads",category: "Search Ads",  name: "Amazon Ads",      desc: "Sponsored Products + Brands · search-intent", auth: "OAuth",   icon: "az" },
-    { id: "metaads",  category: "Social Ads",  name: "Meta Ads",        desc: "Facebook + IG paid · Advantage+",            auth: "OAuth",   icon: "m"  },
-    { id: "ttads",    category: "Social Ads",  name: "TikTok Ads",      desc: "Spark Ads, paid creator content",            auth: "OAuth",   icon: "ta" },
-    { id: "liads",    category: "Social Ads",  name: "LinkedIn Ads",    desc: "Sponsored content · B2B",                    auth: "OAuth",   icon: "lia"},
-    { id: "pinads",   category: "Social Ads",  name: "Pinterest Ads",   desc: "Promoted pins · discovery intent",           auth: "OAuth",   icon: "pa" },
+    // ── Search Ads ───────────────────────────────────────────────────────────
+    { id: "googleads", category: "Search Ads", name: "Google Ads",       desc: "Search, Performance Max, Display, YouTube",                        auth: "OAuth",   icon: "g"  },
+    { id: "msads",     category: "Search Ads", name: "Microsoft Ads",    desc: "Bing, Edge, Yahoo · Search + Audience",                            auth: "OAuth",   icon: "ms" },
+    { id: "amazonads", category: "Search Ads", name: "Amazon Ads",       desc: "Sponsored Products + Brands · search-intent",                      auth: "OAuth",   icon: "az" },
 
-    { id: "heygen",   category: "Creative", name: "HeyGen",          desc: "AI video · UGC personas, voiceover",       auth: "API key", icon: "hg" },
-    { id: "fal",      category: "Creative", name: "fal.ai",          desc: "Nano Banana Pro · high-quality images",   auth: "API key", icon: "fa" },
-    { id: "elevenlabs",category:"Creative", name: "ElevenLabs",      desc: "Voice cloning · narration",                auth: "API key", icon: "el" },
-    { id: "runway",   category: "Creative", name: "Runway",          desc: "Video generation · Gen-4",                auth: "API key", icon: "rw" },
+    // ── Social Ads ───────────────────────────────────────────────────────────
+    { id: "metaads",   category: "Social Ads", name: "Meta Ads",         desc: "Facebook + IG paid · Advantage+",                                  auth: "OAuth",   icon: "m"  },
+    { id: "ttads",     category: "Social Ads", name: "TikTok Ads",       desc: "Spark Ads, paid creator content",                                  auth: "OAuth",   icon: "ta" },
+    { id: "liads",     category: "Social Ads", name: "LinkedIn Ads",     desc: "Sponsored content · B2B",                                          auth: "OAuth",   icon: "lia"},
+    { id: "pinads",    category: "Social Ads", name: "Pinterest Ads",    desc: "Promoted pins · discovery intent",                                  auth: "OAuth",   icon: "pa" },
 
-    { id: "shopify",  category: "Commerce", name: "Shopify",         desc: "Products, inventory, orders, customers",   auth: "OAuth", icon: "sh" },
-    { id: "ga4",      category: "Analytics",name: "Google Analytics",desc: "GA4 · acquisition, behavior, conversion",  auth: "OAuth", icon: "ga" },
-    { id: "amplitude",category: "Analytics",name: "Amplitude",       desc: "Product analytics, cohorts",               auth: "API key", icon: "am" },
+    // ── Commerce ─────────────────────────────────────────────────────────────
+    { id: "shopify",   category: "Commerce",   name: "Shopify",          desc: "Products, inventory, orders, customers",                           auth: "OAuth",   icon: "sh" },
 
-    { id: "ahrefs",    category: "SEO",        name: "Ahrefs",        desc: "Keyword ranks, backlinks, site audit",     auth: "API key", icon: "ah" },
-    { id: "semrush",   category: "SEO",        name: "Semrush",       desc: "Keyword tracking, content gap, competitors", auth: "API key", icon: "sr" },
-    { id: "gsc",       category: "SEO",        name: "Search Console",desc: "Google · impressions, CTR, indexing",      auth: "OAuth",   icon: "gs" },
+    // ── Analytics ────────────────────────────────────────────────────────────
+    { id: "ga4",       category: "Analytics",  name: "Google Analytics", desc: "GA4 · acquisition, behavior, conversion",                          auth: "OAuth",   icon: "ga" },
+    { id: "amplitude", category: "Analytics",  name: "Amplitude",        desc: "Product analytics · funnels, cohorts, retention",                  auth: "API key", icon: "am" },
 
-    { id: "refersion", category: "Affiliate",  name: "Refersion",     desc: "Affiliate links, payouts, tiers",          auth: "API key", icon: "rf" },
-    { id: "impact",    category: "Affiliate",  name: "Impact",        desc: "Partner network · enterprise affiliate",   auth: "API key", icon: "im" },
+    // ── SEO ──────────────────────────────────────────────────────────────────
+    { id: "ahrefs",    category: "SEO",        name: "Ahrefs",           desc: "Keyword ranks, backlinks, site audit",                             auth: "API key", icon: "ah" },
+    { id: "semrush",   category: "SEO",        name: "Semrush",          desc: "Keyword tracking, content gap, competitor intel",                  auth: "API key", icon: "sr" },
+    { id: "gsc",       category: "SEO",        name: "Search Console",   desc: "Google · impressions, CTR, indexing status",                       auth: "OAuth",   icon: "gs" },
 
-    { id: "yotpo",     category: "Reviews · CX", name: "Yotpo",       desc: "Reviews, UGC, loyalty",                    auth: "API key", icon: "yo" },
-    { id: "gorgias",   category: "Reviews · CX", name: "Gorgias",     desc: "Helpdesk · returns, complaints, RMA",      auth: "API key", icon: "go" },
-    { id: "trustpilot",category: "Reviews · CX", name: "Trustpilot",  desc: "Public review aggregator",                 auth: "API key", icon: "tp" },
+    // ── Affiliate ────────────────────────────────────────────────────────────
+    { id: "refersion", category: "Affiliate",  name: "Refersion",        desc: "Affiliate links, payouts, commission tiers",                       auth: "API key", icon: "rf" },
+    { id: "impact",    category: "Affiliate",  name: "Impact",           desc: "Partner network · enterprise affiliate",                           auth: "API key", icon: "im" },
 
-    { id: "optimizely",category: "Experimentation", name: "Optimizely",  desc: "A/B tests · web + feature flags",        auth: "API key", icon: "op" },
-    { id: "vwo",       category: "Experimentation", name: "VWO",         desc: "A/B tests · landing pages, funnels",     auth: "API key", icon: "vw" },
-    { id: "growthbook",category: "Experimentation", name: "GrowthBook",  desc: "Open-source feature flags + experiments",auth: "API key", icon: "gb" },
+    // ── Experimentation ──────────────────────────────────────────────────────
+    { id: "growthbook", category: "Experimentation", name: "GrowthBook", desc: "Open-source A/B tests + feature flags · free cloud tier",          auth: "API key", icon: "gb" },
 
     // ── Creative AI ──────────────────────────────────────────────────────────
-    { id: "runware",    category: "Creative AI", name: "Runware",     desc: "Ultra-fast image gen · SDXL & Flux models",   auth: "API key", icon: "runware"    },
-    { id: "higgsfield", category: "Creative AI", name: "Higgsfield",  desc: "Cinematic AI video · character consistency",  auth: "API key", icon: "higgsfield" },
-    { id: "luma",       category: "Creative AI", name: "Luma AI",     desc: "Dream Machine · photorealistic video gen",    auth: "API key", icon: "luma"       },
-    { id: "pika",       category: "Creative AI", name: "Pika",        desc: "Text-to-video · effects & lip sync",          auth: "API key", icon: "pika"       },
-    { id: "kling",      category: "Creative AI", name: "Kling AI",    desc: "High-quality 5s / 10s video generation",      auth: "API key", icon: "kling"      },
-    { id: "heygen",     category: "Creative AI", name: "HeyGen",      desc: "AI avatar videos · UGC personas, voiceover",  auth: "API key", icon: "heygen"     },
-    { id: "fal",        category: "Creative AI", name: "fal.ai",      desc: "Flux, SDXL, video · serverless inference",    auth: "API key", icon: "fal"        },
-    { id: "elevenlabs", category: "Creative AI", name: "ElevenLabs",  desc: "Voice cloning · narration, ads, captions",    auth: "API key", icon: "elevenlabs" },
-    { id: "runway",     category: "Creative AI", name: "Runway",      desc: "Gen-4 video generation · inpainting",         auth: "API key", icon: "runway"     },
+    { id: "runware",    category: "Creative AI", name: "Runware",        desc: "Ultra-fast image gen · SDXL & Flux models",                        auth: "API key", icon: "runware"    },
+    { id: "heygen",     category: "Creative AI", name: "HeyGen",         desc: "AI avatar videos · UGC personas, voiceover",                       auth: "API key", icon: "heygen"     },
+    { id: "luma",       category: "Creative AI", name: "Luma AI",        desc: "Dream Machine · photorealistic video gen",                         auth: "API key", icon: "luma"       },
+    { id: "elevenlabs", category: "Creative AI", name: "ElevenLabs",     desc: "Voice cloning · narration, ads, captions",                         auth: "API key", icon: "elevenlabs" },
+    { id: "runway",     category: "Creative AI", name: "Runway",         desc: "Gen-4 video generation · inpainting",                              auth: "API key", icon: "runway"     },
 
-    // ── MCP · Custom ────────────────────────────────────────────────────────
-    { id: "mcp_runware",    category: "MCP · Custom", name: "Runware MCP",    desc: "Image gen via Model Context Protocol",       auth: "MCP",     icon: "runware"    },
-    { id: "mcp_fal",        category: "MCP · Custom", name: "fal.ai MCP",     desc: "Flux / SDXL image gen via MCP",              auth: "MCP",     icon: "fal"        },
-    { id: "mcp_heygen",     category: "MCP · Custom", name: "HeyGen MCP",     desc: "Avatar video generation via MCP",            auth: "MCP",     icon: "heygen"     },
-    { id: "mcp_shopify",    category: "MCP · Custom", name: "Shopify MCP",    desc: "Products, orders, inventory via MCP",        auth: "MCP",     icon: "shopify"    },
-    { id: "mcp_klaviyo",    category: "MCP · Custom", name: "Klaviyo MCP",    desc: "Email & SMS flows, lists via MCP",           auth: "MCP",     icon: "klaviyo"    },
-    { id: "mcp_custom",     category: "MCP · Custom", name: "Custom MCP",     desc: "Connect any MCP-compatible server by URL",   auth: "MCP",     icon: "mcp"        },
+    // ── MCP · Custom ─────────────────────────────────────────────────────────
+    { id: "mcp_runware",  category: "MCP · Custom", name: "Runware MCP",  desc: "Image gen via Model Context Protocol",                            auth: "MCP",     icon: "runware"    },
+    { id: "mcp_heygen",   category: "MCP · Custom", name: "HeyGen MCP",   desc: "Avatar video generation via MCP",                                auth: "MCP",     icon: "heygen"     },
+    { id: "mcp_shopify",  category: "MCP · Custom", name: "Shopify MCP",  desc: "Products, orders, inventory via MCP",                            auth: "MCP",     icon: "shopify"    },
+    { id: "mcp_klaviyo",  category: "MCP · Custom", name: "Klaviyo MCP",  desc: "Email & SMS flows, lists via MCP",                               auth: "MCP",     icon: "klaviyo"    },
+    { id: "mcp_custom",   category: "MCP · Custom", name: "Custom MCP",   desc: "Connect any MCP-compatible server by URL",                       auth: "MCP",     icon: "mcp"        },
   ],
-  // Initial connections (mveda.co already has some)
   connectorState: {
+    // Social
+    ayrshare:  { connected: false, status: "—",    note: "not connected — add API key to enable all social platforms", syncCount: "—" },
     ig:        { connected: true,  status: "ok",   note: "synced 2m ago · @mvedaskincare",    syncCount: "1,284 posts" },
-    tt:        { connected: true,  status: "ok",   note: "synced 1m ago · @mveda",             syncCount: "412 videos" },
-    fb:        { connected: true,  status: "warn", note: "rate limited · retry 14:02",          syncCount: "904 posts" },
-    li:        { connected: true,  status: "ok",   note: "synced 4m ago",                       syncCount: "126 posts" },
-    yt:        { connected: true,  status: "ok",   note: "synced 8m ago · @mveda-co",           syncCount: "38 videos" },
-    pn:        { connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    klaviyo:   { connected: true,  status: "ok",   note: "lists synced 2m ago",                 syncCount: "24,118 contacts · 6 flows" },
-    mailchimp: { connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    klaviyo_sms:{ connected: true, status: "ok",   note: "TCPA opt-ins synced 4m ago",          syncCount: "8,402 SMS subscribers · 3 flows" },
-    postscript:{ connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    attentive: { connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    googleads: { connected: true,  status: "ok",   note: "spend $4,820 MTD · 6 campaigns",      syncCount: "" },
-    msads:     { connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    appleads:  { connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    amazonads: { connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    metaads:   { connected: true,  status: "ok",   note: "spend $7,610 MTD · 11 ad sets",       syncCount: "" },
-    ttads:     { connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    liads:     { connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    pinads:    { connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    heygen:    { connected: true,  status: "ok",   note: "3 assets rendering",                  syncCount: "12 personas" },
-    fal:       { connected: true,  status: "ok",   note: "11 jobs queued · Nano Banana Pro",    syncCount: "" },
-    elevenlabs:{ connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    runway:    { connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    shopify:   { connected: true,  status: "ok",   note: "32 products · 1,408 orders MTD",      syncCount: "" },
-    ga4:       { connected: true,  status: "ok",   note: "last event 1m ago",                   syncCount: "" },
-    amplitude: { connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    ahrefs:    { connected: true,  status: "ok",   note: "rank crawl 6h ago · 184 tracked",     syncCount: "184 keywords" },
-    semrush:   { connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    gsc:       { connected: true,  status: "ok",   note: "synced 12m ago",                      syncCount: "26 indexed pages" },
-    refersion: { connected: true,  status: "ok",   note: "12 active partners · 3 pending",      syncCount: "$2,140 MTD payouts" },
-    impact:    { connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    yotpo:     { connected: true,  status: "ok",   note: "reviews synced 8m ago",               syncCount: "1,284 reviews · 4.7 avg" },
-    gorgias:   { connected: true,  status: "ok",   note: "tickets synced 2m ago",               syncCount: "38 open · 6 returns" },
-    trustpilot:{ connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    optimizely:{ connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    vwo:       { connected: true,  status: "ok",   note: "2 tests running",                     syncCount: "2 tests · 3 winners" },
-    growthbook: { connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
+    tt:        { connected: true,  status: "ok",   note: "synced 1m ago · @mveda",            syncCount: "412 videos" },
+    fb:        { connected: true,  status: "warn", note: "rate limited · retry 14:02",         syncCount: "904 posts" },
+    li:        { connected: true,  status: "ok",   note: "synced 4m ago",                     syncCount: "126 posts" },
+    yt:        { connected: true,  status: "ok",   note: "synced 8m ago · @mveda-co",         syncCount: "38 videos" },
+    pn:        { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
+    // Email
+    klaviyo:   { connected: true,  status: "ok",   note: "lists synced 2m ago",               syncCount: "24,118 contacts · 6 flows" },
+    mailchimp: { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
+    // SMS
+    klaviyo_sms: { connected: true, status: "ok",  note: "TCPA opt-ins synced 4m ago",        syncCount: "8,402 SMS subscribers · 3 flows" },
+    attentive:   { connected: false, status: "—",  note: "not connected",                     syncCount: "—" },
+    // Search Ads
+    googleads: { connected: true,  status: "ok",   note: "spend $4,820 MTD · 6 campaigns",   syncCount: "" },
+    msads:     { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
+    amazonads: { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
+    // Social Ads
+    metaads:   { connected: true,  status: "ok",   note: "spend $7,610 MTD · 11 ad sets",    syncCount: "" },
+    ttads:     { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
+    liads:     { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
+    pinads:    { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
+    // Commerce
+    shopify:   { connected: true,  status: "ok",   note: "32 products · 1,408 orders MTD",   syncCount: "" },
+    // Analytics
+    ga4:       { connected: true,  status: "ok",   note: "last event 1m ago",                 syncCount: "" },
+    amplitude: { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
+    // SEO
+    ahrefs:    { connected: true,  status: "ok",   note: "rank crawl 6h ago · 184 tracked",  syncCount: "184 keywords" },
+    semrush:   { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
+    gsc:       { connected: true,  status: "ok",   note: "synced 12m ago",                    syncCount: "26 indexed pages" },
+    // Affiliate
+    refersion: { connected: true,  status: "ok",   note: "12 active partners · 3 pending",   syncCount: "$2,140 MTD payouts" },
+    impact:    { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
+    // Experimentation
+    growthbook: { connected: false, status: "—",   note: "not connected",                     syncCount: "—" },
     // Creative AI
-    runware:    { connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    higgsfield: { connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    luma:       { connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    pika:       { connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
-    kling:      { connected: false, status: "—",    note: "not connected",                       syncCount: "—" },
+    runware:    { connected: false, status: "—",   note: "not connected",                     syncCount: "—" },
+    heygen:     { connected: true,  status: "ok",  note: "3 assets rendering",                syncCount: "12 personas" },
+    luma:       { connected: false, status: "—",   note: "not connected",                     syncCount: "—" },
+    elevenlabs: { connected: false, status: "—",   note: "not connected",                     syncCount: "—" },
+    runway:     { connected: false, status: "—",   note: "not connected",                     syncCount: "—" },
     // MCPs
-    mcp_runware: { connected: false, status: "—",   note: "not connected",                       syncCount: "—" },
-    mcp_fal:     { connected: false, status: "—",   note: "not connected",                       syncCount: "—" },
-    mcp_heygen:  { connected: false, status: "—",   note: "not connected",                       syncCount: "—" },
-    mcp_shopify: { connected: false, status: "—",   note: "not connected",                       syncCount: "—" },
-    mcp_klaviyo: { connected: false, status: "—",   note: "not connected",                       syncCount: "—" },
-    mcp_custom:  { connected: false, status: "—",   note: "not connected",                       syncCount: "—" },
+    mcp_runware: { connected: false, status: "—",  note: "not connected",                     syncCount: "—" },
+    mcp_heygen:  { connected: false, status: "—",  note: "not connected",                     syncCount: "—" },
+    mcp_shopify: { connected: false, status: "—",  note: "not connected",                     syncCount: "—" },
+    mcp_klaviyo: { connected: false, status: "—",  note: "not connected",                     syncCount: "—" },
+    mcp_custom:  { connected: false, status: "—",  note: "not connected",                     syncCount: "—" },
   },
 
   // ── Organic social post queue ────────────────────────────────────────────
