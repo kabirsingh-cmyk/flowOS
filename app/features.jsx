@@ -830,11 +830,15 @@ function OrganicSocialStudio({ state, actions }) {
     setDraft({ platform: "instagram", type: "Reel", caption: "", scheduledAt: "" });
   };
 
-  // ── Publish post now via Composio ──────────────────────────────────────────
+  // ── Publish post now via Publer ────────────────────────────────────────────
   const publishNow = async (post) => {
     const ch = channels[post.platform];
     if (!ch?.composio_connection_id) {
-      actions.notify("warn", `${post.platform} not connected — open Connections first`);
+      actions.notify("warn", `${post.platform} not connected — open Connections → Social first`);
+      return;
+    }
+    if (!ch?.account_id) {
+      actions.notify("warn", `No Publer profile ID for ${post.platform} — reconnect via Connections`);
       return;
     }
     setPublishing(post.id);
@@ -843,12 +847,13 @@ function OrganicSocialStudio({ state, actions }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action:       "publish_post",
-          platform:     post.platform,
-          connectionId: ch.composio_connection_id,
-          caption:      post.caption,
-          mediaUrls:    post.media_urls || [],
-          postType:     post.post_type,
+          action:      "publish_post",
+          platform:    post.platform,
+          publerKey:   ch.composio_connection_id,  // Publer API key
+          profileId:   ch.account_id,              // Publer profile ID for this platform
+          caption:     post.caption,
+          mediaUrls:   post.media_urls || [],
+          scheduledAt: post.scheduled_at || null,
         }),
       });
       const result = await res.json();
@@ -905,7 +910,7 @@ function OrganicSocialStudio({ state, actions }) {
           <Icon name="sliders" size={16}/>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 13, fontWeight: 500 }}>No social accounts connected yet</div>
-            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Open Connections (left rail) → Social to authorize Instagram, TikTok, Pinterest, or YouTube.</div>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Open Connections → Social → connect Publer with your API key to activate Instagram, TikTok, Pinterest, YouTube, and more.</div>
           </div>
         </div>
       )}
@@ -992,13 +997,13 @@ function OrganicSocialStudio({ state, actions }) {
               <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 3, background: sm.bg, color: sm.color, whiteSpace: "nowrap", fontFamily: "var(--font-mono)" }}>{sm.label}</span>
 
               <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
-                {post.status !== "published" && ch?.composio_connection_id && (
+                {post.status !== "published" && ch?.composio_connection_id && ch?.account_id && (
                   <Btn size="sm" variant="primary" onClick={() => publishNow(post)} disabled={isPublishing}>
                     <Icon name="send" size={10}/> {isPublishing ? "Posting…" : "Post now"}
                   </Btn>
                 )}
-                {post.status !== "published" && !ch?.composio_connection_id && (
-                  <Btn size="sm" variant="ghost" title="Connect this platform in Connections">
+                {post.status !== "published" && (!ch?.composio_connection_id || !ch?.account_id) && (
+                  <Btn size="sm" variant="ghost" title="Connect this platform via Connections → Publer">
                     <Icon name="sliders" size={10}/> Connect
                   </Btn>
                 )}
@@ -1074,7 +1079,7 @@ function OrganicSocialStudio({ state, actions }) {
 
             {!channels[draft.platform] && (
               <div style={{ padding: "10px 14px", background: "var(--warn-wash)", border: "1px solid var(--warn)", borderRadius: 6, fontSize: 12.5, color: "var(--ink-2)" }}>
-                <Icon name="sliders" size={11}/> {draft.platform.charAt(0).toUpperCase() + draft.platform.slice(1)} not connected — you can save a draft but posting requires authorization via Connections.
+                <Icon name="sliders" size={11}/> {draft.platform.charAt(0).toUpperCase() + draft.platform.slice(1)} not connected — you can save a draft but posting requires a Publer API key (Connections → Publer).
               </div>
             )}
 

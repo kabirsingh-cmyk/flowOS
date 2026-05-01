@@ -44,16 +44,16 @@ const SEED = {
   brandImported: false, // toggled by the import flow
 
   // Connectors — what the user can connect via API
-  // Social platforms publish via Ayrshare (one API key, handles all OAuth)
+  // Social platforms publish via Publer (one API key, handles all OAuth)
   connectorCatalog: [
-    // ── Social (posting via Ayrshare) ────────────────────────────────────────
-    { id: "ayrshare",  category: "Social",     name: "Ayrshare",        desc: "Unified social publishing layer — connect once, post everywhere",  auth: "API key", icon: "ay" },
-    { id: "ig",        category: "Social",     name: "Instagram",        desc: "Posts, Reels, Stories · publishing via Ayrshare",                  auth: "Ayrshare", icon: "ig" },
-    { id: "tt",        category: "Social",     name: "TikTok",           desc: "Videos, Photo mode · publishing via Ayrshare",                     auth: "Ayrshare", icon: "tt" },
-    { id: "fb",        category: "Social",     name: "Facebook",         desc: "Pages & posts · publishing via Ayrshare",                          auth: "Ayrshare", icon: "fb" },
-    { id: "li",        category: "Social",     name: "LinkedIn",         desc: "Company posts, articles · publishing via Ayrshare",                auth: "Ayrshare", icon: "li" },
-    { id: "yt",        category: "Social",     name: "YouTube",          desc: "Shorts & long-form · publishing via Ayrshare",                     auth: "Ayrshare", icon: "yt" },
-    { id: "pn",        category: "Social",     name: "Pinterest",        desc: "Pins & boards · publishing via Ayrshare",                          auth: "Ayrshare", icon: "pn" },
+    // ── Social (posting via Publer) ──────────────────────────────────────────
+    { id: "publer",    category: "Social",     name: "Publer",           desc: "Social publishing layer — add your API key to activate all platforms",  auth: "API key", icon: "pb" },
+    { id: "ig",        category: "Social",     name: "Instagram",        desc: "Posts, Reels, Stories · publishing via Publer",                    auth: "Publer",   icon: "ig" },
+    { id: "tt",        category: "Social",     name: "TikTok",           desc: "Videos, Photo mode · publishing via Publer",                       auth: "Publer",   icon: "tt" },
+    { id: "fb",        category: "Social",     name: "Facebook",         desc: "Pages & posts · publishing via Publer",                            auth: "Publer",   icon: "fb" },
+    { id: "li",        category: "Social",     name: "LinkedIn",         desc: "Company posts, articles · publishing via Publer",                  auth: "Publer",   icon: "li" },
+    { id: "yt",        category: "Social",     name: "YouTube",          desc: "Shorts & long-form · publishing via Publer",                       auth: "Publer",   icon: "yt" },
+    { id: "pn",        category: "Social",     name: "Pinterest",        desc: "Pins & boards · publishing via Publer",                            auth: "Publer",   icon: "pn" },
 
     // ── Email ────────────────────────────────────────────────────────────────
     { id: "klaviyo",   category: "Email",      name: "Klaviyo",          desc: "Lists, flows, campaigns, segmentation",                            auth: "API key", icon: "kl" },
@@ -109,7 +109,7 @@ const SEED = {
   ],
   connectorState: {
     // Social
-    ayrshare:  { connected: false, status: "—",    note: "not connected — add API key to enable all social platforms", syncCount: "—" },
+    publer:    { connected: false, status: "—",    note: "not connected — add API key to activate all social platforms", syncCount: "—" },
     ig:        { connected: true,  status: "ok",   note: "synced 2m ago · @mvedaskincare",    syncCount: "1,284 posts" },
     tt:        { connected: true,  status: "ok",   note: "synced 1m ago · @mveda",            syncCount: "412 videos" },
     fb:        { connected: true,  status: "warn", note: "rate limited · retry 14:02",         syncCount: "904 posts" },

@@ -1,27 +1,10 @@
-// FlowOS — Social / Composio v3 proxy
-// Handles: OAuth connection initiation, status check, post publishing
-// Composio v3 API: https://backend.composio.dev/api/v3
+// FlowOS — Social / Publer proxy
+// Handles: API key verification + profile fetch, post publishing
+// Publer API docs: https://app.publer.io/api/v1
 
 export const config = { runtime: "edge" };
 
-const COMPOSIO_BASE = "https://backend.composio.dev/api/v3";
-
-// Composio toolkit slugs (used to look up auth_config_id automatically)
-const PLATFORM_TOOLKIT = {
-  instagram: "instagram",
-  tiktok:    "tiktok",
-  pinterest: "pinterest",
-  youtube:   "youtube",
-};
-
-// Composio v3 action names for creating posts
-// Full list: composio.dev/app → Tools → filter by toolkit
-const PLATFORM_POST_ACTION = {
-  instagram: "INSTAGRAM_CREATE_MEDIA_CONTAINER",
-  tiktok:    "TIKTOK_CREATE_VIDEO_POST",
-  pinterest: "PINTEREST_CREATE_PIN",
-  youtube:   "YOUTUBE_UPLOAD_VIDEO",
-};
+const PUBLER_BASE = "https://app.publer.io/api/v1";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
@@ -29,15 +12,14 @@ const CORS = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
-async function composioFetch(path, options = {}) {
-  const key = process.env.COMPOSIO_API_KEY;
-  if (!key) throw new Error("COMPOSIO_API_KEY not set in Vercel environment variables");
+async function publerFetch(path, apiKey, options = {}) {
+  if (!apiKey) throw new Error("Publer API key is required");
 
-  const res = await fetch(`${COMPOSIO_BASE}${path}`, {
+  const res = await fetch(`${PUBLER_BASE}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": key,
+      "Authorization": `Bearer ${apiKey}`,
       ...(options.headers || {}),
     },
   });
@@ -47,23 +29,11 @@ async function composioFetch(path, options = {}) {
   try { json = JSON.parse(text); } catch { json = { raw: text }; }
 
   if (!res.ok) {
-    throw new Error(json?.message || json?.error || `Composio ${res.status}: ${text.slice(0, 300)}`);
-  }
-  return json;
-}
-
-// Fetch the auth_config_id for a given toolkit slug (e.g. "instagram")
-// Composio v3 requires an auth_config_id when creating connection links.
-async function getAuthConfigId(toolkitSlug) {
-  const data = await composioFetch(`/auth_configs?toolkit_slugs=${toolkitSlug}&limit=1`);
-  const item = data?.items?.[0];
-  if (!item?.id) {
     throw new Error(
-      `No auth config found for ${toolkitSlug}. ` +
-      `Set one up at app.composio.dev → Auth Configs → New → select ${toolkitSlug}.`
+      json?.message || json?.error || `Publer ${res.status}: ${text.slice(0, 300)}`
     );
   }
-  return item.id;
+  return json;
 }
 
 export default async function handler(req) {
@@ -94,109 +64,85 @@ export default async function handler(req) {
   try {
     const { action } = body;
 
-    // ── 1. Initiate OAuth connection (v3) ───────────────────────────────────
-    if (action === "initiate_connect") {
-      const { platform, userId, redirectUri } = body;
-      const toolkit = PLATFORM_TOOLKIT[platform];
-      if (!toolkit) return reply({ error: `Unknown platform: ${platform}` }, 400);
+    // ── 1. Verify Publer API key + return connected social profiles ──────────
+    if (action === "verify_and_connect") {
+      const { publerKey } = body;
+      if (!publerKey) return reply({ error: "publerKey required" }, 400);
 
-      // v3 requires an auth_config_id — look it up by toolkit slug
-      const authConfigId = await getAuthConfigId(toolkit);
+      const data = await publerFetch("/profiles", publerKey);
+      const profiles = data?.profiles || [];
 
-      const data = await composioFetch("/connected_accounts/link", {
-        method: "POST",
-        body: JSON.stringify({
-          auth_config_id: authConfigId,
-          user_id:        `flowos_${userId}`,
-          callback_url:   redirectUri || "https://flow-os-v2.vercel.app",
-        }),
-      });
+      // Map Publer profiles to our internal format
+      const SUPPORTED = new Set(["instagram", "tiktok", "pinterest", "youtube", "facebook", "linkedin", "twitter"]);
+      const connected = profiles
+        .filter(p => SUPPORTED.has(p.social_network))
+        .map(p => ({
+          profileId: p.id,
+          platform:  p.social_network,
+          handle:    p.username || p.name || null,
+          followers: p.followers ?? null,
+          name:      p.name || null,
+        }));
 
-      return reply({
-        redirectUrl:  data.redirect_url,
-        connectionId: data.connected_account_id,
-        status:       data.status || "INITIATED",
-      });
+      return reply({ connected, total: profiles.length });
     }
 
-    // ── 2. Check connection status (v3) ─────────────────────────────────────
-    if (action === "connection_status") {
-      const { connectionId } = body;
-      if (!connectionId) return reply({ error: "connectionId required" }, 400);
-
-      // v3: GET /connected_accounts?connected_account_ids=...
-      const data = await composioFetch(
-        `/connected_accounts?connected_account_ids=${encodeURIComponent(connectionId)}&limit=1`
-      );
-      const item = data?.items?.[0];
-
-      return reply({
-        status:            item?.status || "UNKNOWN",
-        handle:            item?.display_name || item?.user_id || null,
-        followers:         item?.meta?.followers_count || null,
-        platformAccountId: item?.meta?.id || null,
-      });
-    }
-
-    // ── 3. List connections for a user (v3) ─────────────────────────────────
-    if (action === "list_connections") {
-      const { userId } = body;
-      const data = await composioFetch(
-        `/connected_accounts?user_ids=${encodeURIComponent(`flowos_${userId}`)}&statuses=ACTIVE`
-      );
-      return reply({ connections: data?.items || [] });
-    }
-
-    // ── 4. Publish a post (v3) ──────────────────────────────────────────────
+    // ── 2. Publish a post via Publer ─────────────────────────────────────────
     if (action === "publish_post") {
-      const { platform, connectionId, caption, mediaUrls, postType } = body;
-      const actionName = PLATFORM_POST_ACTION[platform];
-      if (!actionName) return reply({ error: `No post action for platform: ${platform}` }, 400);
+      const { publerKey, profileId, platform, caption, mediaUrls, scheduledAt } = body;
+      if (!publerKey)  return reply({ error: "publerKey required" }, 400);
+      if (!profileId)  return reply({ error: "profileId required" }, 400);
 
-      // Build platform-specific arguments (v3 uses "arguments" not "input")
-      let args = {};
-      if (platform === "instagram") {
-        args = {
-          caption,
-          image_url:  mediaUrls?.[0] || null,
-          media_type: postType === "Reel" ? "REELS" : "IMAGE",
-        };
-      } else if (platform === "tiktok") {
-        args = { video_url: mediaUrls?.[0] || null, title: caption?.slice(0, 150) || "" };
-      } else if (platform === "pinterest") {
-        args = {
-          title:       caption?.slice(0, 100) || "",
-          description: caption || "",
-          image_url:   mediaUrls?.[0] || null,
-        };
-      } else if (platform === "youtube") {
-        args = {
-          title:       caption?.slice(0, 100) || "New video",
-          description: caption || "",
-          video_url:   mediaUrls?.[0] || null,
-        };
+      // Infer post type from media and platform
+      let postType = "text";
+      if (mediaUrls?.length > 0) {
+        const url = mediaUrls[0] || "";
+        const isVideo = platform === "tiktok" || platform === "youtube" ||
+          url.match(/\.(mp4|mov|webm)$/i);
+        postType = isVideo ? "video" : "photo";
       }
 
-      // v3: POST /tools/execute/:action
-      const data = await composioFetch(`/tools/execute/${actionName}`, {
+      const postBody = {
+        profiles:  [profileId],
+        text:      caption || "",
+        post_type: postType,
+      };
+
+      // Optional: schedule
+      if (scheduledAt) {
+        postBody.publish_at = new Date(scheduledAt).toISOString();
+      }
+
+      // Attach media
+      if (mediaUrls?.length > 0) {
+        postBody.medias = mediaUrls.map(src => ({ src }));
+      }
+
+      const data = await publerFetch("/post", publerKey, {
         method: "POST",
-        body: JSON.stringify({
-          connected_account_id: connectionId,
-          arguments: args,
-        }),
+        body: JSON.stringify(postBody),
       });
 
       return reply({
-        success:        data?.status === "success" || data?.data != null,
-        platformPostId: data?.data?.id || data?.data?.media_id || data?.data?.pin_id || null,
+        success:        true,
+        platformPostId: data?.post?.id || data?.id || null,
         raw:            data,
       });
+    }
+
+    // ── 3. List profiles for a validated key (lightweight refresh) ───────────
+    if (action === "get_profiles") {
+      const { publerKey } = body;
+      if (!publerKey) return reply({ error: "publerKey required" }, 400);
+
+      const data = await publerFetch("/profiles", publerKey);
+      return reply({ profiles: data?.profiles || [] });
     }
 
     return reply({ error: `Unknown action: ${action}` }, 400);
 
   } catch (err) {
-    console.error("[FlowOS social]", err.message);
+    console.error("[FlowOS social/publer]", err.message);
     return reply({ error: err.message }, 500);
   }
 }
