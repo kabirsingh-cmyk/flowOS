@@ -1,23 +1,23 @@
-// FlowOS — Social / Composio proxy
-// Handles: OAuth connection initiation, connection status, post publishing
-// Keeps COMPOSIO_API_KEY server-side. All calls go through this edge function.
+// FlowOS — Social / Composio v3 proxy
+// Handles: OAuth connection initiation, status check, post publishing
+// Composio v3 API: https://backend.composio.dev/api/v3
 
 export const config = { runtime: "edge" };
 
-const COMPOSIO_BASE = "https://backend.composio.dev/api/v1";
+const COMPOSIO_BASE = "https://backend.composio.dev/api/v3";
 
-// Composio integration slugs — verify at composio.dev/app/connections
-const PLATFORM_INTEGRATION = {
+// Composio toolkit slugs (used to look up auth_config_id automatically)
+const PLATFORM_TOOLKIT = {
   instagram: "instagram",
   tiktok:    "tiktok",
   pinterest: "pinterest",
   youtube:   "youtube",
 };
 
-// Composio action names for creating a post on each platform
-// Full list: composio.dev/app/actions — filter by platform
+// Composio v3 action names for creating posts
+// Full list: composio.dev/app → Tools → filter by toolkit
 const PLATFORM_POST_ACTION = {
-  instagram: "INSTAGRAM_CREATE_PHOTO_MEDIA_OBJECT",
+  instagram: "INSTAGRAM_CREATE_MEDIA_CONTAINER",
   tiktok:    "TIKTOK_CREATE_VIDEO_POST",
   pinterest: "PINTEREST_CREATE_PIN",
   youtube:   "YOUTUBE_UPLOAD_VIDEO",
@@ -47,9 +47,23 @@ async function composioFetch(path, options = {}) {
   try { json = JSON.parse(text); } catch { json = { raw: text }; }
 
   if (!res.ok) {
-    throw new Error(json?.message || json?.error || `Composio ${res.status}: ${text.slice(0, 200)}`);
+    throw new Error(json?.message || json?.error || `Composio ${res.status}: ${text.slice(0, 300)}`);
   }
   return json;
+}
+
+// Fetch the auth_config_id for a given toolkit slug (e.g. "instagram")
+// Composio v3 requires an auth_config_id when creating connection links.
+async function getAuthConfigId(toolkitSlug) {
+  const data = await composioFetch(`/auth_configs?toolkit_slugs=${toolkitSlug}&limit=1`);
+  const item = data?.items?.[0];
+  if (!item?.id) {
+    throw new Error(
+      `No auth config found for ${toolkitSlug}. ` +
+      `Set one up at app.composio.dev → Auth Configs → New → select ${toolkitSlug}.`
+    );
+  }
+  return item.id;
 }
 
 export default async function handler(req) {
@@ -65,7 +79,11 @@ export default async function handler(req) {
 
   let body;
   try { body = await req.json(); }
-  catch { return new Response(JSON.stringify({ error: "Invalid JSON body" }), { status: 400, headers: CORS }); }
+  catch {
+    return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+      status: 400, headers: { ...CORS, "Content-Type": "application/json" },
+    });
+  }
 
   const reply = (data, status = 200) =>
     new Response(JSON.stringify(data), {
@@ -76,100 +94,101 @@ export default async function handler(req) {
   try {
     const { action } = body;
 
-    // ── 1. Initiate OAuth connection ────────────────────────────────────────
-    // Returns a redirectUrl to open in a new window for the user to authorize.
+    // ── 1. Initiate OAuth connection (v3) ───────────────────────────────────
     if (action === "initiate_connect") {
       const { platform, userId, redirectUri } = body;
-      const integrationId = PLATFORM_INTEGRATION[platform];
-      if (!integrationId) return reply({ error: `Unknown platform: ${platform}` }, 400);
+      const toolkit = PLATFORM_TOOLKIT[platform];
+      if (!toolkit) return reply({ error: `Unknown platform: ${platform}` }, 400);
 
-      const data = await composioFetch("/connectedAccounts", {
+      // v3 requires an auth_config_id — look it up by toolkit slug
+      const authConfigId = await getAuthConfigId(toolkit);
+
+      const data = await composioFetch("/connected_accounts/link", {
         method: "POST",
         body: JSON.stringify({
-          integrationId,
-          entityId: `flowos_${userId}`,  // unique per user
-          redirectUri: redirectUri || "https://flow-os-v2.vercel.app",
+          auth_config_id: authConfigId,
+          user_id:        `flowos_${userId}`,
+          callback_url:   redirectUri || "https://flow-os-v2.vercel.app",
         }),
       });
 
       return reply({
-        redirectUrl:  data.redirectUrl,
-        connectionId: data.connectedAccountId,
-        status:       data.connectionStatus,
+        redirectUrl:  data.redirect_url,
+        connectionId: data.connected_account_id,
+        status:       data.status || "INITIATED",
       });
     }
 
-    // ── 2. Check connection status ──────────────────────────────────────────
-    // Call after the user completes OAuth to confirm it went through.
+    // ── 2. Check connection status (v3) ─────────────────────────────────────
     if (action === "connection_status") {
       const { connectionId } = body;
       if (!connectionId) return reply({ error: "connectionId required" }, 400);
 
-      const data = await composioFetch(`/connectedAccounts/${connectionId}`);
+      // v3: GET /connected_accounts?connected_account_ids=...
+      const data = await composioFetch(
+        `/connected_accounts?connected_account_ids=${encodeURIComponent(connectionId)}&limit=1`
+      );
+      const item = data?.items?.[0];
+
       return reply({
-        status:            data.status,                           // "ACTIVE" | "INITIATED" | ...
-        handle:            data.accountMeta?.username
-                        || data.accountMeta?.handle
-                        || data.displayName
-                        || null,
-        followers:         data.accountMeta?.followers_count || null,
-        platformAccountId: data.accountMeta?.id || data.entityId || null,
+        status:            item?.status || "UNKNOWN",
+        handle:            item?.display_name || item?.user_id || null,
+        followers:         item?.meta?.followers_count || null,
+        platformAccountId: item?.meta?.id || null,
       });
     }
 
-    // ── 3. List connected accounts for a user ───────────────────────────────
+    // ── 3. List connections for a user (v3) ─────────────────────────────────
     if (action === "list_connections") {
       const { userId } = body;
-      const data = await composioFetch(`/connectedAccounts?entityId=flowos_${userId}`);
-      return reply({ connections: data.items || data.connectedAccounts || [] });
+      const data = await composioFetch(
+        `/connected_accounts?user_ids=${encodeURIComponent(`flowos_${userId}`)}&statuses=ACTIVE`
+      );
+      return reply({ connections: data?.items || [] });
     }
 
-    // ── 4. Publish a post ───────────────────────────────────────────────────
-    // Calls the platform-specific Composio action to create the post.
+    // ── 4. Publish a post (v3) ──────────────────────────────────────────────
     if (action === "publish_post") {
       const { platform, connectionId, caption, mediaUrls, postType } = body;
-
       const actionName = PLATFORM_POST_ACTION[platform];
       if (!actionName) return reply({ error: `No post action for platform: ${platform}` }, 400);
 
-      // Build platform-specific input payload
-      let input = {};
+      // Build platform-specific arguments (v3 uses "arguments" not "input")
+      let args = {};
       if (platform === "instagram") {
-        input = {
-          image_url:  mediaUrls?.[0] || null,
+        args = {
           caption,
+          image_url:  mediaUrls?.[0] || null,
           media_type: postType === "Reel" ? "REELS" : "IMAGE",
         };
       } else if (platform === "tiktok") {
-        input = {
-          video_url: mediaUrls?.[0] || null,
-          title:     caption?.slice(0, 150) || "",
-        };
+        args = { video_url: mediaUrls?.[0] || null, title: caption?.slice(0, 150) || "" };
       } else if (platform === "pinterest") {
-        input = {
+        args = {
           title:       caption?.slice(0, 100) || "",
           description: caption || "",
           image_url:   mediaUrls?.[0] || null,
         };
       } else if (platform === "youtube") {
-        input = {
+        args = {
           title:       caption?.slice(0, 100) || "New video",
           description: caption || "",
           video_url:   mediaUrls?.[0] || null,
         };
       }
 
-      const data = await composioFetch(`/actions/${actionName}/execute`, {
+      // v3: POST /tools/execute/:action
+      const data = await composioFetch(`/tools/execute/${actionName}`, {
         method: "POST",
         body: JSON.stringify({
-          connectedAccountId: connectionId,
-          input,
+          connected_account_id: connectionId,
+          arguments: args,
         }),
       });
 
       return reply({
-        success:        data.successfull ?? data.success ?? true,
-        platformPostId: data.data?.id || data.data?.media_id || data.data?.pin_id || null,
+        success:        data?.status === "success" || data?.data != null,
+        platformPostId: data?.data?.id || data?.data?.media_id || data?.data?.pin_id || null,
         raw:            data,
       });
     }
