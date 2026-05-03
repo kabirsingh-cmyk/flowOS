@@ -1,165 +1,595 @@
 // MVEDA workspaces — part 1: Command Center, Brand Memory
-const { useState: useState1, useMemo: useMemo1, useEffect: useEffect1 } = React;
+const { useState: useState1, useMemo: useMemo1, useEffect: useEffect1, useRef: useRef1 } = React;
 
 // ────────────────────────────── COMMAND CENTER ──────────────────────────────
+
+const DEMO_ALERTS = [
+  { id: "alert_1", type: "alert", priority: 1, time: "08:22", title: "Meta Ads creative fatigue detected", body: "Body Oil Advantage+ frequency hit 4.2×. ROAS dropped from 6.8x → 4.1x over 7 days.", severity: "warn", channel: "Meta Ads", action: "Ask Drafter to generate 3 new variants" },
+  { id: "alert_2", type: "alert", priority: 1, time: "07:14", title: "CX spike — Honey & Vanilla Body Oil", body: "14 cap leak reports in 7 days. Auto-paused Meta Ads for this SKU.", severity: "high", channel: "CX", action: "Open CX Signals" },
+];
+
+function inferAiCommand(q) {
+  const t = q.toLowerCase();
+  if (/meta|facebook|instagram/.test(t) && /week|7d/.test(t) && /organic|paid|breakdown|vs/.test(t)) {
+    return { agent: "Analyst", text: "Here's MVEDA's Meta performance this week:\n\n**Organic (Instagram)**\nReach: 148,200 (+22% vs last week) · Engagement: 4.8% · Top post: Saffron Ritual Reel (42,100 reach, 2,840 likes)\n\n**Paid (Meta Ads)**\nSpend: $3,840 · Revenue: $26,140 · ROAS: 6.8x\nTop campaign: Saffron Serum Retargeting (8.5x)\n\n⚠️ Flag: Body Oil Advantage+ showing creative fatigue (freq 4.2×, ROAS declining). I'd recommend refreshing creative this week — want me to ask Drafter?" };
+  }
+  if (/meta|facebook|instagram/.test(t) && /week|7d/.test(t)) {
+    return { agent: "Analyst", text: "Meta summary this week:\n• Organic reach: 148,200 (+22%)\n• Paid spend: $3,840 · ROAS: 6.8x blended\n• Top post: Saffron Ritual Reel (42,100 reach)\n• IG follower growth: +340\n\nFlag: Body Oil Advantage+ creative fatigue (4.2× freq). Shall I pull the full breakdown?" };
+  }
+  if (/review|complaint|negative|bad/.test(t)) {
+    return { agent: "Analyst", type: "review_lookup", text: "" };
+  }
+  if (/spend|budget|roas/.test(t)) {
+    return { agent: "Analyst", text: "Budget breakdown this period:\n• Meta Ads: $5,760 spend · 6.8x ROAS · $39,168 revenue\n• Google Search: $540 · 8.0x ROAS · $4,320 revenue\n• TikTok Ads: $720 · 4.5x ROAS · $3,240 revenue\n\nTotal: $7,020 spend · $46,728 revenue · 6.7x blended ROAS\n\nLowest efficiency: TikTok (4.5x). Consider shifting $200/day to Meta retargeting." };
+  }
+  if (/tiktok/.test(t)) {
+    return { agent: "Analyst", text: "TikTok this week:\n• Organic reach: 212,400 (+44% vs last week)\n• Followers: 31,200 (+1,240 this month)\n• Engagement rate: 6.2% (above 3% benchmark)\n• Top video: Abhyanga self-massage (98,200 reach, 8,410 likes)\n\nTikTok is currently your highest-growth channel. The Hair Ritual series is driving most of it." };
+  }
+  return { agent: "Analyst", text: "I'm analyzing that across your connected channels. What time window should I focus on — this week, 30 days, or a custom range?" };
+}
+
+function ReviewLookupCard({ onApproveSchedule }) {
+  const [toastShown, setToastShown] = useState1(false);
+  const rows = [
+    { name: "Sarah M.", platform: "Google", stars: 2, excerpt: "packaging was damaged...", email: "s.m***@gmail.com" },
+    { name: "James K.", platform: "Trustpilot", stars: 1, excerpt: "product leaked in transit...", email: "j.k***@outlook.com" },
+    { name: "Tara L.", platform: "Instagram DM", stars: 2, excerpt: "scent different from last time...", email: "t.l***@yahoo.com" },
+  ];
+  const starStr = (n) => "⭐".repeat(n);
+  return (
+    <div style={{ fontSize: 13 }}>
+      <div style={{ fontWeight: 600, marginBottom: 10, color: "var(--ink)" }}>Found 3 customers with negative reviews this period</div>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 14 }}>
+        <thead>
+          <tr style={{ borderBottom: "1px solid var(--rule)" }}>
+            {["Name", "Platform", "Rating", "Excerpt", "Email"].map(h => (
+              <th key={h} style={{ textAlign: "left", padding: "4px 8px 6px 0", color: "var(--muted)", fontWeight: 500, fontFamily: "var(--font-mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i} style={{ borderBottom: "1px solid var(--rule)" }}>
+              <td style={{ padding: "6px 8px 6px 0" }}>{r.name}</td>
+              <td style={{ padding: "6px 8px 6px 0", color: "var(--muted)" }}>{r.platform}</td>
+              <td style={{ padding: "6px 8px 6px 0" }}>{starStr(r.stars)}</td>
+              <td style={{ padding: "6px 8px 6px 0", color: "var(--ink-2)", fontStyle: "italic" }}>"{r.excerpt}"</td>
+              <td style={{ padding: "6px 8px 6px 0", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--muted)" }}>{r.email}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Draft apology emails</div>
+      <div style={{ background: "var(--paper-2)", border: "1px solid var(--rule)", borderRadius: 5, padding: "10px 12px", fontSize: 12, lineHeight: 1.6, color: "var(--ink-2)", marginBottom: 10 }}>
+        Subject: We're sorry about your recent experience with MVEDA<br/><br/>
+        Hi [First Name],<br/><br/>
+        Thank you for sharing your experience with us. We're truly sorry to hear about the issue with your recent order — this is not the standard we hold ourselves to.<br/><br/>
+        We'd love the opportunity to make it right. Please reply to this email and we'll arrange a replacement or full refund at your preference.<br/><br/>
+        Warm regards,<br/>The MVEDA Team
+      </div>
+      <Btn variant="ghost" size="sm" onClick={() => { setToastShown(true); if (onApproveSchedule) onApproveSchedule(); }}>
+        {toastShown ? "Scheduled ✓" : "Approve & Schedule send"}
+      </Btn>
+      <div style={{ marginTop: 8, fontSize: 11, color: "var(--muted)" }}>Personalized emails drafted for each customer — review individually before sending</div>
+    </div>
+  );
+}
+
+function AiMessageText({ text }) {
+  return (
+    <span style={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
+      {text.split(/(\*\*[^*]+\*\*)/).map((part, i) =>
+        part.startsWith("**") && part.endsWith("**")
+          ? <strong key={i}>{part.slice(2, -2)}</strong>
+          : part
+      )}
+    </span>
+  );
+}
+
 function CommandCenter({ state, actions, go }) {
   const { kpis, today, user } = SEED;
-  const connectors = Object.entries(state.connectors)
-    .filter(([, v]) => v.connected)
-    .map(([id, v]) => ({ name: SEED.connectorCatalog.find(c => c.id === id)?.name || id, status: v.status, note: v.note }));
-  const [retrying, setRetrying] = useState1(null);
 
-  const statusCount = useMemo1(() => {
-    const c = { approved: 0, scheduled: 0, draft: 0, review: 0, policy: 0 };
-    state.calendar.forEach(ci => { c[ci.status] = (c[ci.status]||0)+1; });
-    return c;
-  }, [state.calendar]);
+  // ── Feed state ──
+  const [feedTab, setFeedTab] = useState1("all");
+  const [activeItem, setActiveItem] = useState1(null);
 
-  const retryConnector = (name) => {
-    setRetrying(name);
-    setTimeout(() => {
-      actions.notify("ok", `${name} reconnected`);
-      actions.log("Integration", `${name} · retry successful`);
-      setRetrying(null);
-    }, 1200);
+  // ── AI Command Bar state ──
+  const [aiOpen, setAiOpen] = useState1(false);
+  const [aiInput, setAiInput] = useState1("");
+  const [aiMessages, setAiMessages] = useState1([]);
+  const aiScrollRef = useRef1(null);
+  const aiInputRef = useRef1(null);
+  const [toastMsg, setToastMsg] = useState1(null);
+
+  // ── Build feed items ──
+  const feedItems = useMemo1(() => {
+    const approvalItems = state.approvals.map(a => ({
+      id: a.id,
+      type: "approval",
+      priority: 0,
+      time: a.time || "09:00",
+      title: a.title,
+      preview: a.reason,
+      data: a,
+    }));
+
+    const postItems = state.calendar.filter(ci => ci.status === "review" || ci.status === "scheduled").slice(0, 6).map(ci => ({
+      id: ci.id,
+      type: "post",
+      priority: 2,
+      time: ci.time || ci.date || "",
+      title: ci.title || ci.caption?.slice(0, 60) || "Post",
+      preview: ci.caption || "",
+      data: ci,
+    }));
+
+    const activityItems = state.activity.slice(0, 5).map(e => ({
+      id: e.id,
+      type: "activity",
+      priority: 3,
+      time: e.t,
+      title: `${e.actor} · ${e.event}`,
+      preview: "",
+      data: e,
+    }));
+
+    const all = [...approvalItems, ...DEMO_ALERTS, ...postItems, ...activityItems];
+    all.sort((a, b) => a.priority - b.priority || (a.time < b.time ? 1 : -1));
+    return all;
+  }, [state.approvals, state.calendar, state.activity]);
+
+  const filteredFeed = useMemo1(() => {
+    if (feedTab === "approvals") return feedItems.filter(i => i.type === "approval");
+    if (feedTab === "posts") return feedItems.filter(i => i.type === "post");
+    if (feedTab === "alerts") return feedItems.filter(i => i.type === "alert");
+    return feedItems;
+  }, [feedItems, feedTab]);
+
+  const approvalCount = feedItems.filter(i => i.type === "approval").length;
+
+  // ── AI send ──
+  const sendAiMessage = () => {
+    const q = aiInput.trim();
+    if (!q) return;
+    setAiOpen(true);
+    setAiInput("");
+    const userMsg = { role: "user", text: q };
+    const result = inferAiCommand(q);
+    const aiMsg = { role: "ai", agent: result.agent, text: "", fullText: result.text, type: result.type || "text", streaming: result.type !== "review_lookup" };
+    setAiMessages(prev => [...prev, userMsg, aiMsg]);
   };
 
-  return (
-    <div className="anim-fade" style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-        <div>
-          <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>{today}</div>
-          <h1 style={{ fontSize: 34, fontWeight: 500, letterSpacing: "-0.028em", margin: "6px 0 0", lineHeight: 1 }}>
-            Good morning, {user.name.split(" ")[0]}.
-          </h1>
-          <div style={{ color: "var(--muted)", marginTop: 6, fontSize: 14 }}>
-            {state.approvals.length} items need you before 11:00 · weekly plan ready for review
+  // ── Streaming effect ──
+  useEffect1(() => {
+    const last = aiMessages[aiMessages.length - 1];
+    if (!last || last.role !== "ai" || !last.streaming || last.text === last.fullText) return;
+    const timer = setInterval(() => {
+      setAiMessages(prev => {
+        const updated = [...prev];
+        const msg = { ...updated[updated.length - 1] };
+        const nextLen = Math.min(msg.text.length + 3, msg.fullText.length);
+        msg.text = msg.fullText.slice(0, nextLen);
+        if (msg.text.length >= msg.fullText.length) msg.streaming = false;
+        updated[updated.length - 1] = msg;
+        return updated;
+      });
+    }, 20);
+    return () => clearInterval(timer);
+  }, [aiMessages]);
+
+  // ── Scroll AI to bottom ──
+  useEffect1(() => {
+    if (aiScrollRef.current) {
+      aiScrollRef.current.scrollTop = aiScrollRef.current.scrollHeight;
+    }
+  }, [aiMessages]);
+
+  // ── Toast helper ──
+  const showToast = (msg) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 2800);
+  };
+
+  // ── KPI strip (5 stats) ──
+  const kpiStrip = [
+    { label: "Acceptance", value: kpis.acceptance.v, unit: kpis.acceptance.unit, delta: kpis.acceptance.d },
+    { label: "Shipped", value: kpis.shipped.v, unit: kpis.shipped.unit, delta: kpis.shipped.d },
+    { label: "Compliance", value: kpis.compliance.v, unit: kpis.compliance.unit, delta: kpis.compliance.d },
+    { label: "Avg approval", value: kpis.approval.v, unit: ` ${kpis.approval.unit}`, delta: kpis.approval.d },
+    { label: "Pending", value: state.approvals.length, unit: "", delta: "" },
+  ];
+
+  // ── Card border color by type ──
+  const borderByType = { approval: "var(--danger)", alert: "var(--warn)", post: "var(--accent)", activity: "var(--rule-strong)" };
+
+  // ── Render feed card ──
+  const renderFeedCard = (item) => {
+    const isActive = activeItem?.id === item.id;
+    const borderColor = item.type === "alert" && item.severity === "high" ? "var(--danger)" : borderByType[item.type] || "var(--rule-strong)";
+
+    const baseStyle = {
+      borderLeft: `3px solid ${borderColor}`,
+      padding: "12px 14px",
+      background: isActive ? "var(--paper-2)" : "var(--paper)",
+      borderRadius: "0 6px 6px 0",
+      marginBottom: 8,
+      cursor: item.type === "activity" ? "default" : "pointer",
+      transition: "background 0.14s",
+      borderTop: "1px solid var(--rule)",
+      borderRight: "1px solid var(--rule)",
+      borderBottom: "1px solid var(--rule)",
+    };
+
+    const handleClick = () => {
+      if (item.type === "activity") return;
+      setActiveItem(isActive ? null : item);
+    };
+
+    if (item.type === "approval") {
+      const a = item.data;
+      return (
+        <div key={item.id} style={baseStyle} onClick={handleClick}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.04em" }}>{item.time}</span>
+            <Chip tone="danger">approval</Chip>
+            {a.source && <Chip>{a.source}</Chip>}
+          </div>
+          <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 4 }}>{item.title}</div>
+          <div style={{ color: "var(--muted)", fontSize: 12.5, lineHeight: 1.5, marginBottom: 8 }}>{item.preview}</div>
+          <div style={{ display: "flex", gap: 6 }} onClick={e => e.stopPropagation()}>
+            <Btn size="sm" variant="primary" onClick={() => { actions.resolveApproval(a.id, "approve"); showToast("Approved"); }}>
+              <Icon name="check" size={11}/> Approve
+            </Btn>
+            <Btn size="sm" variant="ghost" onClick={() => { actions.resolveApproval(a.id, "revise"); showToast("Sent for revision"); }}>
+              Revise
+            </Btn>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+      );
+    }
+
+    if (item.type === "alert") {
+      return (
+        <div key={item.id} style={baseStyle} onClick={handleClick}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.04em" }}>{item.time}</span>
+            <Chip tone={item.severity === "high" ? "danger" : "warn"}>{item.channel || "alert"}</Chip>
+          </div>
+          <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 4 }}>{item.title}</div>
+          <div style={{ color: "var(--muted)", fontSize: 12.5, lineHeight: 1.5 }}>{item.body}</div>
+        </div>
+      );
+    }
+
+    if (item.type === "post") {
+      const ci = item.data;
+      return (
+        <div key={item.id} style={baseStyle} onClick={handleClick}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.04em" }}>{item.time}</span>
+            {ci.channel && <Chip tone="accent">{ci.channel}</Chip>}
+            <Chip tone={ci.status === "scheduled" ? "ok" : ci.status === "review" ? "warn" : ""}>{ci.status}</Chip>
+          </div>
+          <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>{item.title}</div>
+          {item.preview && <div style={{ color: "var(--muted)", fontSize: 12.5, lineHeight: 1.5 }}>{item.preview.slice(0, 100)}{item.preview.length > 100 ? "…" : ""}</div>}
+        </div>
+      );
+    }
+
+    // activity
+    return (
+      <div key={item.id} style={{ ...baseStyle, cursor: "default", padding: "8px 14px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12 }}>
+          <span className="mono" style={{ color: "var(--muted)", fontSize: 10.5, minWidth: 34 }}>{item.time}</span>
+          <span className="mono" style={{ color: "var(--accent-ink)", fontSize: 10.5, letterSpacing: "0.04em" }}>{item.data?.actor}</span>
+          <span style={{ color: "var(--ink-2)" }}>{item.data?.event}</span>
+        </div>
+      </div>
+    );
+  };
+
+  // ── Render detail drawer body ──
+  const renderDrawerBody = () => {
+    if (!activeItem) return null;
+    const item = activeItem;
+
+    if (item.type === "approval") {
+      const a = item.data;
+      return (
+        <div style={{ padding: "16px 20px" }}>
+          <div className="serif" style={{ fontSize: 17, fontStyle: "italic", lineHeight: 1.5, marginBottom: 14, borderLeft: "2px solid var(--accent)", paddingLeft: 12, color: "var(--ink)" }}>
+            {a.reason || item.preview}
+          </div>
+          {a.source && (
+            <div style={{ marginBottom: 10 }}>
+              <Chip>{a.source}</Chip>
+              {a.rule && <span className="mono" style={{ fontSize: 10.5, color: "var(--muted)", marginLeft: 8 }}>{a.rule}</span>}
+            </div>
+          )}
+          {a.reason && (
+            <div style={{ padding: "10px 12px", background: "var(--paper-2)", borderRadius: 5, fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6, marginBottom: 16 }}>
+              {a.reason}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Btn variant="primary" onClick={() => { actions.resolveApproval(a.id, "approve"); showToast("Approved"); setActiveItem(null); }}>
+              <Icon name="check" size={12}/> Approve
+            </Btn>
+            <Btn variant="ghost" onClick={() => { actions.resolveApproval(a.id, "revise"); showToast("Sent for revision"); setActiveItem(null); }}>
+              Revise
+            </Btn>
+            <Btn variant="ghost" onClick={() => { if (a.itemId) go("studio", { selectId: a.itemId }); }}>
+              Edit in Studio
+            </Btn>
+          </div>
+        </div>
+      );
+    }
+
+    if (item.type === "alert") {
+      return (
+        <div style={{ padding: "16px 20px" }}>
+          <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>{item.title}</div>
+          <div style={{ color: "var(--ink-2)", fontSize: 13.5, lineHeight: 1.6, marginBottom: 16 }}>{item.body}</div>
+          <div style={{ background: "var(--accent-wash)", borderRadius: 6, padding: "12px 14px", marginBottom: 16 }}>
+            <div className="mono" style={{ fontSize: 10, color: "var(--accent-ink)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>Recommended action</div>
+            <div style={{ fontSize: 13, color: "var(--accent-ink)", lineHeight: 1.5 }}>{item.action}</div>
+          </div>
+          <Btn variant="primary" onClick={() => showToast(`Action taken: ${item.action}`)}>
+            {item.action}
+          </Btn>
+        </div>
+      );
+    }
+
+    if (item.type === "post") {
+      const ci = item.data;
+      return (
+        <div style={{ padding: "16px 20px" }}>
+          {ci.caption && (
+            <div className="serif" style={{ fontSize: 15, fontStyle: "italic", lineHeight: 1.6, marginBottom: 14, color: "var(--ink)" }}>
+              "{ci.caption}"
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+            {ci.channel && <Chip tone="accent">{ci.channel}</Chip>}
+            <Chip tone={ci.status === "scheduled" ? "ok" : ci.status === "review" ? "warn" : ""}>{ci.status}</Chip>
+          </div>
+          {ci.date && (
+            <div className="mono" style={{ fontSize: 11, color: "var(--muted)", marginBottom: 16 }}>Scheduled: {ci.date}{ci.time ? ` at ${ci.time}` : ""}</div>
+          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn variant="primary" onClick={() => showToast("Post approved")}>
+              <Icon name="check" size={12}/> Approve
+            </Btn>
+            <Btn variant="ghost" onClick={() => { if (ci.id) go("studio", { selectId: ci.id }); }}>
+              <Icon name="edit" size={12}/> Edit
+            </Btn>
+          </div>
+        </div>
+      );
+    }
+
+    if (item.type === "activity") {
+      const e = item.data;
+      return (
+        <div style={{ padding: "16px 20px" }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 12 }}>
+            <div>
+              <div className="mono" style={{ fontSize: 10.5, color: "var(--accent-ink)", letterSpacing: "0.04em", marginBottom: 4 }}>{e?.actor}</div>
+              <div style={{ fontSize: 14, color: "var(--ink-2)" }}>{e?.event}</div>
+              <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 6 }}>{e?.t}</div>
+            </div>
+          </div>
+          {e?.detail && <div style={{ padding: "10px 12px", background: "var(--paper-2)", borderRadius: 5, fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6 }}>{e.detail}</div>}
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  // ── AI command bar examples ──
+  const exampleChips = ["How did Meta perform this week?", "Organic vs paid breakdown", "Budget & ROAS", "TikTok growth"];
+
+  return (
+    <div className="anim-fade" style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+      {/* Toast */}
+      {toastMsg && (
+        <div style={{
+          position: "absolute", top: 16, left: "50%", transform: "translateX(-50%)",
+          background: "var(--ink)", color: "var(--paper)", padding: "8px 18px", borderRadius: 20,
+          fontSize: 13, fontWeight: 500, zIndex: 999, pointerEvents: "none",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
+        }}>{toastMsg}</div>
+      )}
+
+      {/* ── TOP: Compact greeting + KPI strip ── */}
+      <div style={{ padding: "16px 24px 14px", borderBottom: "1px solid var(--rule)", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div>
+            <span className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginRight: 10 }}>{today}</span>
+            <span style={{ fontSize: 18, fontWeight: 500, letterSpacing: "-0.02em" }}>
+              Good morning, {user.name.split(" ")[0]}.
+            </span>
+            <span style={{ color: "var(--muted)", marginLeft: 12, fontSize: 13 }}>
+              {state.approvals.length} item{state.approvals.length !== 1 ? "s" : ""} need you · weekly plan ready
+            </span>
+          </div>
           <Btn size="sm" onClick={() => go("planner", { openNew: true })}><Icon name="plus" size={12}/> New campaign</Btn>
         </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--gap)" }}>
-        <Kpi label="Acceptance rate" value={kpis.acceptance.v} unit={kpis.acceptance.unit} delta={kpis.acceptance.d}
-          sparkline={[0.3,0.4,0.35,0.5,0.45,0.6,0.55,0.7,0.65,0.8,0.75]}/>
-        <Kpi label="Shipped this week" value={kpis.shipped.v} unit={kpis.shipped.unit} delta={kpis.shipped.d}
-          sparkline={[0.2,0.3,0.5,0.4,0.6,0.7,0.65,0.8,0.75,0.85,0.9]}/>
-        <Kpi label="Policy compliance" value={kpis.compliance.v} unit={kpis.compliance.unit} delta={kpis.compliance.d}
-          sparkline={[0.7,0.75,0.72,0.8,0.78,0.82,0.85,0.83,0.88,0.9,0.92]}/>
-        <Kpi label="Avg. approval time" value={kpis.approval.v} unit={` ${kpis.approval.unit}`} delta={kpis.approval.d}
-          sparkline={[0.9,0.85,0.8,0.75,0.7,0.72,0.65,0.6,0.55,0.5,0.45]}/>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "var(--gap)" }}>
-        <Card title="Pending approvals" meta={`${state.approvals.length} items · policy guard`}>
-          {state.approvals.length === 0 && (
-            <div style={{ padding: "18px 0", color: "var(--muted)", fontSize: 13 }}>All clear. Nothing waiting on you.</div>
-          )}
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            {state.approvals.map((a, i) => (
-              <div key={a.id} className="anim-slide" style={{
-                display: "grid", gridTemplateColumns: "1fr auto",
-                padding: "14px 0", borderTop: i === 0 ? 0 : "1px solid var(--rule)",
-                alignItems: "start", gap: 12,
-              }}>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                    <div style={{ fontWeight: 500, fontSize: 14 }}>{a.title}</div>
-                    <Chip tone={a.severity === "required" ? "danger" : a.severity === "revise" ? "warn" : "accent"}>{a.severity}</Chip>
-                  </div>
-                  <div style={{ color: "var(--muted)", fontSize: 12.5, lineHeight: 1.5 }}>{a.reason}</div>
-                  <div className="mono" style={{ fontSize: 10.5, color: "var(--muted-2)", marginTop: 6, letterSpacing: "0.04em" }}>{a.source} · {a.rule}</div>
-                </div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <Btn size="sm" variant="ghost" onClick={() => {
-                    if (a.itemId) go("studio", { selectId: a.itemId });
-                    else if (a.inboxId) go("inbox", { selectId: a.inboxId });
-                    else go("insights");
-                  }}><Icon name="eye" size={12}/> Review</Btn>
-                  {a.severity !== "required" && <Btn size="sm" variant="primary" onClick={() => actions.resolveApproval(a.id, "approve")}><Icon name="check" size={12}/> Approve</Btn>}
-                </div>
+        {/* 5 KPI stat strip */}
+        <div style={{ display: "flex", gap: 0, borderTop: "1px solid var(--rule)", paddingTop: 12 }}>
+          {kpiStrip.map((k, i) => (
+            <div key={k.label} style={{
+              flex: 1, paddingRight: 20,
+              borderRight: i < kpiStrip.length - 1 ? "1px solid var(--rule)" : "none",
+              paddingLeft: i > 0 ? 20 : 0,
+            }}>
+              <div className="mono" style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>{k.label}</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                <span style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.03em", lineHeight: 1 }}>{k.value}{k.unit}</span>
+                {k.delta && <span style={{ fontSize: 11, color: String(k.delta).startsWith("-") ? "var(--danger)" : "var(--success)", fontFamily: "var(--font-mono)" }}>{k.delta}</span>}
               </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── MIDDLE: Feed (left) + Detail Drawer (right) ── */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+
+        {/* Feed column */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", borderRight: activeItem ? "1px solid var(--rule)" : "none" }}>
+          {/* Feed tabs */}
+          <div style={{ display: "flex", gap: 0, padding: "0 20px", borderBottom: "1px solid var(--rule)", flexShrink: 0, background: "var(--paper)" }}>
+            {[
+              { key: "all", label: "All" },
+              { key: "approvals", label: "Approvals", badge: approvalCount },
+              { key: "posts", label: "Posts" },
+              { key: "alerts", label: "Alerts" },
+            ].map(tab => (
+              <button key={tab.key} onClick={() => setFeedTab(tab.key)}
+                style={{
+                  background: "transparent", border: "none", cursor: "pointer",
+                  padding: "10px 14px 8px",
+                  fontSize: 13, fontWeight: feedTab === tab.key ? 600 : 400,
+                  color: feedTab === tab.key ? "var(--ink)" : "var(--muted)",
+                  borderBottom: feedTab === tab.key ? "2px solid var(--accent)" : "2px solid transparent",
+                  marginBottom: -1,
+                  display: "flex", alignItems: "center", gap: 6,
+                  transition: "color 0.12s",
+                }}>
+                {tab.label}
+                {tab.badge > 0 && (
+                  <span style={{
+                    background: "var(--danger)", color: "#fff",
+                    borderRadius: 10, padding: "1px 6px", fontSize: 10, fontWeight: 700, lineHeight: 1.4,
+                  }}>{tab.badge}</span>
+                )}
+              </button>
             ))}
           </div>
-        </Card>
 
-        <Card title="Connector health" meta={`${connectors.filter(c=>c.status==="ok").length} ok · ${connectors.filter(c=>c.status!=="ok").length} warn`}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 14px" }}>
-            {connectors.map(c => (
-              <div key={c.name} style={{
-                display: "flex", alignItems: "center", gap: 8,
-                padding: "6px 0", fontSize: 12.5,
+          {/* Feed list */}
+          <div style={{ flex: 1, overflow: "auto", padding: "16px 20px" }}>
+            {filteredFeed.length === 0 && (
+              <div style={{ color: "var(--muted)", fontSize: 13, padding: "20px 0" }}>Nothing here right now.</div>
+            )}
+            {filteredFeed.map(item => renderFeedCard(item))}
+          </div>
+        </div>
+
+        {/* Right Detail Drawer */}
+        <div style={{ width: activeItem ? 380 : 0, minWidth: activeItem ? 380 : 0, transition: "all 0.22s ease", overflow: "hidden" }}>
+          {activeItem && (
+            <div style={{ width: 380, height: "100%", display: "flex", flexDirection: "column", overflow: "auto" }}>
+              {/* Drawer header */}
+              <div style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "12px 20px", borderBottom: "1px solid var(--rule)",
+                background: "var(--paper)", flexShrink: 0,
               }}>
-                <Dot status={c.status === "ok" ? "ok" : "warn"} />
-                <span style={{ flex: 1 }}>{c.name}</span>
-                {c.status !== "ok" ? (
-                  <button onClick={() => retryConnector(c.name)} disabled={retrying === c.name}
-                    style={{ background: "transparent", border: 0, color: "var(--accent-ink)", fontSize: 10, cursor: "pointer", fontFamily: "var(--font-mono)", letterSpacing: "0.04em", textTransform: "uppercase", padding: 0 }}>
-                    {retrying === c.name ? "…retrying" : "retry"}
-                  </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Chip tone={
+                    activeItem.type === "approval" ? "danger" :
+                    activeItem.type === "alert" ? (activeItem.severity === "high" ? "danger" : "warn") :
+                    activeItem.type === "post" ? "accent" : ""
+                  }>{activeItem.type}</Chip>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>{activeItem.title?.slice(0, 42)}{activeItem.title?.length > 42 ? "…" : ""}</span>
+                </div>
+                <button onClick={() => setActiveItem(null)}
+                  style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--muted)", fontSize: 18, lineHeight: 1, padding: "2px 6px" }}>
+                  ×
+                </button>
+              </div>
+              {/* Drawer body */}
+              <div style={{ flex: 1, overflow: "auto" }}>
+                {renderDrawerBody()}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── BOTTOM: Sticky AI Command Bar ── */}
+      <div style={{ position: "sticky", bottom: 0, background: "var(--paper)", borderTop: "1px solid var(--rule)", padding: "12px 20px", flexShrink: 0, zIndex: 10 }}>
+        {/* Conversation history */}
+        {(aiOpen || aiMessages.length > 0) && aiMessages.length > 0 && (
+          <div ref={aiScrollRef} style={{ maxHeight: 260, overflow: "auto", padding: "12px 0", marginBottom: 8 }}>
+            {aiMessages.map((msg, i) => (
+              <div key={i} style={{
+                display: "flex",
+                justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+                marginBottom: 10,
+              }}>
+                {msg.role === "user" ? (
+                  <div style={{
+                    background: "var(--ink)", color: "var(--paper)",
+                    borderRadius: 16, padding: "7px 14px",
+                    fontSize: 13, maxWidth: "70%", lineHeight: 1.5,
+                  }}>{msg.text}</div>
                 ) : (
-                  <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.03em" }}>{c.note}</span>
+                  <div style={{
+                    background: "var(--paper-2)", border: "1px solid var(--rule)",
+                    borderRadius: 8, padding: "10px 14px",
+                    fontSize: 13, maxWidth: "88%", lineHeight: 1.5,
+                  }}>
+                    <div className="mono" style={{ fontSize: 10, color: "var(--accent-ink)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>
+                      Agent · {msg.agent}
+                    </div>
+                    {msg.type === "review_lookup" ? (
+                      <ReviewLookupCard onApproveSchedule={() => showToast("Emails scheduled for send")} />
+                    ) : (
+                      <AiMessageText text={msg.text} />
+                    )}
+                    {msg.streaming && <span style={{ opacity: 0.4, marginLeft: 2 }}>▋</span>}
+                  </div>
                 )}
               </div>
             ))}
           </div>
-        </Card>
-      </div>
+        )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "var(--gap)" }}>
-        <Card title="Week of Apr 20–26" meta="plan · by status">
-          <div style={{ display: "flex", gap: 0, height: 30, borderRadius: 4, overflow: "hidden", marginTop: 4 }}>
-            {[
-              { k: "approved", fill: "var(--success)" },
-              { k: "scheduled", fill: "var(--accent)" },
-              { k: "review", fill: "var(--warn)" },
-              { k: "policy", fill: "oklch(58% 0.14 40)" },
-              { k: "draft", fill: "var(--rule-strong)" },
-            ].map(b => (
-              <div key={b.k} onClick={() => go("planner", { filterStatus: b.k })} title={`${b.k} ${statusCount[b.k]}`}
-                style={{ flex: statusCount[b.k] || 0.001, background: b.fill, cursor: "pointer" }}/>
+        {/* Input row */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 16, color: "var(--accent-ink)", flexShrink: 0, lineHeight: 1 }}>✦</span>
+          <input
+            ref={aiInputRef}
+            value={aiInput}
+            onChange={e => setAiInput(e.target.value)}
+            onFocus={() => setAiOpen(true)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendAiMessage(); } }}
+            placeholder="Ask anything · how did Meta perform this week?"
+            style={{
+              flex: 1, background: "var(--paper-2)", border: "1px solid var(--rule)",
+              borderRadius: 20, padding: "8px 16px", fontSize: 13,
+              color: "var(--ink)", outline: "none", fontFamily: "inherit",
+            }}
+          />
+          <Btn size="sm" variant="primary" onClick={sendAiMessage} disabled={!aiInput.trim()}>
+            ↵ Send
+          </Btn>
+        </div>
+
+        {/* Example chips (only when no messages) */}
+        {aiMessages.length === 0 && (
+          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+            {exampleChips.map(chip => (
+              <button key={chip} onClick={() => { setAiInput(chip); if (aiInputRef.current) aiInputRef.current.focus(); }}
+                style={{
+                  background: "var(--paper-2)", border: "1px solid var(--rule)",
+                  borderRadius: 12, padding: "3px 10px", fontSize: 11.5,
+                  color: "var(--muted)", cursor: "pointer", fontFamily: "inherit",
+                  transition: "border-color 0.12s, color 0.12s",
+                }}>
+                {chip}
+              </button>
             ))}
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontSize: 11, color: "var(--muted)", fontFamily: "var(--font-mono)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
-            <span>Approved {statusCount.approved}</span>
-            <span>Scheduled {statusCount.scheduled}</span>
-            <span>Review {statusCount.review}</span>
-            <span>Policy {statusCount.policy}</span>
-            <span>Draft {statusCount.draft}</span>
-          </div>
-          <div style={{ height: 1, background: "var(--rule)", margin: "20px 0 14px" }}/>
-          <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Tone mode mix</div>
-          <div style={{ display: "flex", gap: 0, height: 24, borderRadius: 3, overflow: "hidden" }}>
-            <div style={{ flex: 3.2, background: "var(--accent)" }}/>
-            <div style={{ flex: 2.1, background: "oklch(58% 0.11 200)" }}/>
-            <div style={{ flex: 1.4, background: "oklch(70% 0.1 140)" }}/>
-            <div style={{ flex: 0.9, background: "oklch(78% 0.09 85)" }}/>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 11, color: "var(--muted)", fontFamily: "var(--font-mono)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
-            <span>Direct 42%</span><span>Witness 28%</span><span>Invite 18%</span><span>Wink 12%</span>
-          </div>
-        </Card>
-
-        <Card title="Activity" meta="live">
-          <div style={{ display: "flex", flexDirection: "column", gap: 0, maxHeight: 280, overflow: "auto" }}>
-            {state.activity.slice(0, 14).map((e, i) => (
-              <div key={e.id} style={{
-                display: "grid", gridTemplateColumns: "44px 1fr",
-                gap: 10, padding: "7px 0",
-                borderTop: i === 0 ? 0 : "1px dashed var(--rule)",
-                fontSize: 12,
-              }}>
-                <span className="mono" style={{ color: "var(--muted)", fontSize: 10.5 }}>{e.t}</span>
-                <div>
-                  <span className="mono" style={{ color: "var(--accent-ink)", fontSize: 10.5, marginRight: 6, letterSpacing: "0.04em" }}>{e.actor}</span>
-                  <span style={{ color: "var(--ink-2)" }}>{e.event}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
+        )}
       </div>
     </div>
   );
