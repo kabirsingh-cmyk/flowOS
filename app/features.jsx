@@ -744,6 +744,15 @@ const PLATFORM_META = {
   tiktok:    { label: "TikTok",    color: "oklch(18% 0.02 260)", dot: "TK" },
   pinterest: { label: "Pinterest", color: "oklch(52% 0.20 28)",  dot: "PN" },
   youtube:   { label: "YouTube",   color: "oklch(54% 0.22 27)",  dot: "YT" },
+  facebook:  { label: "Facebook",  color: "oklch(48% 0.18 260)", dot: "FB" },
+  linkedin:  { label: "LinkedIn",  color: "oklch(48% 0.14 235)", dot: "LI" },
+  x:         { label: "X",         color: "oklch(22% 0.02 260)", dot: "𝕏"  },
+  threads:   { label: "Threads",   color: "oklch(22% 0.02 260)", dot: "Th" },
+  reddit:    { label: "Reddit",    color: "oklch(58% 0.22 28)",  dot: "Rd" },
+  snapchat:  { label: "Snapchat",  color: "oklch(88% 0.16 100)", dot: "Sn" },
+  bluesky:   { label: "Bluesky",   color: "oklch(55% 0.18 240)", dot: "Bk" },
+  mastodon:  { label: "Mastodon",  color: "oklch(50% 0.15 285)", dot: "Mt" },
+  telegram:  { label: "Telegram",  color: "oklch(60% 0.16 225)", dot: "Tg" },
 };
 
 const STATUS_META = {
@@ -874,7 +883,9 @@ function OrganicSocialStudio({ state, actions }) {
     setPublishing(null);
   };
 
-  const TABS = ["all", "instagram", "tiktok", "pinterest", "youtube"];
+  // Only show platform tabs for connected channels (+ "all")
+  const ALL_PLATFORMS = ["instagram", "tiktok", "pinterest", "youtube", "facebook", "linkedin", "x", "threads", "reddit", "snapchat", "bluesky", "mastodon", "telegram"];
+  const TABS = ["all", ...ALL_PLATFORMS.filter(p => channels[p])];
   const filtered = tab === "all" ? posts : posts.filter(p => p.platform === tab);
   const scheduled = posts.filter(p => p.status === "scheduled").length;
   const connectedCount = Object.keys(channels).length;
@@ -1027,20 +1038,36 @@ function OrganicSocialStudio({ state, actions }) {
                 <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Platform</span>
                 <select value={draft.platform} onChange={e => setDraft(d => ({ ...d, platform: e.target.value, type: "Post" }))}
                   style={{ padding: "8px 10px", border: "1px solid var(--rule-strong)", borderRadius: 5, fontSize: 13, fontFamily: "var(--font-sans)", background: "var(--paper)" }}>
-                  <option value="instagram">Instagram {channels.instagram ? "✓" : ""}</option>
-                  <option value="tiktok">TikTok {channels.tiktok ? "✓" : ""}</option>
-                  <option value="pinterest">Pinterest {channels.pinterest ? "✓" : ""}</option>
-                  <option value="youtube">YouTube {channels.youtube ? "✓" : ""}</option>
+                  {ALL_PLATFORMS.map(p => {
+                    const pm = PLATFORM_META[p];
+                    if (!pm) return null;
+                    return (
+                      <option key={p} value={p}>
+                        {pm.label}{channels[p] ? " ✓" : ""}
+                      </option>
+                    );
+                  })}
                 </select>
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Format</span>
                 <select value={draft.type} onChange={e => setDraft(d => ({ ...d, type: e.target.value }))}
                   style={{ padding: "8px 10px", border: "1px solid var(--rule-strong)", borderRadius: 5, fontSize: 13, fontFamily: "var(--font-sans)", background: "var(--paper)" }}>
-                  {draft.platform === "instagram" && <><option>Reel</option><option>Carousel</option><option>Post</option><option>Story</option></>}
-                  {draft.platform === "tiktok"    && <><option>Video</option><option>Photo mode</option></>}
-                  {draft.platform === "pinterest" && <><option>Pin</option><option>Idea pin</option><option>Video pin</option></>}
-                  {draft.platform === "youtube"   && <><option>Short</option><option>Long-form</option></>}
+                  {draft.platform === "instagram"  && <><option>Reel</option><option>Carousel</option><option>Post</option><option>Story</option></>}
+                  {draft.platform === "tiktok"     && <><option>Video</option><option>Photo mode</option></>}
+                  {draft.platform === "pinterest"  && <><option>Pin</option><option>Idea pin</option><option>Video pin</option></>}
+                  {draft.platform === "youtube"    && <><option>Short</option><option>Long-form</option></>}
+                  {draft.platform === "facebook"   && <><option>Post</option><option>Story</option><option>Reel</option></>}
+                  {draft.platform === "linkedin"   && <><option>Post</option><option>Article</option><option>Poll</option></>}
+                  {draft.platform === "x"          && <><option>Post</option><option>Thread</option></>}
+                  {draft.platform === "threads"    && <><option>Post</option><option>Reply</option></>}
+                  {draft.platform === "reddit"     && <><option>Text post</option><option>Image post</option><option>Link post</option></>}
+                  {draft.platform === "snapchat"   && <><option>Spotlight</option><option>Story</option></>}
+                  {draft.platform === "bluesky"    && <><option>Post</option><option>Thread</option></>}
+                  {draft.platform === "mastodon"   && <><option>Toot</option><option>Thread</option></>}
+                  {draft.platform === "telegram"   && <><option>Channel post</option><option>Poll</option></>}
+                  {/* Fallback for any unmapped platform */}
+                  {!["instagram","tiktok","pinterest","youtube","facebook","linkedin","x","threads","reddit","snapchat","bluesky","mastodon","telegram"].includes(draft.platform) && <option>Post</option>}
                 </select>
               </label>
             </div>

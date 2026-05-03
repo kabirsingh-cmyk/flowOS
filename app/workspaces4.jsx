@@ -2,7 +2,12 @@
 const { useState: useState4, useEffect: useEffect4, useMemo: useMemo4, useRef: useRef4 } = React;
 
 // Social platforms managed by Publer (connector id → publer social_network slug)
-const PUBLER_SOCIAL = { ig: "instagram", tt: "tiktok", pn: "pinterest", yt: "youtube", fb: "facebook", li: "linkedin" };
+const PUBLER_SOCIAL = {
+  ig: "instagram", tt: "tiktok", pn: "pinterest", yt: "youtube",
+  fb: "facebook",  li: "linkedin",
+  x: "twitter",    threads: "threads", reddit: "reddit",
+  snap: "snapchat", bluesky: "bluesky", mastodon: "mastodon", telegram: "telegram",
+};
 
 // ────────────────────────────── BRAND IMPORT MODAL ──────────────────────────────
 function BrandImportModal({ open, onClose, onApply }) {
@@ -202,14 +207,21 @@ function BrandImportModal({ open, onClose, onApply }) {
 function ConnectorIcon({ id }) {
   // brand letter mark — color-shifted per category
   const map = {
-    pb: { fg: "oklch(44% 0.18 260)", letter: "Pb" },
-    ay: { fg: "oklch(44% 0.18 260)", letter: "A" }, // legacy
-    ig: { fg: "linear-gradient(135deg, oklch(70% 0.18 30), oklch(58% 0.2 320))", letter: "I" },
-    tt: { fg: "var(--ink)", letter: "T" },
-    fb: { fg: "oklch(48% 0.18 260)", letter: "f" },
-    li: { fg: "oklch(48% 0.14 235)", letter: "in" },
-    yt: { fg: "oklch(58% 0.22 28)", letter: "▶" },
-    pn: { fg: "oklch(56% 0.18 25)", letter: "P" },
+    pb:      { fg: "oklch(44% 0.18 260)", letter: "Pb" },
+    ay:      { fg: "oklch(44% 0.18 260)", letter: "A" }, // legacy
+    ig:      { fg: "linear-gradient(135deg, oklch(70% 0.18 30), oklch(58% 0.2 320))", letter: "I" },
+    tt:      { fg: "var(--ink)",           letter: "T" },
+    fb:      { fg: "oklch(48% 0.18 260)", letter: "f" },
+    li:      { fg: "oklch(48% 0.14 235)", letter: "in" },
+    yt:      { fg: "oklch(58% 0.22 28)",  letter: "▶" },
+    pn:      { fg: "oklch(56% 0.18 25)",  letter: "P" },
+    x:       { fg: "var(--ink)",           letter: "𝕏" },
+    threads: { fg: "var(--ink)",           letter: "@" },
+    reddit:  { fg: "oklch(58% 0.22 28)",  letter: "R" },
+    snap:    { fg: "oklch(88% 0.16 100)", letter: "👻", inkColor: "var(--ink)" },
+    bsky:    { fg: "oklch(55% 0.18 240)", letter: "Bk" },
+    mst:     { fg: "oklch(48% 0.16 285)", letter: "M" },
+    tg:      { fg: "oklch(60% 0.16 225)", letter: "Tg" },
     klaviyo:   { fg: "oklch(38% 0.04 80)", letter: "K" },
     mailchimp: { fg: "oklch(80% 0.16 95)", letter: "✻", inkColor: "var(--ink)" },
     googleads: { fg: "oklch(72% 0.17 100)", letter: "G", inkColor: "var(--ink)" },
@@ -441,6 +453,10 @@ function Connections({ state, actions }) {
   const totalConnected = Object.values(state.connectors || {}).filter(c => c.connected).length;
   const totalAvailable = catalog.length;
 
+  // Recommended connector IDs from brand analysis (populated after brand import)
+  const recommendedIds = state.brandPreset?.recommendedConnectors || [];
+  const recommendedCatalog = recommendedIds.map(id => catalog.find(c => c.id === id)).filter(Boolean);
+
   return (
     <div className="anim-fade" style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: 20, height: "100%", overflow: "auto" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
@@ -491,7 +507,62 @@ function Connections({ state, actions }) {
         )}
       </div>
 
-      {/* Connector grid by category */}
+      {/* ── Recommended section (shown when brand is imported) ───────────────── */}
+      {state.brandImported && recommendedCatalog.length > 0 && (
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+            <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+              Recommended for {state.brandPreset?.name}
+              <span style={{ marginLeft: 8, color: "var(--muted-2)" }}>
+                {recommendedCatalog.filter(c => state.connectors[c.id]?.connected).length} / {recommendedCatalog.length} connected
+              </span>
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Based on brand analysis · edit in Brand Memory</div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 8 }}>
+            {recommendedCatalog.map(c => {
+              const status = state.connectors[c.id] || {};
+              const connected = status.connected;
+              return (
+                <div key={c.id} style={{
+                  border: `1px solid ${connected ? "var(--success)" : "var(--accent)"}`,
+                  borderRadius: 6,
+                  background: connected ? "var(--success-wash)" : "var(--accent-wash)",
+                  padding: "10px 12px",
+                  display: "flex", alignItems: "center", gap: 10,
+                }}>
+                  <ConnectorIcon id={c.id}/>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
+                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 1 }}>
+                      {connected ? (status.note || "connected") : c.category}
+                    </div>
+                  </div>
+                  {connected ? (
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--success)", flexShrink: 0 }}/>
+                  ) : (
+                    <Btn size="sm" variant="primary" onClick={() => startConnect(c)}>
+                      <Icon name="plus" size={10}/>
+                    </Btn>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Section label before full catalog ────────────────────────────────── */}
+      {state.brandImported && (
+        <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 16 }}>
+          <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+            All channels · {totalAvailable}
+          </div>
+        </div>
+      )}
+
+      {/* ── Connector grid by category ────────────────────────────────────────── */}
       {categories.map(cat => (
         <div key={cat}>
           <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
@@ -549,7 +620,12 @@ function Connections({ state, actions }) {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
                         <span style={{ fontSize: 13.5, fontWeight: 500, letterSpacing: "-0.005em" }}>{c.name}</span>
-                        {connected ? <Chip tone="ok">connected</Chip> : <Chip>disconnected</Chip>}
+                        {connected
+                          ? <Chip tone="ok">connected</Chip>
+                          : recommendedIds.includes(c.id)
+                            ? <Chip tone="accent">★ recommended</Chip>
+                            : <Chip>—</Chip>
+                        }
                       </div>
                       <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 3, lineHeight: 1.4 }}>{c.desc}</div>
                     </div>

@@ -39,6 +39,13 @@ const SEED = {
         "Free U.S. shipping over $50",
       ],
       prohibitedTopics: ["medical claims", "competitor by name", "weight loss", "religion", "specific dermatology advice"],
+      // Connectors the AI recommends based on brand type (DTC skincare · visual + social commerce)
+      recommendedConnectors: [
+        "publer", "ig", "tt", "pn", "threads",           // organic social
+        "metaads", "pinads",                              // paid social
+        "shopify", "klaviyo", "klaviyo_sms",              // commerce + email
+        "ga4", "heygen", "runware",                       // analytics + creative AI
+      ],
     },
   },
   brandImported: false, // toggled by the import flow
@@ -53,7 +60,14 @@ const SEED = {
     { id: "fb",        category: "Social",     name: "Facebook",         desc: "Pages & posts · publishing via Publer",                            auth: "Publer",   icon: "fb" },
     { id: "li",        category: "Social",     name: "LinkedIn",         desc: "Company posts, articles · publishing via Publer",                  auth: "Publer",   icon: "li" },
     { id: "yt",        category: "Social",     name: "YouTube",          desc: "Shorts & long-form · publishing via Publer",                       auth: "Publer",   icon: "yt" },
-    { id: "pn",        category: "Social",     name: "Pinterest",        desc: "Pins & boards · publishing via Publer",                            auth: "Publer",   icon: "pn" },
+    { id: "pn",        category: "Social",     name: "Pinterest",        desc: "Pins & boards · publishing via Publer",                            auth: "Publer",   icon: "pn"      },
+    { id: "x",         category: "Social",     name: "X",                desc: "Posts & Spaces · publishing via Publer",                           auth: "Publer",   icon: "x"       },
+    { id: "threads",   category: "Social",     name: "Threads",          desc: "Text & media posts · Meta's open social layer via Publer",         auth: "Publer",   icon: "threads" },
+    { id: "reddit",    category: "Social",     name: "Reddit",           desc: "Subreddit posts & communities · publishing via Publer",            auth: "Publer",   icon: "reddit"  },
+    { id: "snap",      category: "Social",     name: "Snapchat",         desc: "Spotlight + Story posts · publishing via Publer",                  auth: "Publer",   icon: "snap"    },
+    { id: "bluesky",   category: "Social",     name: "Bluesky",          desc: "Open AT Protocol social · publishing via Publer",                  auth: "Publer",   icon: "bsky"    },
+    { id: "mastodon",  category: "Social",     name: "Mastodon",         desc: "Federated open social · publishing via Publer",                    auth: "Publer",   icon: "mst"     },
+    { id: "telegram",  category: "Social",     name: "Telegram",         desc: "Channel posts & broadcasts · publishing via Publer",               auth: "Publer",   icon: "tg"      },
 
     // ── Email ────────────────────────────────────────────────────────────────
     { id: "klaviyo",   category: "Email",      name: "Klaviyo",          desc: "Lists, flows, campaigns, segmentation",                            auth: "API key", icon: "kl" },
@@ -115,7 +129,14 @@ const SEED = {
     fb:        { connected: true,  status: "warn", note: "rate limited · retry 14:02",         syncCount: "904 posts" },
     li:        { connected: true,  status: "ok",   note: "synced 4m ago",                     syncCount: "126 posts" },
     yt:        { connected: true,  status: "ok",   note: "synced 8m ago · @mveda-co",         syncCount: "38 videos" },
-    pn:        { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
+    pn:        { connected: false, status: "—",    note: "not connected",  syncCount: "—" },
+    x:         { connected: false, status: "—",    note: "not connected",  syncCount: "—" },
+    threads:   { connected: false, status: "—",    note: "not connected",  syncCount: "—" },
+    reddit:    { connected: false, status: "—",    note: "not connected",  syncCount: "—" },
+    snap:      { connected: false, status: "—",    note: "not connected",  syncCount: "—" },
+    bluesky:   { connected: false, status: "—",    note: "not connected",  syncCount: "—" },
+    mastodon:  { connected: false, status: "—",    note: "not connected",  syncCount: "—" },
+    telegram:  { connected: false, status: "—",    note: "not connected",  syncCount: "—" },
     // Email
     klaviyo:   { connected: true,  status: "ok",   note: "lists synced 2m ago",               syncCount: "24,118 contacts · 6 flows" },
     mailchimp: { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },

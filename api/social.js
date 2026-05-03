@@ -73,7 +73,12 @@ export default async function handler(req) {
       const profiles = data?.profiles || [];
 
       // Map Publer profiles to our internal format
-      const SUPPORTED = new Set(["instagram", "tiktok", "pinterest", "youtube", "facebook", "linkedin", "twitter"]);
+      const SUPPORTED = new Set([
+        "instagram", "tiktok", "pinterest", "youtube",
+        "facebook", "linkedin", "twitter", "x",
+        "threads", "reddit", "snapchat", "bluesky",
+        "mastodon", "telegram",
+      ]);
       const connected = profiles
         .filter(p => SUPPORTED.has(p.social_network))
         .map(p => ({
