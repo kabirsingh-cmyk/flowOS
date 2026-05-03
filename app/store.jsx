@@ -34,6 +34,7 @@ function mveda_initialState() {
     activity: SEED.audit.map(a => ({ ...a, id: "e_" + Math.random().toString(36).slice(2,8) })),
     notifications: [],
     dateRange: "30d",
+    activeBrandId: "mveda",
     connectors: { ...SEED.connectorState },
     brandImported: SEED.brandImported || false,
     brandPreset: null, // gets set when user imports
@@ -190,6 +191,20 @@ function mveda_reducer(s, a) {
         notifications: [notify("neutral", "Brand reset to default"), ...s.notifications],
       };
     }
+    case "SWITCH_BRAND": {
+      const preset = SEED.brandPresets[a.brandId];
+      if (!preset) return s;
+      const brandConn = SEED.brandConnectorStates?.[a.brandId];
+      return {
+        ...s,
+        activeBrandId: a.brandId,
+        brandPreset:   preset,
+        brandImported: true,
+        connectors:    brandConn ? { ...brandConn } : { ...SEED.connectorState },
+        notifications: [{ id: Date.now(), tone: "ok",     text: `Switched to ${preset.name}` }, ...s.notifications],
+        activity:      [{ id: Date.now(), user: "System", text: `Switched account to ${preset.name}`, ts: new Date().toISOString() }, ...s.activity],
+      };
+    }
     case "SMS_UPDATE":
       return { ...s, smsCampaigns: s.smsCampaigns.map(c => c.id === a.id ? { ...c, ...a.patch } : c),
         activity: a.logEvent ? [log("Ana O.", a.logEvent), ...s.activity] : s.activity,
@@ -288,6 +303,7 @@ function useMvedaStore() {
     setConnector:    (id, patch, opts={}) => dispatch({ type: "CONNECTOR_SET", id, patch, logEvent: opts.logEvent, notify: opts.notify }),
     importBrand:     (preset) => dispatch({ type: "BRAND_IMPORTED", preset }),
     resetBrand:      () => dispatch({ type: "BRAND_RESET" }),
+    switchBrand:     (brandId) => dispatch({ type: "SWITCH_BRAND", brandId }),
     applyStrategy:   (payload) => dispatch({ type: "STRATEGY_APPLY", payload }),
 
     updateSms:        (id, patch, opts={}) => dispatch({ type: "SMS_UPDATE", id, patch, logEvent: opts.logEvent, notify: opts.notify }),

@@ -127,7 +127,33 @@ function InsightsCenter({ state, actions }) {
 
   const mult = { "7d": 0.5, "30d": 1, "90d": 2.4, "YTD": 5.1 }[state.dateRange] || 1;
 
-  const D = {
+  const brandId = state?.activeBrandId || state?.brandPreset?.id || "mveda";
+  const isErickson = brandId === "erickson";
+
+  const D = isErickson ? {
+    aiNarrative: "Summer peak demand 6 weeks out — Phoenix AC emergency repair searches up 34% this month. Google Local Services Ads converting at 18.0% CTR, your highest-performing channel by a wide margin. Post-service follow-up email hitting 58.4% open rate — use this to drive maintenance plan upsells. Commercial LinkedIn pipeline showing 3 new facility manager leads. Recommend increasing Google Search budget by $600 before Memorial Day weekend.",
+    social: [
+      { platform: "Facebook",  id: "fb", color: "oklch(48% 0.18 260)", followers: 4820,  followerDelta: "+28 (+0.6%)",   reach: Math.round(12400*mult),  reachDelta: "+8%",   engRate: 2.8, posts: Math.round(8*mult),  topCaption: "Your AC shouldn't quit in July. Neither do we. 24/7 emergency service.", topReach: Math.round(2840*mult),  topLikes: Math.round(186*mult)  },
+      { platform: "LinkedIn",  id: "li", color: "oklch(48% 0.14 240)", followers: 1240,  followerDelta: "+42 (+3.5%)",   reach: Math.round(4200*mult),   reachDelta: "+24%",  engRate: 4.1, posts: Math.round(6*mult),  topCaption: "Commercial HVAC preventive maintenance: what facility managers miss", topReach: Math.round(1840*mult),  topLikes: Math.round(64*mult)   },
+      { platform: "YouTube",   id: "yt", color: "oklch(55% 0.22 25)",  followers: 340,   followerDelta: "+18 (+5.6%)",   reach: Math.round(8400*mult),   reachDelta: "+42%",  engRate: 3.2, posts: Math.round(2*mult),  topCaption: "How to change your AC filter (and when to call a pro)", topReach: Math.round(6200*mult),  topLikes: Math.round(124*mult)  },
+      { platform: "Nextdoor",  id: "fb", color: "oklch(45% 0.12 160)", followers: null,  followerDelta: null,             reach: Math.round(2100*mult),   reachDelta: "+12%",  engRate: 5.8, posts: Math.round(4*mult),  topCaption: "Erickson Refrigeration — top-rated HVAC in Scottsdale", topReach: Math.round(840*mult),   topLikes: Math.round(48*mult)   },
+    ],
+    paid: [
+      { id: "p1", name: "Emergency HVAC · Google Search",  platform: "Google",   budget: Math.round(2400*mult), spend: Math.round(2180*mult), revenue: Math.round(18200*mult),  roas: 8.3,  cpl: 42,  ctr: 8.2,  status: "active", trend: +0.8 },
+      { id: "p2", name: "AC Service · Google Local (LSA)", platform: "Google",   budget: Math.round(1200*mult), spend: Math.round(1080*mult), revenue: Math.round(12400*mult),  roas: 11.5, cpl: 28,  ctr: 18.0, status: "active", trend: +1.4 },
+      { id: "p3", name: "HVAC Brand keywords",             platform: "Google",   budget: Math.round(600*mult),  spend: Math.round(540*mult),  revenue: Math.round(4320*mult),   roas: 8.0,  cpl: 48,  ctr: 5.4,  status: "active", trend: +0.2 },
+      { id: "p4", name: "Commercial HVAC · LinkedIn",      platform: "LinkedIn", budget: Math.round(800*mult),  spend: Math.round(720*mult),  revenue: Math.round(8640*mult),   roas: 12.0, cpl: 180, ctr: 1.8,  status: "active", trend: +0.6 },
+      { id: "p5", name: "Brand awareness · Facebook",      platform: "Meta",     budget: Math.round(400*mult),  spend: Math.round(320*mult),  revenue: Math.round(1280*mult),   roas: 4.0,  cpl: 64,  ctr: 1.2,  status: "paused", trend: -0.4 },
+    ],
+    email: [
+      { id: "e1", name: "Spring maintenance reminder",     type: "campaign", sends: Math.round(2840*mult),  openRate: 42.1, ctr: 8.4,  revenue: Math.round(42000*mult), unsubRate: 0.1, status: "sent" },
+      { id: "e2", name: "Maintenance plan renewal",        type: "flow",     sends: Math.round(480*mult),   openRate: 38.2, ctr: 12.4, revenue: Math.round(28800*mult), unsubRate: 0.2, status: "live" },
+      { id: "e3", name: "Post-service follow-up",          type: "flow",     sends: Math.round(1240*mult),  openRate: 58.4, ctr: 22.1, revenue: Math.round(18600*mult), unsubRate: 0.0, status: "live" },
+      { id: "e4", name: "Summer AC prep campaign",         type: "campaign", sends: Math.round(2840*mult),  openRate: null, ctr: null,  revenue: null,                   unsubRate: null, status: "draft" },
+      { id: "e5", name: "Commercial upsell · PM program",  type: "campaign", sends: Math.round(240*mult),   openRate: null, ctr: null,  revenue: null,                   unsubRate: null, status: "draft" },
+    ],
+  } : {
+    // original MVEDA data — keep exactly as-is
     aiNarrative: "TikTok is your fastest-growing channel — reach up 44% driven by the Hair Ritual Reel series (saves 2.4× account average). Meta Ads ROAS trending down on Body Oil Advantage+ (freq 4.2×, ROAS 6.8x → 4.1x) — new creative this week is the priority. Welcome flow is hitting 58% open rate, your #1 revenue-per-send driver. Organic Pinterest is quietly steady; consider increasing pin frequency to capture peak discovery season.",
     social: [
       { platform: "Instagram", id: "ig", color: "oklch(62% 0.18 340)", followers: 24810, followerDelta: "+340 (+1.4%)", reach: Math.round(148200*mult), reachDelta: "+22%", engRate: 4.8, posts: Math.round(24*mult), topCaption: "Three drops. Palms warmed. Drawn through the lengths.", topReach: Math.round(42100*mult), topLikes: Math.round(2840*mult) },
@@ -156,6 +182,18 @@ function InsightsCenter({ state, actions }) {
 
   function inferInsightResponse(q) {
     const lower = q.toLowerCase();
+    if (isErickson) {
+      if (/google|lsa|search/.test(lower)) {
+        return "**Google Channels — Erickson this period**\n\nGoogle Local Services Ads: 18.0% CTR, $1,080 spend, 12.4x ROAS · highest converting channel\nGoogle Search (emergency): 8.2% CTR, $2,180 spend, 8.3x ROAS\nBrand keywords: 5.4% CTR, $540 spend, 8.0x ROAS\n\n**Total Google: $3,800 spend → $34,920 revenue · 9.2x blended ROAS**\n\nLSA is significantly outperforming manual search on CPL ($28 vs $42). Recommend shifting $400/mo budget from emergency search into LSA to capitalise on the conversion rate advantage.";
+      }
+      if (/summer|seasonal|peak/.test(lower)) {
+        return "**Summer Peak Demand Forecast — Erickson**\n\nPhoenix AC emergency searches up 34% MoM. Historical peak is mid-June through August.\n\nRecommended actions:\n• Increase Google Search + LSA budget by $600/mo from Memorial Day\n• Prepare 'Summer AC prep' email campaign (2,840 list, draft ready)\n• Add 'emergency AC' Google Ads extensions with direct call button\n• Pre-hire 1 additional technician for July–August demand spike\n\nProjected Q3 revenue uplift: $48k–$72k with these changes.";
+      }
+      if (/lead|cpl|cost per/.test(lower)) {
+        return "**Lead Performance — Erickson this period**\n\nTotal leads: 84 (+26% vs last period)\nCost per lead by channel:\n• Google LSA: $28 (best)\n• Google Search: $42\n• LinkedIn (commercial): $180\n• Facebook: $64 (paused — underperforming)\n\nAvg job value: $1,240 residential · $4,800 commercial\nHighest-value lead source: LinkedIn (commercial accounts, avg $4,800/job)\n\nRecommend restarting Facebook with a 'Free HVAC estimate' lead form — test against LSA CPL.";
+      }
+      return "Here's Erickson across connected channels for the trailing " + (state.dateRange || "30d") + " window:\n\nGoogle LSA is your top performer at 18% CTR and 12.4x ROAS. LinkedIn commercial pipeline is strong — 3 facility managers in active conversation. Post-service email hitting 58.4% open rate, above industry benchmark. Summer peak demand incoming — recommend increasing paid search budget before Memorial Day.\n\nAsk me to break down any channel, campaign, or season for deeper analysis.";
+    }
     if (/tiktok.*month|month.*tiktok/.test(lower)) {
       return "**TikTok: This Month vs Last Month**\n\nReach: 212,400 this month vs 147,500 last month (+44%)\nFollower growth: +1,240 this month vs +820 last month (+51%)\nEngagement rate: 6.2% vs 5.4% (+0.8pp)\nTop format: Hair Ritual Reel series driving outsized saves (2.4× account average)\n\nMomentum is accelerating — the Abhyanga content series is resonating strongly. Recommend doubling post frequency and testing a 60-second format this week.";
     }

@@ -13,6 +13,7 @@ const SEED = {
   // Brand presets — what the import flow can produce
   brandPresets: {
     mveda: {
+      id: "mveda",
       name: "MVEDA",
       url: "mveda.co",
       palette: {
@@ -45,6 +46,43 @@ const SEED = {
         "metaads", "pinads",                              // paid social
         "shopify", "klaviyo", "klaviyo_sms",              // commerce + email
         "ga4", "heygen", "runware",                       // analytics + creative AI
+      ],
+    },
+    erickson: {
+      id: "erickson",
+      name: "Erickson Refrigeration",
+      url: "ericksonhvac.com",
+      industry: "HVAC & Home Services",
+      palette: {
+        accent:    { l: 42, c: 0.18, h: 250 },
+        secondary: { l: 55, c: 0.20, h: 30  },
+        bg:        { l: 97, c: 0.005, h: 240 },
+        bgAlt:     { l: 93, c: 0.008, h: 240 },
+        ink:       { l: 18, c: 0.02,  h: 240 },
+      },
+      fonts: { display: "Inter", body: "Inter", mono: "JetBrains Mono" },
+      voice: "Reliable, expert, no-nonsense · 'Licensed, insured, and there when you need us.'",
+      values: [
+        "Trusted HVAC experts since 1989",
+        "Licensed, bonded & insured — always",
+        "Same-day emergency service",
+        "Transparent pricing, no surprises",
+      ],
+      claims: [
+        "NATE-certified technicians",
+        "24/7 emergency response",
+        "100% satisfaction guarantee",
+        "Free estimates on new installations",
+        "Financing options available",
+        "Serving Phoenix metro for 35+ years",
+      ],
+      prohibitedTopics: ["energy savings guarantees without testing", "competitor by name", "medical claims"],
+      recommendedConnectors: [
+        "googleads", "ga4", "gsc",          // paid + organic search — primary for services
+        "metaads", "liads",                  // FB lead gen + LinkedIn for commercial
+        "klaviyo", "klaviyo_sms",            // service reminders + seasonal campaigns
+        "fb", "li", "yt",                   // organic social (how-to, trust content)
+        "semrush", "hubspot",               // local SEO + CRM
       ],
     },
   },
@@ -178,6 +216,57 @@ const SEED = {
     mcp_shopify: { connected: false, status: "—",  note: "not connected",                     syncCount: "—" },
     mcp_klaviyo: { connected: false, status: "—",  note: "not connected",                     syncCount: "—" },
     mcp_custom:  { connected: false, status: "—",  note: "not connected",                     syncCount: "—" },
+  },
+
+  // Per-brand connector states — used when switching accounts
+  brandConnectorStates: {
+    mveda: null, // null = use default connectorState above
+    erickson: {
+      publer:      { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      ig:          { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      tt:          { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      fb:          { connected: true,  status: "ok", note: "synced 4m ago · Erickson HVAC",                        syncCount: "312 posts" },
+      li:          { connected: true,  status: "ok", note: "synced 12m ago · Erickson Refrigeration",              syncCount: "84 posts" },
+      yt:          { connected: true,  status: "ok", note: "synced 1h ago · @EricksonHVAC",                        syncCount: "22 videos" },
+      pn:          { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      x:           { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      threads:     { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      reddit:      { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      snap:        { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      bluesky:     { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      mastodon:    { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      telegram:    { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      klaviyo:     { connected: true,  status: "ok", note: "synced 5m ago",                                        syncCount: "2,840 contacts · 3 flows" },
+      mailchimp:   { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      klaviyo_sms: { connected: true,  status: "ok", note: "synced 5m ago",                                        syncCount: "1,240 opted in" },
+      attentive:   { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      googleads:   { connected: true,  status: "ok", note: "synced 2m ago",                                        syncCount: "5 campaigns active" },
+      msads:       { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      amazonads:   { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      metaads:     { connected: true,  status: "ok", note: "synced 8m ago",                                        syncCount: "3 campaigns active" },
+      ttads:       { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      liads:       { connected: true,  status: "ok", note: "synced 20m ago",                                       syncCount: "2 campaigns active" },
+      pinads:      { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      shopify:     { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      ga4:         { connected: true,  status: "ok", note: "synced live",                                          syncCount: "48 events tracked" },
+      amplitude:   { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      ahrefs:      { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      semrush:     { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      gsc:         { connected: true,  status: "ok", note: "synced 1h ago",                                        syncCount: "124 queries tracked" },
+      refersion:   { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      impact:      { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      growthbook:  { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      runware:     { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      heygen:      { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      luma:        { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      elevenlabs:  { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      runway:      { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      mcp_runware: { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      mcp_heygen:  { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      mcp_shopify: { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      mcp_klaviyo: { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      mcp_custom:  { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+    },
   },
 
   // ── Organic social post queue ────────────────────────────────────────────

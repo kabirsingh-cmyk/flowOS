@@ -593,4 +593,120 @@ function SearchStudio({ state, actions }) {
   );
 }
 
-Object.assign(window, { StudioHub, EmailStudio, SearchStudio });
+// ────────────────────────────── SETTINGS HUB ───────────────────────────────
+function SettingsHub({ state, actions, go }) {
+  const SECTIONS = [
+    {
+      id: "memory",
+      label: "Brand Memory",
+      icon: "shield",
+      color: "var(--accent)",
+      desc: "Brand voice, values, approved claims, prohibited topics, and tone modes. The source of truth for everything Flow generates.",
+      stats: [
+        { label: "Values", value: state?.brandValues?.length || 4 },
+        { label: "Approved claims", value: state?.approvedClaims?.length || 6 },
+        { label: "Prohibited topics", value: state?.prohibited?.length || 5 },
+      ],
+    },
+    {
+      id: "connections",
+      label: "Connections",
+      icon: "sliders",
+      color: "oklch(48% 0.18 260)",
+      desc: "Connect your channels — social platforms via Publer, email via Klaviyo, ad platforms, analytics, commerce, and creative AI tools.",
+      stats: [
+        { label: "Connected", value: Object.values(state?.connectors || {}).filter(c => c.connected).length },
+        { label: "Available", value: 30 },
+        { label: "Recommended", value: state?.brandPreset?.recommendedConnectors?.length || 0 },
+      ],
+    },
+    {
+      id: "autonomy",
+      label: "Autonomy Settings",
+      icon: "spark",
+      color: "oklch(62% 0.18 160)",
+      desc: "Set AI autonomy levels per channel. Control confidence thresholds, daily caps, approval queues, and SLA targets.",
+      stats: [
+        { label: "Mode", value: state?.autonomyMode || "assisted" },
+        { label: "Channels configured", value: state?.channelRules?.length || 14 },
+        { label: "Confidence threshold", value: `${state?.thresholds?.confidence || 85}%` },
+      ],
+    },
+  ];
+
+  const brand = state?.brandPreset;
+  const brandId = state?.activeBrandId || "mveda";
+
+  return (
+    <div className="anim-fade" style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      {/* Header */}
+      <div style={{ padding: "24px 32px 20px", borderBottom: "1px solid var(--rule)", background: "var(--paper)", flexShrink: 0 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+          <div>
+            <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Account</div>
+            <h1 style={{ fontSize: 28, fontWeight: 500, letterSpacing: "-0.025em", margin: "4px 0 0" }}>Settings</h1>
+            <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>Brand · Connections · Autonomy</div>
+          </div>
+          {brand && (
+            <div style={{ padding: "10px 16px", borderRadius: 7, border: "1px solid var(--rule)", background: "var(--paper-2)", textAlign: "right" }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{brand.name}</div>
+              <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>{brand.url || brand.industry || ""}</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflow: "auto", padding: "28px 32px", display: "flex", flexDirection: "column", gap: 24 }}>
+        {/* Settings cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+          {SECTIONS.map(s => (
+            <div key={s.id} style={{ padding: 22, borderRadius: 8, background: "var(--paper)", border: "1px solid var(--rule)", borderTop: `3px solid ${s.color}`, display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Icon name={s.icon} size={16}/>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>{s.label}</div>
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.55 }}>{s.desc}</div>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                {s.stats.map(st => (
+                  <div key={st.label}>
+                    <div className="mono" style={{ fontSize: 9.5, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>{st.label}</div>
+                    <div style={{ fontSize: 18, fontWeight: 600, letterSpacing: "-0.02em" }}>{st.value}</div>
+                  </div>
+                ))}
+              </div>
+              <Btn size="sm" variant="primary" onClick={() => go(s.id)}>Open {s.label} →</Btn>
+            </div>
+          ))}
+        </div>
+
+        {/* Quick brand overview */}
+        {brand && (
+          <div style={{ padding: 20, borderRadius: 8, background: "var(--paper)", border: "1px solid var(--rule)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <span style={{ fontSize: 14, fontWeight: 600 }}>Brand overview — {brand.name}</span>
+              <Btn size="sm" variant="ghost" onClick={() => go("memory")}>Edit brand →</Btn>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              <div>
+                <div className="mono" style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Voice &amp; tone</div>
+                <div style={{ fontSize: 13, fontStyle: "italic", lineHeight: 1.5, color: "var(--ink-2)" }}>"{brand.voice}"</div>
+              </div>
+              <div>
+                <div className="mono" style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Core values</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {(brand.values || []).slice(0, 3).map((v, i) => (
+                    <div key={i} style={{ fontSize: 12.5, color: "var(--ink-2)", display: "flex", alignItems: "baseline", gap: 6 }}>
+                      <span style={{ color: "var(--accent)", fontWeight: 700, fontSize: 10 }}>✦</span> {v}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { StudioHub, EmailStudio, SearchStudio, SettingsHub });

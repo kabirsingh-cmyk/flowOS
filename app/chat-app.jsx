@@ -303,20 +303,55 @@ function ChannelRow({ channel, active, onSelect }) {
 }
 
 // ─────────────── NAV RAIL ───────────────
-function NavRail({ active, onOpen }) {
+function NavRail({ active, onOpen, state, actions }) {
   const items = [
-    { icon: "grid",     label: "Command",  t: "command"     },
-    { icon: "calendar", label: "Planner",  t: "planner"     },
-    { icon: "spark",    label: "Studio",   t: "studio"      },
-    { icon: "chart",    label: "Insights", t: "insights"    },
-    { icon: "inbox",    label: "Inbox",    t: "inbox"       },
-    { icon: "shield",   label: "Brand",    t: "memory"      },
-    { icon: "sliders",  label: "Connect",  t: "connections" },
-    { icon: "send",     label: "Autonomy", t: "autonomy"    },
+    { icon: "grid",     label: "Command",  t: "command"   },
+    { icon: "spark",    label: "Studio",   t: "studio"    },
+    { icon: "calendar", label: "Planner",  t: "planner"   },
+    { icon: "chart",    label: "Insights", t: "insights"  },
+    { icon: "inbox",    label: "Inbox",    t: "inbox"     },
+    { icon: "sliders",  label: "Settings", t: "settings"  },
   ];
+
+  const [acctOpen, setAcctOpen] = React.useState(false);
+  const ACCOUNTS = [
+    { id: "mveda",    name: "MVEDA",                  sub: "DTC Skincare",       initial: "M", color: "oklch(58% 0.13 60)"  },
+    { id: "erickson", name: "Erickson Refrigeration",  sub: "HVAC & Services",    initial: "E", color: "oklch(42% 0.18 250)" },
+  ];
+  const activeBrandId = state?.activeBrandId || "mveda";
+  const current = ACCOUNTS.find(a => a.id === activeBrandId) || ACCOUNTS[0];
+
   return (
     <nav style={{ width: 56, background: "var(--paper)", borderRight: "1px solid var(--rule)", display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 0", minHeight: 0 }}>
-      <div style={{ width: 28, height: 28, borderRadius: 6, background: "var(--ink)", color: "var(--paper)", display: "grid", placeItems: "center", fontFamily: "var(--font-serif)", fontSize: 17, marginBottom: 14, flexShrink: 0 }}>F</div>
+      {/* Account switcher */}
+      <div style={{ width: "100%", padding: "0 6px 10px", position: "relative" }}>
+        <button onClick={() => setAcctOpen(o => !o)} style={{
+          width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+          background: "none", border: "none", cursor: "pointer", padding: "4px 0",
+        }}>
+          <div style={{ width: 28, height: 28, borderRadius: 6, background: current.color, color: "#fff", display: "grid", placeItems: "center", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{current.initial}</div>
+          <span style={{ fontSize: 7.5, color: "var(--muted)", letterSpacing: "0.04em", maxWidth: 44, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "center" }}>{current.name}</span>
+        </button>
+        {acctOpen && (
+          <>
+            <div onClick={() => setAcctOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 199 }}/>
+            <div style={{ position: "fixed", left: 58, top: 10, zIndex: 200, width: 220, background: "var(--paper)", border: "1px solid var(--rule-strong)", borderRadius: 8, boxShadow: "0 8px 32px -8px oklch(20% 0.02 80 / 0.25)", overflow: "hidden" }}>
+              <div className="mono" style={{ fontSize: 9.5, color: "var(--muted)", padding: "10px 12px 6px", textTransform: "uppercase", letterSpacing: "0.1em" }}>Switch account</div>
+              {ACCOUNTS.map(a => (
+                <button key={a.id} onClick={() => { actions?.switchBrand(a.id); setAcctOpen(false); }}
+                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", border: "none", background: a.id === activeBrandId ? "var(--paper-2)" : "transparent", cursor: "pointer", fontFamily: "inherit", textAlign: "left", borderBottom: "1px solid var(--rule)" }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 6, background: a.color, color: "#fff", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{a.initial}</div>
+                  <div>
+                    <div style={{ fontSize: 12.5, fontWeight: 600 }}>{a.name}</div>
+                    <div style={{ fontSize: 10.5, color: "var(--muted)" }}>{a.sub}</div>
+                  </div>
+                  {a.id === activeBrandId && <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--accent)", fontFamily: "var(--font-mono)" }}>active</span>}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", width: "100%", overflow: "auto" }}>
         {items.map(({ icon, label, t }) => {
           const on = active === t;
@@ -390,7 +425,7 @@ function Canvas({ canvas, onClose, state, actions, go }) {
     sms: "SMS", seo: "SEO Studio", affiliate: "Affiliate & referral",
     retention: "Retention", cx: "CX signals", seasonal: "Seasonal mode",
     abtests: "A/B tests", team: "Team & guests", discounts: "Discount ops",
-    mobile: "Mobile preview",
+    mobile: "Mobile preview", settings: "Settings",
   };
 
   return (
@@ -421,6 +456,7 @@ function CanvasBody({ canvas, state, actions, go }) {
       sms: SmsCenter, seo: SeoStudio, affiliate: AffiliateProgram,
       retention: RetentionDashboard, cx: CxSignals, seasonal: SeasonalMode,
       abtests: AbTestLab, team: TeamSeats, discounts: DiscountOps, mobile: MobileShell,
+      settings: SettingsHub,
     }[canvas.target];
     if (!Comp) return <div style={{ padding: 40, color: "var(--muted)" }}>Unknown workspace</div>;
     return <Comp state={state} actions={actions} go={go} payload={{}}/>;
@@ -685,7 +721,7 @@ function ChatOSAuthed({ auth, onLogout }) {
     <>
       <style>{ANIM_STYLE}</style>
       <div style={{ display: "grid", gridTemplateColumns: chat.canvas ? "56px 1fr 44%" : "56px 1fr", height: "100vh", background: "var(--paper-2)", transition: "grid-template-columns 0.18s ease" }} data-screen-label="FlowOS">
-        <NavRail active={chat.canvas?.target} onOpen={openWorkspace}/>
+        <NavRail active={chat.canvas?.target} onOpen={openWorkspace} state={state} actions={actions}/>
 
         <div style={{ display: "flex", flexDirection: "column", minHeight: 0, borderRight: "1px solid var(--rule)", background: "var(--paper)" }}>
           <ChatHeader channels={CHANNELS} activeId={channel.id} onSelect={id => dispatch({ type: "SET_CHANNEL", id })} brandImported={state.brandImported} brandPreset={state.brandPreset} auth={auth} onLogout={onLogout}/>

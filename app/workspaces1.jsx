@@ -90,6 +90,24 @@ function AiMessageText({ text }) {
 function CommandCenter({ state, actions, go }) {
   const { kpis, today, user } = SEED;
 
+  const brandId = state?.activeBrandId || state?.brandPreset?.id || "mveda";
+  const isErickson = brandId === "erickson";
+  const brandName = isErickson ? "Erickson Refrigeration" : "MVEDA";
+
+  const KPIS = isErickson ? [
+    { label: "Leads this month",  value: "84",     delta: "+26%", tone: "ok"   },
+    { label: "Avg job value",     value: "$1,240",  delta: "+8%",  tone: "ok"   },
+    { label: "Google ROAS",       value: "9.2x",    delta: "+0.8x",tone: "ok"   },
+    { label: "Pipeline value",    value: "$184k",   delta: "+18%", tone: "ok"   },
+    { label: "Jobs booked (mtd)", value: "67",      delta: "+22%", tone: "ok"   },
+  ] : [
+    { label: "Orders (30d)",      value: "284",    delta: "+18%", tone: "ok"   },
+    { label: "Revenue",           value: "$42.4k", delta: "+22%", tone: "ok"   },
+    { label: "Blended ROAS",      value: "6.8x",   delta: "-0.4x",tone: "warn" },
+    { label: "Subscribers",       value: "24.1k",  delta: "+412", tone: "ok"   },
+    { label: "Avg open rate",     value: "40.2%",  delta: "+3.2pp",tone: "ok"  },
+  ];
+
   // ── Feed state ──
   const [feedTab, setFeedTab] = useState1("all");
   const [activeItem, setActiveItem] = useState1(null);
@@ -192,13 +210,7 @@ function CommandCenter({ state, actions, go }) {
   };
 
   // ── KPI strip (5 stats) ──
-  const kpiStrip = [
-    { label: "Acceptance", value: kpis.acceptance.v, unit: kpis.acceptance.unit, delta: kpis.acceptance.d },
-    { label: "Shipped", value: kpis.shipped.v, unit: kpis.shipped.unit, delta: kpis.shipped.d },
-    { label: "Compliance", value: kpis.compliance.v, unit: kpis.compliance.unit, delta: kpis.compliance.d },
-    { label: "Avg approval", value: kpis.approval.v, unit: ` ${kpis.approval.unit}`, delta: kpis.approval.d },
-    { label: "Pending", value: state.approvals.length, unit: "", delta: "" },
-  ];
+  const kpiStrip = KPIS.map(k => ({ label: k.label, value: k.value, unit: "", delta: k.delta }));
 
   // ── Card border color by type ──
   const borderByType = { approval: "var(--danger)", alert: "var(--warn)", post: "var(--accent)", activity: "var(--rule-strong)" };
@@ -415,7 +427,7 @@ function CommandCenter({ state, actions, go }) {
               Good morning, {user.name.split(" ")[0]}.
             </span>
             <span style={{ color: "var(--muted)", marginLeft: 12, fontSize: 13 }}>
-              {state.approvals.length} item{state.approvals.length !== 1 ? "s" : ""} need you · weekly plan ready
+              {brandName} · {state.approvals.length} item{state.approvals.length !== 1 ? "s" : ""} need you · weekly plan ready
             </span>
           </div>
           <Btn size="sm" onClick={() => go("planner", { openNew: true })}><Icon name="plus" size={12}/> New campaign</Btn>
