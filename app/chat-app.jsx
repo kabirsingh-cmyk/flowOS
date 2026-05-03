@@ -307,12 +307,12 @@ function NavRail({ active, onOpen }) {
   const items = [
     { icon: "grid",     label: "Command",  t: "command"     },
     { icon: "calendar", label: "Planner",  t: "planner"     },
-    { icon: "send",     label: "Social",   t: "organic"     },
+    { icon: "spark",    label: "Studio",   t: "studio"      },
     { icon: "chart",    label: "Insights", t: "insights"    },
     { icon: "inbox",    label: "Inbox",    t: "inbox"       },
     { icon: "shield",   label: "Brand",    t: "memory"      },
     { icon: "sliders",  label: "Connect",  t: "connections" },
-    { icon: "spark",    label: "Autonomy", t: "autonomy"    },
+    { icon: "send",     label: "Autonomy", t: "autonomy"    },
   ];
   return (
     <nav style={{ width: 56, background: "var(--paper)", borderRight: "1px solid var(--rule)", display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 0", minHeight: 0 }}>
@@ -384,11 +384,13 @@ function Canvas({ canvas, onClose, state, actions, go }) {
   const workspaceTitles = {
     planner: "Campaign Planner", inbox: "Inbox & Escalation", memory: "Brand Memory",
     insights: "Insights Center", connections: "Connections", autonomy: "Autonomy Settings",
-    publish: "Publishing Queue", studio: "Content Studio", command: "Command Center",
+    publish: "Publishing Queue", command: "Command Center",
+    studio: "Studio", emailstudio: "Email Studio", searchstudio: "Search Studio",
+    organic: "Social Studio",
     sms: "SMS", seo: "SEO Studio", affiliate: "Affiliate & referral",
     retention: "Retention", cx: "CX signals", seasonal: "Seasonal mode",
     abtests: "A/B tests", team: "Team & guests", discounts: "Discount ops",
-    mobile: "Mobile preview", organic: "Social Studio",
+    mobile: "Mobile preview",
   };
 
   return (
@@ -402,25 +404,26 @@ function Canvas({ canvas, onClose, state, actions, go }) {
         <Btn size="sm" variant="ghost" onClick={onClose}><Icon name="x" size={11}/> Close</Btn>
       </div>
       <div style={{ flex: 1, overflow: "auto" }}>
-        <CanvasBody canvas={canvas} state={state} actions={actions}/>
+        <CanvasBody canvas={canvas} state={state} actions={actions} go={go}/>
       </div>
     </div>
   );
 }
 
-function CanvasBody({ canvas, state, actions }) {
+function CanvasBody({ canvas, state, actions, go }) {
   if (canvas.kind === "workspace") {
     const Comp = {
       planner: CampaignPlanner, inbox: InboxEscalation, memory: BrandMemory,
       insights: InsightsCenter, connections: Connections, autonomy: AutonomySettings,
-      publish: PublishingQueue, studio: ContentStudio, command: CommandCenter,
+      publish: PublishingQueue, command: CommandCenter,
+      studio: StudioHub, emailstudio: EmailStudio, searchstudio: SearchStudio,
+      organic: OrganicSocialStudio,
       sms: SmsCenter, seo: SeoStudio, affiliate: AffiliateProgram,
       retention: RetentionDashboard, cx: CxSignals, seasonal: SeasonalMode,
       abtests: AbTestLab, team: TeamSeats, discounts: DiscountOps, mobile: MobileShell,
-      organic: OrganicSocialStudio,
     }[canvas.target];
     if (!Comp) return <div style={{ padding: 40, color: "var(--muted)" }}>Unknown workspace</div>;
-    return <Comp state={state} actions={actions} go={() => {}} payload={{}}/>;
+    return <Comp state={state} actions={actions} go={go} payload={{}}/>;
   }
   if (canvas.kind === "calendar") {
     return <CampaignPlanner state={state} actions={actions} go={() => {}} payload={{}}/>;
