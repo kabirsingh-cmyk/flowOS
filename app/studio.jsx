@@ -72,24 +72,24 @@ function StudioHub({ state, actions, go }) {
   const STUDIOS_ERICKSON = [
     {
       id: "searchstudio", label: "Search Studio", color: "oklch(62% 0.18 160)",
-      desc: "Google LSA, search campaigns & local service ads — your #1 lead channel",
-      stat1Label: "Active campaigns", stat1: "5",
-      stat2Label: "Monthly budget", stat2: "$6.2k",
-      highlight: "LSA avg cost/lead $38 → optimise",
+      desc: "Google Search campaigns — commercial refrigeration, walk-in cooler & HVAC queries",
+      stat1Label: "Active campaigns", stat1: "4",
+      stat2Label: "Monthly budget", stat2: "$4.8k",
+      highlight: "Commercial refrig. repair · 9.4% CTR",
     },
     {
       id: "emailstudio", label: "Email Studio", color: "oklch(48% 0.18 260)",
-      desc: "Service reminders, maintenance plan renewals & seasonal campaigns",
-      stat1Label: "Draft campaigns", stat1: "3",
-      stat2Label: "List size", stat2: "2,840",
-      highlight: "Maintenance reminder · 44% open rate",
+      desc: "Service contract renewals, seasonal PM reminders & post-service follow-up flows",
+      stat1Label: "Draft campaigns", stat1: "2",
+      stat2Label: "Active contacts", stat2: "1,840",
+      highlight: "Post-service flow · 54% open rate",
     },
     {
       id: "organic", label: "Social Studio", color: "var(--accent)",
-      desc: "Facebook before/after, YouTube how-to & LinkedIn commercial trust content",
+      desc: "LinkedIn trust content, Facebook awareness & YouTube how-to for commercial clients",
       stat1Label: "Active drafts", stat1: "3",
-      stat2Label: "Scheduled this week", stat2: "5",
-      highlight: "Facebook post reach +28% this month",
+      stat2Label: "Scheduled this week", stat2: "4",
+      highlight: "LinkedIn reach +28% this month",
     },
   ];
 
@@ -102,9 +102,9 @@ function StudioHub({ state, actions, go }) {
   ];
 
   const RECS_ERICKSON = [
-    { studio: "Search Studio",  title: "LSA daily budget too low for summer peak", body: "Phoenix AC emergency searches up 34% — your $200/day cap is limiting reach. Flow estimates 18 leads/wk uncaptured.", cta: "Adjust budget",     t: "searchstudio", urgent: true },
-    { studio: "Email Studio",   title: "Pre-season AC tune-up — send by May 15",   body: "2,840 contacts, 380 past AC customers due for tune-up. Draft ready with $30 off spring service offer.",              cta: "Review draft",      t: "emailstudio",  urgent: true },
-    { studio: "Social Studio",  title: "YouTube how-to — AC pre-summer checklist", body: "7-point DIY inspection video scores high on 'HVAC maintenance' searches. Draft script + shot list ready.",          cta: "Open Social Studio", t: "organic" },
+    { studio: "Search Studio",  title: "Expand to Oregon & Idaho search terms",       body: "You serve WA, OR & ID but paid search only covers Seattle. 'Commercial refrigeration repair Portland' and 'walk-in cooler service Boise' have 0 coverage — low competition, high intent.", cta: "Create campaigns",   t: "searchstudio", urgent: true },
+    { studio: "Email Studio",   title: "Summer cooling prep — send by May 12",        body: "1,840 contacts, 340 accounts haven't had a PM visit in 6+ months. Draft ready with free pre-summer inspection offer for service contract holders.",                                          cta: "Review draft",       t: "emailstudio",  urgent: true },
+    { studio: "Social Studio",  title: "LinkedIn case study — recognisable client",   body: "Museum of Pop Culture or O'Brien Auto Group as a case study would perform well with facility managers. Commercial social proof is your biggest trust signal for new B2B accounts.",          cta: "Open Social Studio", t: "organic" },
   ];
 
   const RECS = isErickson ? RECS_ERICKSON : RECS_MVEDA;
@@ -119,12 +119,12 @@ function StudioHub({ state, actions, go }) {
   ];
 
   const ALL_DRAFTS_ERICKSON = [
-    { title: "Summer AC prep — emergency search",    studio: "Search", platform: "Google Ads · LSA",      date: "Awaiting review",    t: "searchstudio" },
-    { title: "Erickson brand keywords",              studio: "Search", platform: "Google Ads",             date: "Ready to activate",  t: "searchstudio" },
-    { title: "Pre-season AC tune-up · spring offer", studio: "Email",  platform: "Klaviyo campaign",       date: "Ready to send",      t: "emailstudio"  },
-    { title: "Maintenance plan renewal · past cust", studio: "Email",  platform: "Klaviyo flow",           date: "Schedule by May 15", t: "emailstudio"  },
-    { title: "Commercial accounts · LinkedIn trust", studio: "Social", platform: "LinkedIn",               date: "Draft ready",        t: "organic"      },
-    { title: "AC maintenance checklist · YouTube",   studio: "Social", platform: "YouTube",                date: "Script ready",       t: "organic"      },
+    { title: "Portland & Boise — commercial refrig. search",  studio: "Search", platform: "Google Ads · OR + ID",   date: "Awaiting review",    t: "searchstudio" },
+    { title: "Erickson brand keywords · Seattle",             studio: "Search", platform: "Google Ads",             date: "Active",             t: "searchstudio" },
+    { title: "Summer cooling prep · free inspection offer",   studio: "Email",  platform: "Klaviyo campaign",       date: "Send by May 12",     t: "emailstudio"  },
+    { title: "Lapsed accounts · PM contract re-engagement",   studio: "Email",  platform: "Klaviyo campaign",       date: "Ready to review",    t: "emailstudio"  },
+    { title: "Client case study · facility managers",         studio: "Social", platform: "LinkedIn",               date: "Draft ready",        t: "organic"      },
+    { title: "Walk-in cooler compressor warning signs",       studio: "Social", platform: "YouTube",                date: "Script ready",       t: "organic"      },
   ];
 
   const ALL_DRAFTS = isErickson ? ALL_DRAFTS_ERICKSON : ALL_DRAFTS_MVEDA;
@@ -140,7 +140,7 @@ function StudioHub({ state, actions, go }) {
             <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Creative ops</div>
             <h1 style={{ fontSize: 28, fontWeight: 500, letterSpacing: "-0.025em", margin: "4px 0 0" }}>Studio</h1>
             <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>
-              {isErickson ? "Search · Email · Social — campaign builders for Erickson Refrigeration" : "Social · Email · Search — all your campaign builders in one place"}
+              {isErickson ? "Search · Email · Social — campaign builders for Erickson Commercial Refrigeration" : "Social · Email · Search — all your campaign builders in one place"}
             </div>
           </div>
           <Btn variant="primary" onClick={() => setCreateOpen(true)}><Icon name="spark" size={13}/> Create campaign</Btn>
@@ -236,18 +236,33 @@ function StudioHub({ state, actions, go }) {
 
 // ───────────────────────────── EMAIL STUDIO ─────────────────────────────────
 function EmailStudio({ state, actions }) {
+  const isErickson = state?.activeBrandId === "erickson";
+
   const [tab, setTab] = useStateS("overview");
   const [activeDraft, setActiveDraft] = useStateS(null);
   const [createOpen, setCreateOpen] = useStateS(false);
-  const [form, setForm] = useStateS({ name: "", type: "campaign", subject: "", previewText: "", segment: "All subscribers", sendDate: "", body: "" });
+  const defaultSegment = isErickson ? "All contacts" : "All subscribers";
+  const [form, setForm] = useStateS({ name: "", type: "campaign", subject: "", previewText: "", segment: defaultSegment, sendDate: "", body: "" });
 
-  const RECS = [
+  const RECS = isErickson ? [
+    { title: "Summer cooling prep — send by May 12",    body: "1,840 contacts, 340 accounts 6+ months without a PM visit. Draft ready with free pre-summer inspection offer.",              cta: "Review draft",  draftId: "e-sc", urgent: true },
+    { title: "Lapsed accounts — PM contract re-engage", body: "340 accounts with $0 revenue in 18 months. Avg contract value $8,400. Free inspection offer projected 14–18% conversion.", cta: "Review draft",  draftId: "e-la", urgent: true },
+    { title: "Post-service flow — A/B test subject",    body: "54.2% open rate is well above B2B benchmark. Test a more direct subject line to push past 58% and increase contract upsells.", cta: "Create variant", draftId: null   },
+  ] : [
     { title: "Win-back · 847 lapsed customers",      body: "90d+ lapse, avg LTV $240. Draft ready with personalised 20% off comeback offer.",                 cta: "Review draft",    draftId: "d-wb", urgent: true },
     { title: "Welcome flow — A/B test subject line",  body: "58.2% open rate is strong. A/B test a curiosity subject to push past 62% industry benchmark.",    cta: "Create variant",  draftId: null    },
     { title: "Mother's Day — schedule by May 9",      body: "4,200 gifter segment, copy ready. 8 days to deadline — optimal delivery 5 days before holiday.",  cta: "Schedule now",    draftId: "d-md", urgent: true },
   ];
 
-  const CAMPAIGNS = [
+  const CAMPAIGNS_ERICKSON = [
+    { id: "e-sc",  name: "Summer cooling prep · free inspection",  type: "campaign", segment: "All contacts",            sends: 1840, openRate: null, revenue: null,  status: "draft",  date: "Send by May 12",    subject: "Before summer hits — is your refrigeration ready?",            previewText: "Free pre-season inspection for service contract holders.", body: "Hi {{first_name}},\n\nSummer is 6 weeks out — the busiest season for commercial refrigeration failures.\n\nAs an Erickson service contract holder, you qualify for a free pre-season inspection before June 1st.\n\nBook your slot before they fill up →\n\nErickson Commercial Refrigeration\n(206) 789-4722 · Available 24/7" },
+    { id: "e-la",  name: "Lapsed accounts · PM contract offer",   type: "campaign", segment: "Lapsed accounts (18mo+)",  sends: 340,  openRate: null, revenue: null,  status: "draft",  date: "Ready to review",   subject: "It's been a while — let's make sure you're covered",           previewText: "Free inspection · no obligation.",                         body: "Hi {{first_name}},\n\nWe haven't seen you in a while, and with summer peak season approaching, we wanted to reach out.\n\nWe're offering a complimentary inspection for past Erickson clients — no commitment, no obligation.\n\nIf anything needs attention, we'll walk you through it with transparent pricing.\n\nSchedule your free inspection →\n\nErickson Commercial Refrigeration" },
+    { id: "e-ps",  name: "Post-service follow-up",                 type: "flow",     segment: "Recent service visits",   sends: 980,  openRate: 54.2, revenue: 24500, status: "live",   date: "Ongoing",           subject: "How did we do, {{first_name}}?",                               previewText: "Your service summary is inside.",                          body: "" },
+    { id: "e-cr",  name: "Service contract renewal",               type: "flow",     segment: "Contracts expiring 60d",  sends: 340,  openRate: 44.8, revenue: 38400, status: "live",   date: "Ongoing",           subject: "Your service contract renews in 60 days — let's talk",        previewText: "Early renewal locks in current pricing.",                  body: "" },
+    { id: "e-sp",  name: "Spring PM reminder",                     type: "campaign", segment: "All contacts",            sends: 1840, openRate: 38.6, revenue: 32000, status: "sent",   date: "Sent Mar 28",       subject: "Spring is here — is your walk-in cooler ready?",              previewText: "",                                                         body: "" },
+  ];
+
+  const CAMPAIGNS_MVEDA = [
     { id: "d-wb",  name: "Win-back · 90d lapsed",          type: "flow",     segment: "Lapsed 90d+",     sends: 847,   openRate: null, revenue: null,  status: "draft",     date: "Ready to activate",  subject: "We miss you, {{first_name}} — something special inside",          previewText: "Your ritual is waiting.",        body: "Hi {{first_name}},\n\nIt's been a while. We miss you.\n\nAs a thank-you for being part of the MVEDA community, here's 20% off your next order.\n\nCode: COMEBACK20 · valid 7 days.\n\nWith love,\nMVEDA" },
     { id: "d-md",  name: "Mother's Day · gifters",          type: "campaign", segment: "Gifters",         sends: 4200,  openRate: null, revenue: null,  status: "draft",     date: "Schedule by May 9",  subject: "A ritual for the woman who gave you everything",                  previewText: "Gift her the MVEDA collection.", body: "This Mother's Day, give the gift of ritual.\n\nOur Saffron + Hair Oil gift set — beautifully wrapped, delivered by May 10th when you order today.\n\nShop the gift collection →\n\nWith love,\nMVEDA" },
     { id: "d-vip", name: "VIP early access · Hair Ritual",  type: "campaign", segment: "VIP (2× buyers)", sends: 1840,  openRate: null, revenue: null,  status: "draft",     date: "Ready to schedule",  subject: "Before anyone else — your exclusive first look",                  previewText: "VIP access starts tomorrow.",    body: "Hi {{first_name}},\n\nAs one of our most loyal customers, you get first access to the new Hair Ritual collection — 24 hours before it goes public.\n\nShop your early access →\n\nMVEDA" },
@@ -257,7 +272,11 @@ function EmailStudio({ state, actions }) {
     { id: "s-ri",  name: "Ritual subscription nudge",       type: "campaign", segment: "1× buyers",       sends: 18400, openRate: 36.4, revenue: 8240,  status: "sent",      date: "Sent Apr 6",         subject: "Make your ritual a habit, {{first_name}}",                       previewText: "Subscribe & save 15%.",          body: "" },
   ];
 
-  const SEGMENTS = ["All subscribers", "VIP (2× buyers)", "Lapsed 90d+", "New (30d)", "High engagement", "Gifters", "Browse abandoners", "1× buyers"];
+  const CAMPAIGNS = isErickson ? CAMPAIGNS_ERICKSON : CAMPAIGNS_MVEDA;
+
+  const SEGMENTS = isErickson
+    ? ["All contacts", "Service contract holders", "Lapsed accounts (18mo+)", "Contracts expiring 60d", "Restaurant clients", "Grocery & retail", "Commercial kitchens", "New accounts (90d)"]
+    : ["All subscribers", "VIP (2× buyers)", "Lapsed 90d+", "New (30d)", "High engagement", "Gifters", "Browse abandoners", "1× buyers"];
 
   const filtered = tab === "campaigns" ? CAMPAIGNS.filter(c => c.type === "campaign")
                  : tab === "flows"     ? CAMPAIGNS.filter(c => c.type === "flow")
@@ -291,10 +310,17 @@ function EmailStudio({ state, actions }) {
             <>
               {/* KPIs */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--gap)" }}>
-                <Kpi label="Avg open rate" value="40.2%" delta={3.2} unit="pp" sparkline={[0.5,0.55,0.6,0.58,0.62,0.65,0.68,0.7,0.72,0.75,0.8]}/>
-                <Kpi label="Avg CTR" value="7.3%" delta={1.1} unit="pp" sparkline={[0.4,0.45,0.5,0.55,0.58,0.6,0.62,0.65,0.68,0.7,0.75]}/>
-                <Kpi label="Email revenue" value="$59.2k" delta={14} unit="%" sparkline={[0.3,0.4,0.5,0.55,0.6,0.65,0.7,0.72,0.76,0.8,0.85]}/>
-                <Kpi label="Subscribers" value="24,118" delta={412} unit="" sparkline={[0.5,0.55,0.6,0.58,0.62,0.65,0.68,0.7,0.72,0.75,0.8]}/>
+                {isErickson ? <>
+                  <Kpi label="Avg open rate"    value="44.8%" delta={4.2}  unit="pp" sparkline={[0.4,0.45,0.5,0.55,0.58,0.62,0.68,0.72,0.75,0.8,0.85]}/>
+                  <Kpi label="Avg CTR"          value="16.3%" delta={2.4}  unit="pp" sparkline={[0.4,0.45,0.5,0.55,0.58,0.6,0.62,0.65,0.68,0.7,0.75]}/>
+                  <Kpi label="Email revenue"    value="$94.9k" delta={18}  unit="%" sparkline={[0.3,0.4,0.5,0.55,0.6,0.65,0.7,0.72,0.76,0.8,0.85]}/>
+                  <Kpi label="Active contacts"  value="1,840"  delta={84}  unit="" sparkline={[0.5,0.55,0.6,0.58,0.62,0.65,0.68,0.7,0.72,0.75,0.8]}/>
+                </> : <>
+                  <Kpi label="Avg open rate" value="40.2%" delta={3.2} unit="pp" sparkline={[0.5,0.55,0.6,0.58,0.62,0.65,0.68,0.7,0.72,0.75,0.8]}/>
+                  <Kpi label="Avg CTR" value="7.3%" delta={1.1} unit="pp" sparkline={[0.4,0.45,0.5,0.55,0.58,0.6,0.62,0.65,0.68,0.7,0.75]}/>
+                  <Kpi label="Email revenue" value="$59.2k" delta={14} unit="%" sparkline={[0.3,0.4,0.5,0.55,0.6,0.65,0.7,0.72,0.76,0.8,0.85]}/>
+                  <Kpi label="Subscribers" value="24,118" delta={412} unit="" sparkline={[0.5,0.55,0.6,0.58,0.62,0.65,0.68,0.7,0.72,0.75,0.8]}/>
+                </>}
               </div>
 
               {/* Flow recommendations */}
@@ -414,7 +440,7 @@ function EmailStudio({ state, actions }) {
               </FormRow>
             </div>
             <FormRow label="Subject line">
-              <Input placeholder="e.g. Your ritual starts today, {{first_name}}" value={form.subject} onChange={e => setForm(p => ({...p, subject: e.target.value}))}/>
+              <Input placeholder={isErickson ? "e.g. Before summer hits — is your refrigeration ready?" : "e.g. Your ritual starts today, {{first_name}}"} value={form.subject} onChange={e => setForm(p => ({...p, subject: e.target.value}))}/>
             </FormRow>
             <FormRow label="Preview text">
               <Input placeholder="Short preview shown in inbox before email is opened" value={form.previewText} onChange={e => setForm(p => ({...p, previewText: e.target.value}))}/>
@@ -451,23 +477,39 @@ function EmailStudio({ state, actions }) {
 
 // ───────────────────────────── SEARCH STUDIO ────────────────────────────────
 function SearchStudio({ state, actions }) {
+  const isErickson = state?.activeBrandId === "erickson";
+
   const [activeCampaign, setActiveCampaign] = useStateS(null);
   const [createOpen, setCreateOpen] = useStateS(false);
   const [form, setForm] = useStateS({ name: "", type: "search", keywords: "", headline1: "", headline2: "", headline3: "", desc1: "", budget: "", bidding: "target-roas" });
 
-  const RECS = [
+  const RECS = isErickson ? [
+    { title: "Expand to Oregon — zero coverage gap",        body: "'Commercial refrigeration repair Portland' and 'walk-in cooler service OR' — high intent, low competition, you serve the area but have $0 spend.", cta: "Create campaign", urgent: true },
+    { title: "Idaho search terms — Boise opportunity",      body: "'Commercial HVAC repair Boise' and 'walk-in cooler service Idaho' — you're licensed to serve ID. No competitor owns this yet.",                    cta: "Create campaign"  },
+    { title: "Increase Seattle budget — summer demand",     body: "Commercial cooling searches up 28% MoM. Current $4,300/mo budget is capping impressions. Flow estimates 22 leads/mo uncaptured at current spend.", cta: "Adjust budget",   urgent: true },
+  ] : [
     { title: "Brand keyword gap — 'MVEDA hair oil'",   body: "720 mo/searches, $0.40 CPC, low competition. No active search campaign capturing this brand intent.",      cta: "Create campaign" },
     { title: "Neem Cleanser — expand budget",           body: "4.2% CTR, 8.0x ROAS on $540 spend. Increase from $600 → $900/mo budget cap for ~40% more attributed revenue.", cta: "Adjust budget"   },
     { title: "Competitor conquesting — Aesop scalp",   body: "'Aesop scalp oil' gets 720 mo/searches at $1.20 CPC. MVEDA has a comparable product with stronger reviews.", cta: "Create campaign" },
   ];
 
-  const CAMPAIGNS = [
+  const CAMPAIGNS_ERICKSON = [
+    { id: "s1", name: "Commercial refrig. repair · Seattle",  type: "Search", budget: 2800, spend: 2540, revenue: 22400, roas: 8.8,  ctr: 9.4, status: "active", keywords: "commercial refrigeration repair, commercial fridge repair Seattle, walk-in cooler repair WA" },
+    { id: "s2", name: "Walk-in cooler service · WA",          type: "Search", budget: 1400, spend: 1240, revenue: 10800, roas: 8.7,  ctr: 7.8, status: "active", keywords: "walk-in cooler service, walk-in freezer repair, commercial freezer repair" },
+    { id: "s3", name: "Erickson brand keywords",              type: "Search", budget: 600,  spend: 520,  revenue: 4160,  roas: 8.0,  ctr: 5.2, status: "active", keywords: "Erickson refrigeration, Erickson HVAC, Erickson commercial refrigeration Seattle" },
+    { id: "s4", name: "Commercial refrig. · Portland & OR",   type: "Search", budget: 1200, spend: 0,    revenue: 0,     roas: null, ctr: null, status: "draft",  keywords: "commercial refrigeration Portland, walk-in cooler service Oregon, commercial HVAC Portland" },
+    { id: "s5", name: "Commercial HVAC · Boise & Idaho",      type: "Search", budget: 800,  spend: 0,    revenue: 0,     roas: null, ctr: null, status: "draft",  keywords: "commercial HVAC Boise, commercial refrigeration Idaho, walk-in cooler Idaho" },
+  ];
+
+  const CAMPAIGNS_MVEDA = [
     { id: "s1", name: "MVEDA brand keywords",        type: "Search",          budget: 300,  spend: 0,    revenue: 0,     roas: null, ctr: null, status: "draft",   keywords: "MVEDA, MVEDA hair oil, MVEDA skincare, MVEDA hair mist" },
     { id: "s2", name: "Hair Ritual — intent",        type: "Search",          budget: 500,  spend: 0,    revenue: 0,     roas: null, ctr: null, status: "draft",   keywords: "hair oil ritual, ayurvedic hair oil, botanical hair serum" },
     { id: "s3", name: "Neem Cleanser · Search",      type: "Search",          budget: 600,  spend: 540,  revenue: 4320,  roas: 8.0,  ctr: 4.2,  status: "active",  keywords: "neem face cleanser, natural neem cleanser, neem oil cleanser" },
     { id: "s4", name: "Saffron Serum · Retargeting", type: "RLSA",            budget: 400,  spend: 380,  revenue: 3220,  roas: 8.5,  ctr: 3.8,  status: "active",  keywords: "saffron serum, saffron face serum, saffron skincare" },
     { id: "s5", name: "Brand awareness · PMax",      type: "Performance Max", budget: 800,  spend: 720,  revenue: 3240,  roas: 4.5,  ctr: 1.4,  status: "paused",  keywords: "Auto-managed" },
   ];
+
+  const CAMPAIGNS = isErickson ? CAMPAIGNS_ERICKSON : CAMPAIGNS_MVEDA;
 
   const totalSpend = CAMPAIGNS.reduce((s, c) => s + c.spend, 0);
   const totalRevenue = CAMPAIGNS.reduce((s, c) => s + c.revenue, 0);
@@ -494,8 +536,8 @@ function SearchStudio({ state, actions }) {
         <div style={{ flex: 1, overflow: "auto", padding: "28px 32px", display: "flex", flexDirection: "column", gap: 28 }}>
           {/* KPIs */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--gap)" }}>
-            <Kpi label="Total spend" value={`$${(totalSpend/1000).toFixed(1)}k`} delta={0} unit="" sparkline={[0.5,0.55,0.6,0.58,0.62,0.65,0.68,0.7,0.72,0.75,0.8]}/>
-            <Kpi label="Revenue attributed" value={`$${(totalRevenue/1000).toFixed(1)}k`} delta={12} unit="%" sparkline={[0.4,0.5,0.55,0.6,0.65,0.7,0.68,0.72,0.75,0.8,0.85]}/>
+            <Kpi label="Total spend" value={`$${(totalSpend/1000).toFixed(1)}k`} delta={isErickson ? 8 : 0} unit="%" sparkline={[0.5,0.55,0.6,0.58,0.62,0.65,0.68,0.7,0.72,0.75,0.8]}/>
+            <Kpi label={isErickson ? "Revenue (contracts)" : "Revenue attributed"} value={`$${(totalRevenue/1000).toFixed(1)}k`} delta={12} unit="%" sparkline={[0.4,0.5,0.55,0.6,0.65,0.7,0.68,0.72,0.75,0.8,0.85]}/>
             <Kpi label="Blended ROAS" value={`${blendedROAS}x`} delta={0.4} unit="x" sparkline={[0.5,0.55,0.6,0.58,0.62,0.65,0.68,0.7,0.72,0.75,0.8]}/>
             <Kpi label="Avg CTR" value={`${avgCTR}%`} delta={0.8} unit="pp" sparkline={[0.4,0.45,0.5,0.55,0.58,0.6,0.62,0.65,0.68,0.7,0.75]}/>
           </div>

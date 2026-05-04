@@ -92,14 +92,14 @@ function CommandCenter({ state, actions, go }) {
 
   const brandId = state?.activeBrandId || state?.brandPreset?.id || "mveda";
   const isErickson = brandId === "erickson";
-  const brandName = isErickson ? "Erickson Refrigeration" : "MVEDA";
+  const brandName = isErickson ? "Erickson Commercial Refrigeration" : "MVEDA";
 
   const KPIS = isErickson ? [
-    { label: "Leads this month",  value: "84",     delta: "+26%", tone: "ok"   },
-    { label: "Avg job value",     value: "$1,240",  delta: "+8%",  tone: "ok"   },
-    { label: "Google ROAS",       value: "9.2x",    delta: "+0.8x",tone: "ok"   },
-    { label: "Pipeline value",    value: "$184k",   delta: "+18%", tone: "ok"   },
-    { label: "Jobs booked (mtd)", value: "67",      delta: "+22%", tone: "ok"   },
+    { label: "Active service contracts", value: "148",    delta: "+12%",  tone: "ok"   },
+    { label: "New accounts (MTD)",       value: "9",      delta: "+3",    tone: "ok"   },
+    { label: "Avg contract value",       value: "$8,400", delta: "+6%",   tone: "ok"   },
+    { label: "Emergency calls (MTD)",    value: "34",     delta: "+18%",  tone: "warn" },
+    { label: "Contract renewal rate",    value: "91%",    delta: "+2pp",  tone: "ok"   },
   ] : [
     { label: "Orders (30d)",      value: "284",    delta: "+18%", tone: "ok"   },
     { label: "Revenue",           value: "$42.4k", delta: "+22%", tone: "ok"   },
