@@ -763,9 +763,13 @@ const STATUS_META = {
 };
 
 function OrganicSocialStudio({ state, actions }) {
+  const isErickson = state?.activeBrandId === "erickson";
+  const defaultPlatform = isErickson ? "facebook" : "instagram";
+  const defaultType     = isErickson ? "Post"     : "Reel";
+
   const [tab, setTab]           = useStateF("all");
   const [composing, setComposing] = useStateF(false);
-  const [draft, setDraft]       = useStateF({ platform: "instagram", type: "Reel", caption: "", scheduledAt: "" });
+  const [draft, setDraft]       = useStateF({ platform: defaultPlatform, type: defaultType, caption: "", scheduledAt: "" });
   const [genLoading, setGenLoading] = useStateF(false);
   const [genDone, setGenDone]   = useStateF(null);
 
@@ -891,7 +895,7 @@ function OrganicSocialStudio({ state, actions }) {
   const connectedCount = Object.keys(channels).length;
 
   return (
-    <FeaturePage kicker="Organic · Social" title="Social Studio"
+    <FeaturePage kicker={isErickson ? "Facebook · YouTube · LinkedIn" : "Organic · Social"} title="Social Studio"
       right={
         <div style={{ display: "flex", gap: 8 }}>
           <Btn size="sm" variant="ghost"><Icon name="calendar" size={11}/> Calendar view</Btn>
@@ -921,7 +925,11 @@ function OrganicSocialStudio({ state, actions }) {
           <Icon name="sliders" size={16}/>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 13, fontWeight: 500 }}>No social accounts connected yet</div>
-            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Open Connections → Social → connect Publer with your API key to activate Instagram, TikTok, Pinterest, YouTube, and more.</div>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+              {isErickson
+                ? "Open Connections → Social → connect Publer with your API key to activate Facebook, YouTube, LinkedIn, and more."
+                : "Open Connections → Social → connect Publer with your API key to activate Instagram, TikTok, Pinterest, YouTube, and more."}
+            </div>
           </div>
         </div>
       )}

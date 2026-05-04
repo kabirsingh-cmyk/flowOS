@@ -82,7 +82,7 @@ const SEED = {
         "metaads", "liads",                  // FB lead gen + LinkedIn for commercial
         "klaviyo", "klaviyo_sms",            // service reminders + seasonal campaigns
         "fb", "li", "yt",                   // organic social (how-to, trust content)
-        "semrush", "hubspot",               // local SEO + CRM
+        "yelp", "semrush",                  // reviews & local SEO — critical for trades
       ],
     },
   },
@@ -128,6 +128,9 @@ const SEED = {
 
     // ── Commerce ─────────────────────────────────────────────────────────────
     { id: "shopify",   category: "Commerce",   name: "Shopify",          desc: "Products, inventory, orders, customers",                           auth: "OAuth",   icon: "sh" },
+
+    // ── Reviews & Local ──────────────────────────────────────────────────────
+    { id: "yelp",      category: "Reviews & Local", name: "Yelp",        desc: "Business reviews, ratings, local search presence & reputation",    auth: "API key", icon: "yelp" },
 
     // ── Analytics ────────────────────────────────────────────────────────────
     { id: "ga4",       category: "Analytics",  name: "Google Analytics", desc: "GA4 · acquisition, behavior, conversion",                          auth: "OAuth",   icon: "ga" },
@@ -192,6 +195,8 @@ const SEED = {
     pinads:    { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
     // Commerce
     shopify:   { connected: true,  status: "ok",   note: "32 products · 1,408 orders MTD",   syncCount: "" },
+    // Reviews & Local
+    yelp:      { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
     // Analytics
     ga4:       { connected: true,  status: "ok",   note: "last event 1m ago",                 syncCount: "" },
     amplitude: { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
@@ -248,6 +253,7 @@ const SEED = {
       liads:       { connected: true,  status: "ok", note: "synced 20m ago",                                       syncCount: "2 campaigns active" },
       pinads:      { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
       shopify:     { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      yelp:        { connected: true,  status: "ok", note: "4.5 ★ · 218 reviews · synced 1h ago",                 syncCount: "218 reviews" },
       ga4:         { connected: true,  status: "ok", note: "synced live",                                          syncCount: "48 events tracked" },
       amplitude:   { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
       ahrefs:      { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },

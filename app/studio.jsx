@@ -42,7 +42,10 @@ function StatusBadge({ status }) {
 function StudioHub({ state, actions, go }) {
   const [createOpen, setCreateOpen] = useStateS(false);
 
-  const STUDIOS = [
+  const brandId    = state?.activeBrandId || "mveda";
+  const isErickson = brandId === "erickson";
+
+  const STUDIOS_MVEDA = [
     {
       id: "organic", label: "Social Studio", color: "var(--accent)",
       desc: "Organic content — Instagram, TikTok, Pinterest, X & more",
@@ -66,13 +69,47 @@ function StudioHub({ state, actions, go }) {
     },
   ];
 
-  const RECS = [
+  const STUDIOS_ERICKSON = [
+    {
+      id: "searchstudio", label: "Search Studio", color: "oklch(62% 0.18 160)",
+      desc: "Google LSA, search campaigns & local service ads — your #1 lead channel",
+      stat1Label: "Active campaigns", stat1: "5",
+      stat2Label: "Monthly budget", stat2: "$6.2k",
+      highlight: "LSA avg cost/lead $38 → optimise",
+    },
+    {
+      id: "emailstudio", label: "Email Studio", color: "oklch(48% 0.18 260)",
+      desc: "Service reminders, maintenance plan renewals & seasonal campaigns",
+      stat1Label: "Draft campaigns", stat1: "3",
+      stat2Label: "List size", stat2: "2,840",
+      highlight: "Maintenance reminder · 44% open rate",
+    },
+    {
+      id: "organic", label: "Social Studio", color: "var(--accent)",
+      desc: "Facebook before/after, YouTube how-to & LinkedIn commercial trust content",
+      stat1Label: "Active drafts", stat1: "3",
+      stat2Label: "Scheduled this week", stat2: "5",
+      highlight: "Facebook post reach +28% this month",
+    },
+  ];
+
+  const STUDIOS = isErickson ? STUDIOS_ERICKSON : STUDIOS_MVEDA;
+
+  const RECS_MVEDA = [
     { studio: "Social Studio",  title: "Hair Ritual Reel format — scale now",     body: "2.4× avg saves, 98k reach in 30d. Flow recommends doubling post frequency and extending to 60s format.",       cta: "Open Social Studio",  t: "organic"      },
     { studio: "Email Studio",   title: "Win-back flow — 847 lapsed customers",    body: "90d+ lapse segment with avg LTV $240. Draft personalised win-back copy loaded with 20% comeback offer.",         cta: "Review draft",        t: "emailstudio", urgent: true },
     { studio: "Search Studio",  title: "Brand keyword gap — 'MVEDA hair oil'",    body: "$0.40 CPC, 720 mo/searches, low competition. No active search campaign capturing this brand intent.",            cta: "Create campaign",     t: "searchstudio" },
   ];
 
-  const ALL_DRAFTS = [
+  const RECS_ERICKSON = [
+    { studio: "Search Studio",  title: "LSA daily budget too low for summer peak", body: "Phoenix AC emergency searches up 34% — your $200/day cap is limiting reach. Flow estimates 18 leads/wk uncaptured.", cta: "Adjust budget",     t: "searchstudio", urgent: true },
+    { studio: "Email Studio",   title: "Pre-season AC tune-up — send by May 15",   body: "2,840 contacts, 380 past AC customers due for tune-up. Draft ready with $30 off spring service offer.",              cta: "Review draft",      t: "emailstudio",  urgent: true },
+    { studio: "Social Studio",  title: "YouTube how-to — AC pre-summer checklist", body: "7-point DIY inspection video scores high on 'HVAC maintenance' searches. Draft script + shot list ready.",          cta: "Open Social Studio", t: "organic" },
+  ];
+
+  const RECS = isErickson ? RECS_ERICKSON : RECS_MVEDA;
+
+  const ALL_DRAFTS_MVEDA = [
     { title: "Hair Ritual · Reel series",      studio: "Social", platform: "Instagram + TikTok",  date: "Content ready",      t: "organic"      },
     { title: "Win-back · 90d lapsed",           studio: "Email",  platform: "Klaviyo flow",        date: "Ready to activate",  t: "emailstudio"  },
     { title: "Mother's Day · gifters",          studio: "Email",  platform: "Klaviyo campaign",    date: "Schedule by May 9",  t: "emailstudio"  },
@@ -80,6 +117,17 @@ function StudioHub({ state, actions, go }) {
     { title: "Saffron Serum · Reels",          studio: "Social", platform: "Instagram",           date: "Draft ready",        t: "organic"      },
     { title: "VIP early access · Hair Ritual", studio: "Email",  platform: "Klaviyo campaign",    date: "Ready to schedule",  t: "emailstudio"  },
   ];
+
+  const ALL_DRAFTS_ERICKSON = [
+    { title: "Summer AC prep — emergency search",    studio: "Search", platform: "Google Ads · LSA",      date: "Awaiting review",    t: "searchstudio" },
+    { title: "Erickson brand keywords",              studio: "Search", platform: "Google Ads",             date: "Ready to activate",  t: "searchstudio" },
+    { title: "Pre-season AC tune-up · spring offer", studio: "Email",  platform: "Klaviyo campaign",       date: "Ready to send",      t: "emailstudio"  },
+    { title: "Maintenance plan renewal · past cust", studio: "Email",  platform: "Klaviyo flow",           date: "Schedule by May 15", t: "emailstudio"  },
+    { title: "Commercial accounts · LinkedIn trust", studio: "Social", platform: "LinkedIn",               date: "Draft ready",        t: "organic"      },
+    { title: "AC maintenance checklist · YouTube",   studio: "Social", platform: "YouTube",                date: "Script ready",       t: "organic"      },
+  ];
+
+  const ALL_DRAFTS = isErickson ? ALL_DRAFTS_ERICKSON : ALL_DRAFTS_MVEDA;
 
   const SC = { Social: "var(--accent)", Email: "oklch(48% 0.18 260)", Search: "oklch(62% 0.18 160)" };
 
@@ -91,7 +139,9 @@ function StudioHub({ state, actions, go }) {
           <div>
             <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Creative ops</div>
             <h1 style={{ fontSize: 28, fontWeight: 500, letterSpacing: "-0.025em", margin: "4px 0 0" }}>Studio</h1>
-            <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>Social · Email · Search — all your campaign builders in one place</div>
+            <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>
+              {isErickson ? "Search · Email · Social — campaign builders for Erickson Refrigeration" : "Social · Email · Search — all your campaign builders in one place"}
+            </div>
           </div>
           <Btn variant="primary" onClick={() => setCreateOpen(true)}><Icon name="spark" size={13}/> Create campaign</Btn>
         </div>
