@@ -1,9 +1,10 @@
-// MVEDA — AI layer: SSE streaming client + two-call orchestration
-// Supervisor routes → Specialist responds. Falls back to inferResponse if no server key.
-const { useRef: useRefAI } = React;
+// MVEDA — AI layer: JSON client for /api/chat tool-execution loop
+// api/chat.js returns { ok, content: [...blocks] } — not SSE.
+// Supervisor runs tools (delegate_to, open_workspace, show_drafts, show_metric,
+// + live Composio platform tools).  Specialists get plain text back.
 
 const SPECIALIST_LABEL = {
-  supervisor:  "Supervisor",
+  supervisor:  "Flow",
   drafter:     "Drafter",
   analyst:     "Analyst",
   brand_guard: "Brand Guard",
@@ -17,182 +18,147 @@ function buildMessages(threadMessages, newUserText) {
     if (m.kind === "user" && m.text) {
       out.push({ role: "user", content: m.text });
     } else if (m.kind === "agent" && m.text && !m.streaming) {
-      // Label each specialist so Claude has context on who said what
       out.push({ role: "assistant", content: `[${m.author}]: ${m.text}` });
     }
-    // Skip briefings, system messages, still-streaming messages
   }
-  // Keep last 12 turns to stay well within context limits
+  // Keep last 12 turns
   const context = out.slice(-12);
   context.push({ role: "user", content: newUserText });
   return context;
 }
 
-// ─── Parse one Anthropic SSE stream ───────────────────────────────────────
-// Calls onToken(text) for each text chunk.
-// Returns { fullText, tools: [{ name, input }] } when done.
-async function parseAnthropicStream(response, onToken) {
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let fullText = "";
-  const tools = [];
-  let currentTool = null; // { name, json }
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop(); // keep incomplete last line
-
-    for (const line of lines) {
-      if (!line.startsWith("data: ")) continue;
-      const raw = line.slice(6).trim();
-      if (!raw || raw === "[DONE]") continue;
-
-      let evt;
-      try { evt = JSON.parse(raw); } catch { continue; }
-
-      switch (evt.type) {
-        case "content_block_start":
-          if (evt.content_block?.type === "tool_use") {
-            currentTool = { name: evt.content_block.name, json: "" };
-          }
-          break;
-
-        case "content_block_delta":
-          if (evt.delta?.type === "text_delta" && evt.delta.text) {
-            fullText += evt.delta.text;
-            onToken(evt.delta.text);
-          }
-          if (evt.delta?.type === "input_json_delta" && currentTool) {
-            currentTool.json += evt.delta.partial_json || "";
-          }
-          break;
-
-        case "content_block_stop":
-          if (currentTool) {
-            try {
-              currentTool.input = JSON.parse(currentTool.json || "{}");
-            } catch {
-              currentTool.input = {};
-            }
-            tools.push({ name: currentTool.name, input: currentTool.input });
-            currentTool = null;
-          }
-          break;
-
-        case "error":
-          console.error("[FlowOS AI] Anthropic error:", evt.error);
-          break;
-      }
-    }
-  }
-
-  return { fullText, tools };
+// ─── Extract text from content blocks ─────────────────────────────────────
+function extractText(blocks) {
+  return (blocks || [])
+    .filter(b => b.type === "text")
+    .map(b => b.text)
+    .join("")
+    .trim();
 }
 
-// ─── Single specialist call + stream into reducer ─────────────────────────
-async function streamSpecialist({ messages, specialist, channelId, t, dispatch, onTool }) {
-  const agent = SPECIALIST_LABEL[specialist] || "Supervisor";
+// ─── Extract tool_use blocks ───────────────────────────────────────────────
+function extractTools(blocks) {
+  return (blocks || []).filter(b => b.type === "tool_use");
+}
 
-  dispatch({ type: "STREAM_START", channel: channelId, agent, time: t });
-  dispatch({ type: "SET_TYPING", agent });
-
+// ─── Single specialist call (JSON, not SSE) ───────────────────────────────
+// Posts to /api/chat with full context, returns { text, tools, fallback }.
+async function callSpecialist({ messages, specialist, tenantId, brand }) {
   let response;
   try {
     response = await fetch("/api/chat", {
-      method: "POST",
+      method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages, specialist }),
+      body:    JSON.stringify({ messages, specialist, tenantId, brand }),
     });
-  } catch (err) {
-    // Network error — fall through to simulation
-    dispatch({ type: "STREAM_DONE", channel: channelId });
-    return { fullText: "", tools: [], fallback: true };
+  } catch {
+    return { text: "", tools: [], fallback: true };
   }
 
-  // Server has no API key — use simulation
-  if (response.headers.get("content-type")?.includes("application/json")) {
-    const json = await response.json();
-    if (json.type === "fallback") {
-      dispatch({ type: "STREAM_DONE", channel: channelId });
-      return { fullText: "", tools: [], fallback: true };
-    }
+  if (!response.ok) {
+    // Server error — fall through to simulation
+    return { text: "", tools: [], fallback: true };
   }
 
-  const { fullText, tools } = await parseAnthropicStream(response, (token) => {
-    dispatch({ type: "STREAM_TOKEN", channel: channelId, token });
-  });
+  let data;
+  try { data = await response.json(); } catch { return { text: "", tools: [], fallback: true }; }
 
-  // Process tool calls
-  for (const tool of tools) {
-    onTool(tool.name, tool.input, agent, fullText);
-  }
+  if (!data.ok) return { text: "", tools: [], fallback: true };
 
-  dispatch({ type: "STREAM_DONE", channel: channelId });
-  dispatch({ type: "SET_TYPING", agent: null });
-  return { fullText, tools, fallback: false };
+  return {
+    text:     extractText(data.content),
+    tools:    extractTools(data.content),
+    fallback: false,
+  };
 }
 
 // ─── Main entry: send a user message, orchestrate Supervisor → Specialist ─
-async function sendAIMessage({ userText, threadMessages, channelId, dispatch, openWorkspace, openCanvas, t, onFallback }) {
+async function sendAIMessage({
+  userText,
+  threadMessages,
+  channelId,
+  dispatch,
+  openWorkspace,
+  openCanvas,
+  t,
+  onFallback,
+  tenantId,
+  brand,
+}) {
   const messages = buildMessages(threadMessages, userText);
 
-  // ── Call 1: Supervisor ───────────────────────────────────────────────────
-  let delegation = null;
-  let supervisorText = "";
+  // ── Call 1: Supervisor ────────────────────────────────────────────────────
+  dispatch({ type: "STREAM_START", channel: channelId, agent: SPECIALIST_LABEL.supervisor, time: t });
+  dispatch({ type: "SET_TYPING",   agent: SPECIALIST_LABEL.supervisor });
 
-  const sup = await streamSpecialist({
-    messages,
-    specialist: "supervisor",
-    channelId,
-    t,
-    dispatch,
-    onTool: (name, input, agent, text) => {
-      supervisorText = text;
-      if (name === "delegate_to") {
-        delegation = input; // { specialist, context }
-      }
-      if (name === "open_workspace") {
-        openWorkspace(input.target);
-      }
-      if (name === "show_metric") {
-        openCanvas({ kind: "metric", data: input });
-      }
-    },
-  });
+  const sup = await callSpecialist({ messages, specialist: "supervisor", tenantId, brand });
 
-  // No API key — fall back to keyword simulation
   if (sup.fallback) {
+    dispatch({ type: "STREAM_DONE", channel: channelId });
+    dispatch({ type: "SET_TYPING",  agent: null });
     onFallback(userText, t);
     return;
   }
 
+  // Emit supervisor text (may be empty when it delegates immediately)
+  if (sup.text) {
+    dispatch({ type: "STREAM_TOKEN", channel: channelId, token: sup.text });
+  }
+  dispatch({ type: "STREAM_DONE", channel: channelId });
+
+  // ── Handle supervisor tools ────────────────────────────────────────────────
+  let delegation = null;
+
+  for (const tool of sup.tools) {
+    switch (tool.name) {
+      case "delegate_to":
+        delegation = tool.input; // { specialist, context }
+        break;
+      case "open_workspace":
+        openWorkspace(tool.input.target);
+        break;
+      case "show_metric":
+        openCanvas({ kind: "metric", data: tool.input });
+        break;
+      case "show_drafts":
+        openCanvas({ kind: "drafts", data: tool.input });
+        break;
+      // Composio platform tools: result already executed server-side.
+      // Surface any useful data from the result text (already in sup.text).
+      default:
+        break;
+    }
+  }
+
   // ── Call 2: Delegated specialist (if Supervisor routed) ───────────────────
   if (delegation) {
-    // Simple handoff: original conversation + Supervisor's reply + delegation context as a new user turn.
-    // Avoids tool_use/tool_result blocks (which require the tool to be in the specialist's tools list).
     const delegateMessages = [
       ...messages,
-      { role: "assistant", content: supervisorText || "Routing to specialist." },
+      { role: "assistant", content: sup.text || "Routing to specialist." },
       { role: "user",      content: delegation.context || "Handle this request." },
     ];
 
-    await streamSpecialist({
-      messages: delegateMessages,
+    const agent = SPECIALIST_LABEL[delegation.specialist] || delegation.specialist;
+    dispatch({ type: "STREAM_START", channel: channelId, agent, time: t });
+    dispatch({ type: "SET_TYPING",   agent });
+
+    const spec = await callSpecialist({
+      messages:   delegateMessages,
       specialist: delegation.specialist,
-      channelId,
-      t,
-      dispatch,
-      onTool: (name, input) => {
-        if (name === "open_workspace") openWorkspace(input.target);
-        if (name === "show_drafts")   openCanvas({ kind: "drafts",  data: input });
-        if (name === "show_metric")   openCanvas({ kind: "metric",  data: input });
-      },
+      tenantId,
+      brand,
     });
+
+    if (spec.text) {
+      dispatch({ type: "STREAM_TOKEN", channel: channelId, token: spec.text });
+    }
+    dispatch({ type: "STREAM_DONE", channel: channelId });
+
+    for (const tool of spec.tools) {
+      if (tool.name === "open_workspace") openWorkspace(tool.input.target);
+      if (tool.name === "show_drafts")    openCanvas({ kind: "drafts", data: tool.input });
+      if (tool.name === "show_metric")    openCanvas({ kind: "metric", data: tool.input });
+    }
   }
 
   dispatch({ type: "SET_TYPING", agent: null });
