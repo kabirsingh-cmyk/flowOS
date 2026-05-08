@@ -705,7 +705,7 @@ function SettingsHub({ state, actions, go }) {
       label: "Connections",
       icon: "sliders",
       color: "oklch(48% 0.18 260)",
-      desc: "Connect your channels — social platforms via Publer, email via Klaviyo, ad platforms, analytics, commerce, and creative AI tools.",
+      desc: "Connect your channels — social platforms via OAuth, email via Klaviyo, ad platforms, analytics, commerce, and creative AI tools.",
       stats: [
         { label: "Connected", value: Object.values(state?.connectors || {}).filter(c => c.connected).length },
         { label: "Available", value: 30 },

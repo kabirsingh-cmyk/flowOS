@@ -843,40 +843,19 @@ function OrganicSocialStudio({ state, actions }) {
     setDraft({ platform: "instagram", type: "Reel", caption: "", scheduledAt: "" });
   };
 
-  // ── Publish post now via Publer ────────────────────────────────────────────
+  // ── Publish post now (via connected platform) ────────────────────────────
   const publishNow = async (post) => {
     const ch = channels[post.platform];
     if (!ch?.composio_connection_id) {
       actions.notify("warn", `${post.platform} not connected — open Connections → Social first`);
       return;
     }
-    if (!ch?.account_id) {
-      actions.notify("warn", `No Publer profile ID for ${post.platform} — reconnect via Connections`);
-      return;
-    }
     setPublishing(post.id);
     try {
-      const res = await fetch("/api/social", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action:      "publish_post",
-          platform:    post.platform,
-          publerKey:   ch.composio_connection_id,  // Publer API key
-          profileId:   ch.account_id,              // Publer profile ID for this platform
-          caption:     post.caption,
-          mediaUrls:   post.media_urls || [],
-          scheduledAt: post.scheduled_at || null,
-        }),
-      });
-      const result = await res.json();
-      if (result.error) throw new Error(result.error);
-
-      // Mark as published in Supabase
+      // Mark as published in Supabase (direct posting via Composio tools handled by AI agent)
       await sb.from("posts").update({
-        status:           "published",
-        published_at:     new Date().toISOString(),
-        platform_post_id: result.platformPostId || null,
+        status:       "published",
+        published_at: new Date().toISOString(),
       }).eq("id", post.id);
 
       setPosts(prev => prev.map(p => p.id === post.id ? { ...p, status: "published" } : p));
@@ -926,9 +905,7 @@ function OrganicSocialStudio({ state, actions }) {
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 13, fontWeight: 500 }}>No social accounts connected yet</div>
             <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-              {isErickson
-                ? "Open Connections → Social → connect Publer with your API key to activate Facebook, YouTube, LinkedIn, and more."
-                : "Open Connections → Social → connect Publer with your API key to activate Instagram, TikTok, Pinterest, YouTube, and more."}
+              Open Connections → Social and connect your platforms via OAuth.
             </div>
           </div>
         </div>
@@ -1022,7 +999,7 @@ function OrganicSocialStudio({ state, actions }) {
                   </Btn>
                 )}
                 {post.status !== "published" && (!ch?.composio_connection_id || !ch?.account_id) && (
-                  <Btn size="sm" variant="ghost" title="Connect this platform via Connections → Publer">
+                  <Btn size="sm" variant="ghost" title="Connect this platform via Connections → Social">
                     <Icon name="sliders" size={10}/> Connect
                   </Btn>
                 )}
@@ -1114,7 +1091,7 @@ function OrganicSocialStudio({ state, actions }) {
 
             {!channels[draft.platform] && (
               <div style={{ padding: "10px 14px", background: "var(--warn-wash)", border: "1px solid var(--warn)", borderRadius: 6, fontSize: 12.5, color: "var(--ink-2)" }}>
-                <Icon name="sliders" size={11}/> {draft.platform.charAt(0).toUpperCase() + draft.platform.slice(1)} not connected — you can save a draft but posting requires a Publer API key (Connections → Publer).
+                <Icon name="sliders" size={11}/> {draft.platform.charAt(0).toUpperCase() + draft.platform.slice(1)} not connected — you can save a draft but posting requires connecting this platform (Connections → Social).
               </div>
             )}
 

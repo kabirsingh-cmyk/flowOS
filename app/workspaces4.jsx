@@ -1,19 +1,16 @@
 // MVEDA workspaces — part 4: Connections + Brand Import flow
 const { useState: useState4, useEffect: useEffect4, useMemo: useMemo4, useRef: useRef4 } = React;
 
-// Connector IDs that use Composio managed OAuth (not Publer, not API key)
+// Connector IDs that use Composio managed OAuth.
 // These get a real OAuth redirect instead of the fake setTimeout connect.
 const COMPOSIO_OAUTH_APPS = new Set([
-  "googleads", "ga4", "metaads", "liads", "klaviyo", "shopify",
+  // Social
+  "ig", "tt", "fb", "li", "yt", "pn", "x", "threads", "reddit", "snap", "bluesky", "mastodon", "telegram",
+  // Ads & commerce
+  "googleads", "ga4", "metaads", "liads", "shopify",
+  // Email
+  "klaviyo",
 ]);
-
-// Social platforms managed by Publer (connector id → publer social_network slug)
-const PUBLER_SOCIAL = {
-  ig: "instagram", tt: "tiktok", pn: "pinterest", yt: "youtube",
-  fb: "facebook",  li: "linkedin",
-  x: "twitter",    threads: "threads", reddit: "reddit",
-  snap: "snapchat", bluesky: "bluesky", mastodon: "mastodon", telegram: "telegram",
-};
 
 // ────────────────────────────── BRAND IMPORT MODAL ──────────────────────────────
 function BrandImportModal({ open, onClose, onApply }) {
@@ -336,26 +333,16 @@ function Connections({ state, actions }) {
         .eq("status", "connected");
       if (!data?.length) return;
 
-      // Map Publer meta-row → publer connector
-      const platformToId = { publer: "publer", instagram: "ig", tiktok: "tt", pinterest: "pn", youtube: "yt", facebook: "fb", linkedin: "li" };
+      // Map DB rows → connector store
+      const platformToId = { instagram: "ig", tiktok: "tt", pinterest: "pn", youtube: "yt", facebook: "fb", linkedin: "li" };
       data.forEach(ch => {
-        const id = platformToId[ch.platform];
-        if (!id) return;
-        if (id === "publer") {
-          actions.setConnector("publer", {
-            connected:  true,
-            status:     "ok",
-            note:       `${ch.account_handle || "key validated"} · API key`,
-            syncCount:  ch.account_handle || "—",
-          });
-        } else {
-          actions.setConnector(id, {
-            connected:  true,
-            status:     "ok",
-            note:       `${ch.account_handle || ch.platform} · via Publer`,
-            syncCount:  ch.followers_count ? `${Number(ch.followers_count).toLocaleString()} followers` : "connected",
-          });
-        }
+        const id = platformToId[ch.platform] || ch.platform;
+        actions.setConnector(id, {
+          connected:  true,
+          status:     "ok",
+          note:       `${ch.account_handle || ch.platform} · connected`,
+          syncCount:  ch.followers_count ? `${Number(ch.followers_count).toLocaleString()} followers` : "connected",
+        });
       });
     })();
   }, []); // eslint-disable-line
@@ -369,96 +356,11 @@ function Connections({ state, actions }) {
   }, [catalog]);
 
   const startConnect = (connector) => {
-    // Social platform tiles (ig, tt, etc.) are managed by Publer — intercept here
-    if (connector.auth === "Publer") {
-      const publerConnected = state.connectors?.["publer"]?.connected;
-      if (publerConnected) {
-        // Already auto-activated — nothing to do; the tile wouldn't show Connect if already connected
-        return;
-      }
-      // Redirect user to connect Publer first
-      const publerConnector = catalog.find(c => c.id === "publer");
-      if (publerConnector) {
-        setAuthStep({ connector: publerConnector, step: "auth", hint: `Connecting Publer will automatically activate ${connector.name} if you have it in your Publer account.` });
-      }
-      return;
-    }
-    // All other connectors: show API key / OAuth / MCP modal
     setAuthStep({ connector, step: "auth" });
   };
 
   // Called by ConnectorAuthModal when user submits credentials
   const completeConnect = async (connector, apiKey, mcpUrl) => {
-
-    // ── Publer: verify key + auto-detect social profiles ──────────────────
-    if (connector.id === "publer") {
-      setAuthStep({ connector, step: "syncing" });
-      try {
-        const res = await fetch("/api/social", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "verify_and_connect", publerKey: apiKey }),
-        });
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-
-        const { data: { session } } = await sb.auth.getSession();
-        if (!session?.user) throw new Error("Not signed in");
-        const uid = session.user.id;
-
-        // Save Publer meta-row (key stored in composio_connection_id for now)
-        await sb.from("channels").upsert({
-          user_id:                uid,
-          platform:               "publer",
-          composio_connection_id: apiKey,
-          account_handle:         `${data.connected.length} platforms`,
-          status:                 "connected",
-          updated_at:             new Date().toISOString(),
-        }, { onConflict: "user_id, platform" });
-
-        // Update Publer connector in store
-        actions.setConnector("publer", {
-          connected:  true,
-          status:     "ok",
-          note:       `${data.connected.length} platforms detected · API key validated`,
-          syncCount:  `${data.total} Publer profiles`,
-        }, {
-          logEvent: "connected · Publer",
-          notify:   { tone: "ok", text: `Publer connected · ${data.connected.length} platforms activated` },
-        });
-
-        // Auto-activate each detected social platform
-        const platformToId = { instagram: "ig", tiktok: "tt", pinterest: "pn", youtube: "yt", facebook: "fb", linkedin: "li" };
-        for (const profile of data.connected) {
-          const connId = platformToId[profile.platform];
-          if (!connId) continue;
-
-          await sb.from("channels").upsert({
-            user_id:                uid,
-            platform:               profile.platform,
-            composio_connection_id: apiKey,    // same Publer key
-            account_handle:         profile.handle,
-            account_id:             profile.profileId,
-            followers_count:        profile.followers,
-            status:                 "connected",
-            updated_at:             new Date().toISOString(),
-          }, { onConflict: "user_id, platform" });
-
-          actions.setConnector(connId, {
-            connected:  true,
-            status:     "ok",
-            note:       `${profile.handle || profile.platform} · via Publer`,
-            syncCount:  profile.followers ? `${Number(profile.followers).toLocaleString()} followers` : "connected",
-          });
-        }
-
-        setAuthStep(null);
-      } catch (err) {
-        alert(`Publer connection failed: ${err.message}`);
-        setAuthStep(null);
-      }
-      return;
-    }
 
     // ── Composio OAuth connectors: initiate real OAuth redirect ──────────────
     if (COMPOSIO_OAUTH_APPS.has(connector.id)) {
@@ -514,30 +416,7 @@ function Connections({ state, actions }) {
   };
 
   const disconnect = async (connector) => {
-    // For Publer: also disconnect all child platform connectors
-    if (connector.id === "publer") {
-      const { data: { session } } = await sb.auth.getSession();
-      if (session?.user) {
-        const platforms = ["publer", ...Object.values(PUBLER_SOCIAL)];
-        await sb.from("channels")
-          .update({ status: "disconnected", updated_at: new Date().toISOString() })
-          .eq("user_id", session.user.id)
-          .in("platform", platforms);
-      }
-      // Clear all social platform connectors too
-      Object.keys(PUBLER_SOCIAL).forEach(id => {
-        actions.setConnector(id, { connected: false, status: "—", note: "not connected", syncCount: "—" });
-      });
-    } else if (connector.auth === "Publer") {
-      // Disconnecting individual platform via Publer
-      const { data: { session } } = await sb.auth.getSession();
-      if (session?.user) {
-        await sb.from("channels")
-          .update({ status: "disconnected", updated_at: new Date().toISOString() })
-          .eq("user_id", session.user.id)
-          .eq("platform", PUBLER_SOCIAL[connector.id]);
-      }
-    } else if (COMPOSIO_OAUTH_APPS.has(connector.id)) {
+    if (COMPOSIO_OAUTH_APPS.has(connector.id)) {
       // Composio-managed OAuth: revoke via API + clear Supabase row
       const { data: { session } } = await sb.auth.getSession();
       if (session?.user) {
@@ -696,20 +575,6 @@ function Connections({ state, actions }) {
               {byCat[cat]?.filter(c => state.connectors[c.id]?.connected).length || 0} / {byCat[cat]?.length || 0}
             </span>
           </div>
-          {/* Publer explainer */}
-          {cat === "Social" && (
-            <div style={{ background: "var(--accent-wash)", border: "1px solid var(--accent)", borderRadius: 8, padding: "14px 18px", marginBottom: 12, display: "flex", gap: 14, alignItems: "flex-start" }}>
-              <ConnectorIcon id="pb"/>
-              <div>
-                <div style={{ fontSize: 13.5, fontWeight: 500, marginBottom: 4 }}>Social posting via Publer</div>
-                <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
-                  Connect Publer with your API key — it handles publishing to Instagram, TikTok, Facebook, YouTube, Pinterest, and LinkedIn with no developer app setup needed.
-                  Platform tiles activate automatically based on the profiles in your Publer account.
-                  <a href="https://app.publer.io" target="_blank" rel="noopener" style={{ marginLeft: 6, color: "var(--accent)", textDecoration: "none", fontSize: 12 }}>Get Publer →</a>
-                </div>
-              </div>
-            </div>
-          )}
           {/* MCP explainer */}
           {cat === "MCP · Custom" && (
             <div style={{ background: "var(--accent-wash)", border: "1px solid var(--accent)", borderRadius: 8, padding: "14px 18px", marginBottom: 12, display: "flex", gap: 14, alignItems: "flex-start" }}>
@@ -816,7 +681,7 @@ function ConnectorAuthModal({ step, onClose, onComplete }) {
             </div>
           </div>
 
-          {/* Optional hint (e.g. from "connect Publer first" redirect) */}
+          {/* Optional hint */}
           {hint && (
             <div style={{ padding: "10px 14px", background: "var(--accent-wash)", border: "1px solid var(--accent)", borderRadius: 6, fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.5, marginBottom: 14 }}>
               {hint}
@@ -858,20 +723,11 @@ function ConnectorAuthModal({ step, onClose, onComplete }) {
             </div>
           ) : (
             <>
-              {/* Publer: link to get API key */}
-              {connector.id === "publer" && (
-                <div style={{ padding: "10px 14px", background: "var(--paper-2)", border: "1px solid var(--rule)", borderRadius: 6, fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.5, marginBottom: 12 }}>
-                  Get your key at{" "}
-                  <a href="https://app.publer.io/hooks/app" target="_blank" rel="noopener" style={{ color: "var(--accent)" }}>app.publer.io → Settings → API</a>.
-                  Requires Publer Professional (~$12/mo). The key activates all platforms connected in your Publer account automatically.
-                </div>
-              )}
               <FormRow label="API key" hint={`Found in your ${connector.name} dashboard → Settings → API. We never store this in plaintext.`}>
                 <Input value={apiKey} onChange={e => setApiKey(e.target.value)}
                   placeholder={
-                    connector.id === "publer"             ? "publer_xxxxxxxxxxxx" :
-                    connector.id.startsWith("heygen")     ? "hg_live_xxxxxxxxxxxx" :
-                    connector.id.startsWith("runware")    ? "rw-key-xxxxxxxxxxxx" :
+                    connector.id.startsWith("heygen")  ? "hg_live_xxxxxxxxxxxx" :
+                    connector.id.startsWith("runware") ? "rw-key-xxxxxxxxxxxx" :
                     "key_xxxxxxxxxxxx"
                   }
                   type="password"/>
@@ -898,10 +754,10 @@ function ConnectorAuthModal({ step, onClose, onComplete }) {
             background: "var(--accent)", margin: "0 auto 16px",
           }}/>
           <div style={{ fontSize: 14, fontWeight: 500 }}>
-            {connector.id === "publer" ? "Verifying Publer key & syncing profiles…" : `Connecting to ${connector.name}…`}
+            {`Connecting to ${connector.name}…`}
           </div>
           <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>
-            {connector.id === "publer" ? "Detecting your connected social accounts" : "Validating credentials and pulling initial state"}
+            Validating credentials and pulling initial state
           </div>
         </div>
       )}
