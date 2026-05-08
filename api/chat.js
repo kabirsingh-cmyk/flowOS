@@ -1,112 +1,176 @@
-// FlowOS — Anthropic API proxy
-// Vercel Edge Function: keeps the API key server-side, streams SSE to the browser
+/**
+ * FlowOS — Anthropic API proxy with Composio tool execution
+ * Vercel Edge Function: POST /api/chat
+ *
+ * Flow:
+ *   1. Receive tenant message + tenantId + brand context
+ *   2. Fetch Composio tools for tenant's connected accounts
+ *   3. Call Claude with brand context + all tools
+ *   4. If Claude returns tool_use → execute via Composio → loop
+ *   5. Return final response as JSON (content blocks)
+ */
+
 export const config = { runtime: "edge" };
 
-const SYSTEM_PROMPTS = {
-  supervisor: `You are Supervisor — the orchestrating AI for FlowOS, a marketing operating system for DTC beauty and wellness brands.
+const COMPOSIO_BASE  = "https://backend.composio.dev/api/v2";
+const ANTHROPIC_BASE = "https://api.anthropic.com/v1";
+
+// ─── Composio helpers ─────────────────────────────────────────────────────────
+
+function composioHeaders() {
+  const key = process.env.COMPOSIO_API_KEY;
+  if (!key) throw new Error("COMPOSIO_API_KEY not set");
+  return { "Content-Type": "application/json", "x-api-key": key };
+}
+
+/**
+ * Fetch Anthropic-compatible tool definitions for a tenant's connected accounts.
+ * Returns [] gracefully if Composio not configured or tenant has no connections.
+ */
+async function fetchComposioTools(tenantId) {
+  if (!process.env.COMPOSIO_API_KEY || !tenantId) return [];
+
+  try {
+    // Get tenant's active connections
+    const connRes = await fetch(
+      `${COMPOSIO_BASE}/connectedAccounts?entityId=${tenantId}&showActiveOnly=true`,
+      { headers: composioHeaders() }
+    );
+    if (!connRes.ok) return [];
+
+    const connData = await connRes.json();
+    const accounts = connData.items || connData.connectedAccounts || [];
+    if (accounts.length === 0) return [];
+
+    // Build app list from connected accounts
+    const apps = [...new Set(accounts.map(a => a.appName).filter(Boolean))].join(",");
+
+    // Fetch available actions for connected apps
+    const actRes = await fetch(
+      `${COMPOSIO_BASE}/actions?apps=${apps}&limit=20&filterByAvailableApps=true`,
+      { headers: composioHeaders() }
+    );
+    if (!actRes.ok) return [];
+
+    const actData = await actRes.json();
+    const actions = actData.items || actData.actions || [];
+
+    // Map to Anthropic tool format
+    return actions.map(action => ({
+      name:         action.name,
+      description:  action.description || `Execute ${action.name}`,
+      input_schema: action.parameters  || { type: "object", properties: {} },
+    }));
+  } catch (e) {
+    console.error("[chat] fetchComposioTools:", e.message);
+    return [];
+  }
+}
+
+/**
+ * Execute a Composio tool call against a real platform API.
+ */
+async function executeComposioTool(toolName, toolInput, tenantId) {
+  try {
+    const res = await fetch(`${COMPOSIO_BASE}/actions/${toolName}/execute`, {
+      method:  "POST",
+      headers: composioHeaders(),
+      body:    JSON.stringify({ entityId: tenantId, params: toolInput }),
+    });
+
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); } catch { data = { raw: text }; }
+
+    if (!res.ok) {
+      return { error: data?.message || `Composio execution failed (${res.status})` };
+    }
+    return data?.response || data?.data || data;
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
+// ─── System prompt builder (tenant-aware) ─────────────────────────────────────
+
+function buildSystemPrompt(specialist, brand, connectedApps) {
+  const brandBlock = brand ? `
+TENANT BRAND CONTEXT
+- Brand: ${brand.name || "Unknown"}
+- Industry: ${brand.industry || "Unknown"}
+- Voice: ${brand.voice?.tone || "Professional"}
+- Banned phrases: ${(brand.voice?.bannedPhrases || []).join(", ") || "none"}
+- Connected platforms: ${connectedApps.length > 0 ? connectedApps.join(", ") : "none yet"}
+`.trim() : "";
+
+  const toolBlock = connectedApps.length > 0
+    ? `You have live tools to act on: ${connectedApps.join(", ")}. When asked to create, update, or report on campaigns — use the tools. Don't describe what to do, do it. Summarise results in plain English.`
+    : `No platforms connected yet. If asked to take action on a platform, tell the tenant to connect it in Settings → Connections.`;
+
+  const prompts = {
+    supervisor: `You are Flow — the AI marketing operator for FlowOS.
+
+${brandBlock}
 
 ROLE
-You are the operator's strategic partner. You triage requests, route tasks to specialist AIs, and synthesise insights into clear, direct recommendations.
+Take natural language instructions from the tenant and turn them into real actions on their connected marketing platforms.
 
-BRAND CONTEXT (MVEDA default)
-- Brand: MVEDA Ayurvedic luxury skincare. Ritual-forward, quiet luxury, sensory.
-- Products: Hair Mist, Night Serum, Body Oil, Hair Ritual kit, Honey & Vanilla Body Oil.
-- Channels: Instagram, TikTok, Email (Klaviyo), SMS (Postscript), Google Pmax, Meta Advantage+.
-- Prohibited claims: "clinically proven", "anti-aging", "effortless", "game-changer".
-- Voice: sparse, editorial, unhurried. Ayurvedic references welcome. Never exclamation marks.
+${toolBlock}
 
-SPECIALIST TEAM
-- Drafter: writes posts, emails, captions, SMS, ad copy in brand voice
-- Analyst: pulls metrics, explains ROAS, cohort data, budget forecasts
-- Brand Guard: policy checks, claim validation, platform compliance, tone review
-- Inbox: triages DMs, comments, escalations, drafts replies
+DELEGATE TO SPECIALISTS when:
+- Writing content → delegate_to "drafter"
+- Interpreting metrics → delegate_to "analyst"
+- Checking copy compliance → delegate_to "brand_guard"
+- Customer message triage → delegate_to "inbox"
 
-ROUTING RULES
-Use the delegate_to tool when:
-- The user wants copy written → delegate to "drafter"
-- The user wants data, metrics, or analysis → delegate to "analyst"
-- The user wants policy/compliance review → delegate to "brand_guard"
-- The user wants inbox/DM triage → delegate to "inbox"
-
-Handle directly (no delegation) when:
-- Strategic questions about channels, budgets, sequencing
-- Status updates, scheduling decisions
-- Opening workspace views (use open_workspace tool)
+Otherwise act directly using available tools.
 
 BEHAVIOUR
-- Be direct. Lead with the answer.
-- Brief — operators are busy. One clear recommendation.
-- When delegating, say in one sentence what you're doing and why.
-- Use open_workspace when a canvas view would help.`,
+- Lead with action. If you have tools and the task is clear, use them immediately.
+- Summarise tool results in plain English — never show raw JSON.
+- One clarifying question max if the request is ambiguous.
+- Use open_workspace when a canvas view would help the tenant.`,
 
-  drafter: `You are Drafter — the content AI for FlowOS.
+    drafter: `You are Drafter — the content AI for FlowOS.
+${brandBlock}
 
-You write in the brand's voice: ritual-forward, sensory, quiet luxury.
+Write in the tenant's brand voice. Output clean copy only — no preamble.
 
-VOICE RULES
-- Short sentences. No exclamation marks.
-- Sensory and specific — reference texture, scent, ritual, time of day.
-- Ayurvedic references welcome: doshas, oils, herbs, seasons.
-- Prohibited: "clinically proven", "anti-aging", "effortless", "game-changer", "revolutionary".
-- Never generic. Always specific to the brand's products and rituals.
+Formats:
+- Social: 3 variants, each under 150 chars, different angles.
+- Email: subject + preview text + body.
+- Ad copy: headline + 2 lines body.
+- SMS: under 160 chars.
 
-OUTPUT BY FORMAT
-- IG captions: 3 variants, each under 150 chars, different angles/hooks. No hashtag lists.
-- Email: subject line + preview text + body. Open with the ritual moment, not a greeting.
-- SMS: under 160 chars, conversational.
-- Ad copy: punchy headline + 2 lines body.
+Use show_drafts to display output for review.`,
 
-Use the show_drafts tool to display your output so it renders in the canvas for review.
-Output clean copy only — no preamble, just the work.`,
+    analyst: `You are Analyst — the data AI for FlowOS.
+${brandBlock}
 
-  analyst: `You are Analyst — the data AI for FlowOS.
+Interpret marketing performance and surface insights clearly.
+Lead with the number → implication → one action.
+Use show_metric for headline numbers.`,
 
-You interpret marketing performance, surface insights, and explain numbers clearly.
+    brand_guard: `You are Brand Guard — the policy AI for FlowOS.
+${brandBlock}
 
-CHANNEL BENCHMARKS
-- Email (Klaviyo): open rate benchmark 38%, click rate 5.8%
-- IG organic: avg reach 12,400, median engagement 4.2%
-- Meta Advantage+: target ROAS 3.5x, frequency warning at 3.5+
-- Google Pmax: target ROAS 4.0x
+Check copy against brand guidelines.
+For each issue: Flag → Rule → Fix.
+If clean, say so in one sentence.`,
 
-BEHAVIOUR
-- Lead with the number, then the implication, then one action.
-- If a metric is anomalous, name the likely cause.
-- One recommendation per insight.
-- Use show_metric for key numbers that deserve canvas prominence.`,
+    inbox: `You are Inbox — the customer communications AI for FlowOS.
+${brandBlock}
 
-  brand_guard: `You are Brand Guard — the policy and tone AI for FlowOS.
+Triage: Urgent / Standard / Low.
+Output: classification → suggested reply → flag if human review needed.`,
+  };
 
-PROHIBITED CLAIMS
-- "clinically proven", "dermatologist tested", "anti-aging", "scientifically formulated"
-- Specific % results without substantiation
+  return prompts[specialist] || prompts.supervisor;
+}
 
-PROHIBITED WORDS
-- "effortless", "game-changer", "revolutionary"
-- Superlatives without evidence
+// ─── Internal FlowOS tools (always available to supervisor) ───────────────────
 
-APPROVED ALTERNATIVES
-- "clinically proven" → "tested in our atelier"
-- "anti-aging" → "lasting" or "over time"
-
-For each issue: Flag → Rule → Fix (exact replacement copy).
-If copy is clean, say so briefly.`,
-
-  inbox: `You are Inbox — the customer communications AI for FlowOS.
-
-TRIAGE LEVELS
-- Urgent: refund requests, product safety, press enquiries
-- Standard: delivery questions, product recommendations, feedback
-- Low: compliments, general engagement
-
-BRAND VOICE IN REPLIES
-- Warm but not gushing. Specific, not generic.
-- Acknowledge the person, then the issue.
-
-Output: triage classification → suggested reply → flag if human review needed.`,
-};
-
-const TOOLS = [
+const INTERNAL_TOOLS = [
   {
     name: "delegate_to",
     description: "Route this task to the appropriate specialist AI.",
@@ -114,20 +178,20 @@ const TOOLS = [
       type: "object",
       properties: {
         specialist: { type: "string", enum: ["drafter", "analyst", "brand_guard", "inbox"] },
-        context: { type: "string" },
+        context:    { type: "string", description: "What to pass to the specialist" },
       },
       required: ["specialist", "context"],
     },
   },
   {
     name: "open_workspace",
-    description: "Open a workspace view in the canvas panel.",
+    description: "Open a workspace view in the canvas panel for the tenant.",
     input_schema: {
       type: "object",
       properties: {
         target: {
           type: "string",
-          enum: ["planner","inbox","memory","insights","connections","autonomy","sms","seo","affiliate","retention","cx","seasonal","abtests","team","discounts","mobile","organic","command"],
+          enum: ["command","studio","emailstudio","searchstudio","organic","planner","inbox","insights","connections","memory","autonomy"],
         },
       },
       required: ["target"],
@@ -146,6 +210,7 @@ const TOOLS = [
             properties: {
               title:   { type: "string" },
               channel: { type: "string" },
+              body:    { type: "string" },
             },
             required: ["title"],
           },
@@ -156,7 +221,7 @@ const TOOLS = [
   },
   {
     name: "show_metric",
-    description: "Display a key metric in the canvas.",
+    description: "Display a key metric prominently in the canvas.",
     input_schema: {
       type: "object",
       properties: {
@@ -170,6 +235,83 @@ const TOOLS = [
   },
 ];
 
+// ─── Tool execution loop ──────────────────────────────────────────────────────
+
+const INTERNAL_TOOL_NAMES = new Set(INTERNAL_TOOLS.map(t => t.name));
+const MAX_ITERATIONS = 5;
+
+async function runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey }) {
+  let currentMessages = [...messages];
+
+  for (let i = 0; i < MAX_ITERATIONS; i++) {
+    const res = await fetch(`${ANTHROPIC_BASE}/messages`, {
+      method:  "POST",
+      headers: {
+        "Content-Type":      "application/json",
+        "x-api-key":         apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model:      "claude-opus-4-5",
+        max_tokens: 2048,
+        system:     systemPrompt,
+        tools:      tools.length > 0 ? tools : undefined,
+        messages:   currentMessages,
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Anthropic ${res.status}: ${text.slice(0, 300)}`);
+    }
+
+    const data = await res.json();
+
+    // Done — return content blocks
+    if (data.stop_reason === "end_turn" || data.stop_reason === "max_tokens") {
+      return data.content;
+    }
+
+    // Tool call — execute and loop
+    if (data.stop_reason === "tool_use") {
+      currentMessages.push({ role: "assistant", content: data.content });
+
+      const toolResults = [];
+      for (const block of data.content) {
+        if (block.type !== "tool_use") continue;
+
+        let result;
+        if (INTERNAL_TOOL_NAMES.has(block.name)) {
+          // Internal tools are handled by the frontend — just signal success
+          result = { ok: true, tool: block.name, action: block.input };
+        } else {
+          // Composio tool — hit the real platform API
+          result = await executeComposioTool(block.name, block.input, tenantId);
+        }
+
+        toolResults.push({
+          type:        "tool_result",
+          tool_use_id: block.id,
+          content:     JSON.stringify(result),
+        });
+      }
+
+      currentMessages.push({ role: "user", content: toolResults });
+      continue;
+    }
+
+    // Unknown stop reason
+    return data.content;
+  }
+
+  return [{
+    type: "text",
+    text:  "I've completed the maximum number of steps. Please try breaking this into smaller requests.",
+  }];
+}
+
+// ─── Main handler ──────────────────────────────────────────────────────────────
+
 export default async function handler(req) {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
@@ -177,50 +319,44 @@ export default async function handler(req) {
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ type: "fallback" }), {
+    // Fallback for dev without key
+    return new Response(JSON.stringify({ ok: true, content: [{ type: "text", text: "API key not configured." }] }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   }
 
   let body;
+  try { body = await req.json(); }
+  catch { return new Response("Bad request", { status: 400 }); }
+
+  const { messages, specialist = "supervisor", tenantId, brand } = body;
+
   try {
-    body = await req.json();
-  } catch {
-    return new Response("Bad request", { status: 400 });
+    // Fetch live Composio tools for this tenant
+    const composioTools = await fetchComposioTools(tenantId);
+    const connectedApps = [...new Set(
+      composioTools.map(t => t.name.split("_")[0].toLowerCase())
+    )].filter(Boolean);
+
+    // Supervisor gets internal + Composio tools; specialists get neither
+    const tools = specialist === "supervisor"
+      ? [...INTERNAL_TOOLS, ...composioTools]
+      : [];
+
+    const systemPrompt = buildSystemPrompt(specialist, brand || null, connectedApps);
+
+    const content = await runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey });
+
+    return new Response(JSON.stringify({ ok: true, content }), {
+      status:  200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    console.error("[chat] error:", e.message);
+    return new Response(
+      JSON.stringify({ ok: false, error: e.message }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
   }
-
-  const { messages, specialist } = body;
-  const systemPrompt = SYSTEM_PROMPTS[specialist] || SYSTEM_PROMPTS.supervisor;
-  const tools = specialist === "supervisor" ? TOOLS : [];
-
-  const upstream = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-opus-4-5",
-      max_tokens: 1024,
-      stream: true,
-      system: systemPrompt,
-      ...(tools.length > 0 && { tools }),
-      messages,
-    }),
-  });
-
-  if (!upstream.ok) {
-    const err = await upstream.text();
-    return new Response(err, { status: upstream.status });
-  }
-
-  return new Response(upstream.body, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "X-Accel-Buffering": "no",
-    },
-  });
 }
