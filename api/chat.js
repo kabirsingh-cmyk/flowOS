@@ -18,8 +18,8 @@ const ANTHROPIC_BASE = "https://api.anthropic.com/v1";
 // ─── Composio helpers ─────────────────────────────────────────────────────────
 
 function composioHeaders() {
-  const key = process.env.COMPOSIO_API_KEY;
-  if (!key) throw new Error("COMPOSIO_API_KEY not set");
+  const key = process.env.COMPOSIO_API_KEY2;
+  if (!key) throw new Error("COMPOSIO_API_KEY2 not set");
   return { "Content-Type": "application/json", "x-api-key": key };
 }
 
