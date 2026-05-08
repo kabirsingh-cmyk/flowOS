@@ -479,7 +479,12 @@ function Connections({ state, actions }) {
             redirectUri,
           }),
         });
-        const data = await res.json();
+        // Use text() first — edge runtime may return plain-text on hard errors
+        const raw = await res.text();
+        let data;
+        try { data = JSON.parse(raw); } catch {
+          throw new Error(`Server error (${res.status}): ${raw.slice(0, 120)}`);
+        }
         if (!data.ok) throw new Error(data.error || "Failed to initiate connection");
 
         // Redirect user to OAuth provider.

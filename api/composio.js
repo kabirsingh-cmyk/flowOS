@@ -37,8 +37,8 @@ function err(message, status = 400) {
 // ─── Composio REST helper ─────────────────────────────────────────────────────
 
 function composioHeaders() {
-  const key = process.env.COMPOSIO_API_KEY;
-  if (!key) throw new Error("COMPOSIO_API_KEY env var not set");
+  const key = process.env.COMPOSIO_API_KEY2;
+  if (!key) throw new Error("COMPOSIO_API_KEY2 env var not set");
   return {
     "Content-Type": "application/json",
     "x-api-key":    key,
