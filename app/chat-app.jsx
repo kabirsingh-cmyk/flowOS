@@ -684,6 +684,8 @@ function ChatOSAuthed({ auth, onLogout }) {
       openCanvas,
       t,
       onFallback: simulateFallback,
+      tenantId:   auth?.id,
+      brand:      state.brandPreset || null,
     });
   };
 
