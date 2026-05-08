@@ -1,6 +1,12 @@
 // MVEDA workspaces — part 4: Connections + Brand Import flow
 const { useState: useState4, useEffect: useEffect4, useMemo: useMemo4, useRef: useRef4 } = React;
 
+// Connector IDs that use Composio managed OAuth (not Publer, not API key)
+// These get a real OAuth redirect instead of the fake setTimeout connect.
+const COMPOSIO_OAUTH_APPS = new Set([
+  "googleads", "ga4", "metaads", "liads", "klaviyo", "shopify",
+]);
+
 // Social platforms managed by Publer (connector id → publer social_network slug)
 const PUBLER_SOCIAL = {
   ig: "instagram", tt: "tiktok", pn: "pinterest", yt: "youtube",
@@ -267,6 +273,58 @@ function Connections({ state, actions }) {
   const [importOpen, setImportOpen] = useState4(false);
   const [authStep, setAuthStep] = useState4(null); // { connector, step }
 
+  // On mount, check for Composio OAuth callback (?composio_connected=<id>)
+  useEffect4(() => {
+    (async () => {
+      const params = new URLSearchParams(window.location.search);
+      const connectorId = params.get("composio_connected");
+      if (!connectorId) return;
+
+      // Clear the URL param immediately so refresh doesn't re-trigger
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, "", cleanUrl);
+
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session?.user) return;
+      const tenantId = session.user.id;
+
+      try {
+        // Verify the connection is actually active
+        const res = await fetch("/api/composio", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "connection_status", tenantId, app: connectorId }),
+        });
+        const data = await res.json();
+        if (!data.connected) return;
+
+        // Save connected_account_id to Supabase channels table
+        await sb.from("channels").upsert({
+          user_id:                session.user.id,
+          platform:               connectorId,
+          composio_connection_id: data.accountId,
+          status:                 "connected",
+          updated_at:             new Date().toISOString(),
+        }, { onConflict: "user_id, platform" });
+
+        // Update store
+        const catalog = SEED.connectorCatalog;
+        const connector = catalog.find(c => c.id === connectorId);
+        actions.setConnector(connectorId, {
+          connected: true,
+          status:    "ok",
+          note:      `OAuth connected · Composio`,
+          syncCount: "syncing…",
+        }, {
+          logEvent: `connected · ${connector?.name || connectorId}`,
+          notify:   { tone: "ok", text: `${connector?.name || connectorId} connected` },
+        });
+      } catch (e) {
+        console.error("[composio callback]", e.message);
+      }
+    })();
+  }, []); // eslint-disable-line
+
   // On mount, hydrate store connector state from Supabase channels table
   useEffect4(() => {
     (async () => {
@@ -402,13 +460,45 @@ function Connections({ state, actions }) {
       return;
     }
 
-    // ── Default: simulated connect for all other connectors ────────────────
+    // ── Composio OAuth connectors: initiate real OAuth redirect ──────────────
+    if (COMPOSIO_OAUTH_APPS.has(connector.id)) {
+      setAuthStep({ connector, step: "syncing" });
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        if (!session?.user) throw new Error("Not signed in");
+        const tenantId = session.user.id;
+
+        const redirectUri = `${window.location.origin}/?composio_connected=${connector.id}`;
+        const res = await fetch("/api/composio", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({
+            action:      "initiate_connection",
+            tenantId,
+            app:         connector.id,
+            redirectUri,
+          }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || "Failed to initiate connection");
+
+        // Redirect user to OAuth provider.
+        // On return the ?composio_connected= callback effect will verify + persist the connection.
+        window.location.href = data.redirectUrl;
+      } catch (err) {
+        alert(`${connector.name} connection failed: ${err.message}`);
+        setAuthStep(null);
+      }
+      return;
+    }
+
+    // ── Default: simulated connect for API-key connectors ─────────────────
     setAuthStep({ connector, step: "syncing" });
     setTimeout(() => {
       actions.setConnector(connector.id, {
         connected:  true,
         status:     "ok",
-        note:       `synced just now · ${connector.auth === "OAuth" ? "OAuth granted" : "API key validated"}`,
+        note:       `synced just now · API key validated`,
         syncCount:  "initial sync running…",
       }, {
         logEvent: `connected · ${connector.name}`,
@@ -442,8 +532,38 @@ function Connections({ state, actions }) {
           .eq("user_id", session.user.id)
           .eq("platform", PUBLER_SOCIAL[connector.id]);
       }
+    } else if (COMPOSIO_OAUTH_APPS.has(connector.id)) {
+      // Composio-managed OAuth: revoke via API + clear Supabase row
+      const { data: { session } } = await sb.auth.getSession();
+      if (session?.user) {
+        // Fetch the stored Composio account ID
+        const { data: channelRow } = await sb
+          .from("channels")
+          .select("composio_connection_id")
+          .eq("user_id", session.user.id)
+          .eq("platform", connector.id)
+          .single();
+
+        if (channelRow?.composio_connection_id) {
+          // Best-effort revoke — don't block UI on failure
+          fetch("/api/composio", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ action: "disconnect", accountId: channelRow.composio_connection_id }),
+          }).catch(() => {});
+        }
+
+        await sb.from("channels")
+          .update({
+            status:                 "disconnected",
+            composio_connection_id: null,
+            updated_at:             new Date().toISOString(),
+          })
+          .eq("user_id", session.user.id)
+          .eq("platform", connector.id);
+      }
     } else {
-      // Non-social connector: just update store (API key connectors have no Supabase row yet)
+      // API-key connectors: no server-side revocation needed
     }
     actions.setConnector(connector.id, {
       connected: false, status: "—", note: "not connected", syncCount: "—",
