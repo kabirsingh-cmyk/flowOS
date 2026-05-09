@@ -14,40 +14,88 @@ const COMPOSIO_OAUTH_APPS = new Set([
 
 // ────────────────────────────── BRAND IMPORT MODAL ──────────────────────────────
 function BrandImportModal({ open, onClose, onApply }) {
-  const [step, setStep] = useState4("input"); // input | scanning | preview
-  const [url, setUrl] = useState4("https://mveda.co");
+  const [step, setStep]         = useState4("input");    // input | scanning | preview | error
+  const [url, setUrl]           = useState4("");
   const [scanProgress, setScanProgress] = useState4([]);
-  const [preset, setPreset] = useState4(null);
+  const [preset, setPreset]     = useState4(null);
+  const [errorMsg, setErrorMsg] = useState4(null);
 
   useEffect4(() => {
-    if (!open) { setStep("input"); setScanProgress([]); setPreset(null); }
+    if (!open) { setStep("input"); setScanProgress([]); setPreset(null); setErrorMsg(null); }
   }, [open]);
 
-  const startScan = (sourceLabel) => {
+  const startScan = async () => {
+    if (!url.trim()) return;
     setStep("scanning");
     setScanProgress([]);
+    setErrorMsg(null);
+
+    // Animated scan steps — run in parallel with the real API call
     const steps = [
-      { label: `Fetching ${sourceLabel}…`, delay: 400 },
-      { label: "Reading meta + opengraph tags", delay: 380 },
-      { label: "Extracting palette from CSS variables", delay: 460 },
-      { label: "Detecting type system (display + body fonts)", delay: 420 },
-      { label: "Sampling product copy from PDPs", delay: 540 },
-      { label: "Inferring voice + cadence from headlines", delay: 460 },
-      { label: "Pulling tagline + claims from About page", delay: 420 },
-      { label: "Compiling brand memory candidate", delay: 360 },
+      { label: `Fetching ${url}…`,                              delay: 500  },
+      { label: "Reading homepage content",                      delay: 600  },
+      { label: "Fetching About page",                           delay: 700  },
+      { label: "Extracting brand voice + copy",                 delay: 700  },
+      { label: "Inferring palette from visual language",        delay: 800  },
+      { label: "Identifying target audience",                   delay: 700  },
+      { label: "Mapping recommended channels",                  delay: 600  },
+      { label: "Researching competitive landscape",             delay: 800  },
+      { label: "Compiling brand memory",                        delay: 500  },
     ];
+
+    // Animate steps
+    let animDone = false;
+    let apiResult = null;
+    let animResolve;
+    const animPromise = new Promise(res => { animResolve = res; });
+
     let i = 0;
     const tick = () => {
       if (i >= steps.length) {
-        setPreset(SEED.brandPresets.mveda);
-        setStep("preview");
+        animDone = true;
+        animResolve();
         return;
       }
-      setScanProgress(prev => [...prev, { ...steps[i], status: "ok" }]);
+      setScanProgress(prev => [...prev, steps[i]]);
       i += 1;
-      setTimeout(tick, steps[i]?.delay || 400);
+      setTimeout(tick, steps[i]?.delay || 500);
     };
-    setTimeout(tick, 280);
+    setTimeout(tick, 300);
+
+    // Real API call
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const tenantId = session?.user?.id || null;
+
+      const res  = await fetch("/api/brand-import", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ url: url.trim(), tenantId }),
+      });
+      const raw  = await res.text();
+      let data;
+      try { data = JSON.parse(raw); } catch { throw new Error(`Server error: ${raw.slice(0, 120)}`); }
+      if (!data.ok) throw new Error(data.error || "Brand import failed");
+      apiResult = data.brand;
+    } catch (err) {
+      // Wait for animation to finish before showing error
+      await animPromise;
+      setErrorMsg(err.message);
+      setStep("error");
+      return;
+    }
+
+    // Wait for animation to finish before showing preview
+    await animPromise;
+
+    // Apply palette to UI immediately as a preview (user can still reject)
+    if (apiResult?.palette?.vars) {
+      const root = document.documentElement;
+      Object.entries(apiResult.palette.vars).forEach(([k, v]) => root.style.setProperty(k, v));
+    }
+
+    setPreset(apiResult);
+    setStep("preview");
   };
 
   const apply = () => {
@@ -55,50 +103,37 @@ function BrandImportModal({ open, onClose, onApply }) {
     onClose();
   };
 
+  const revert = () => {
+    // Undo live palette preview if user cancels
+    if (preset?.palette?.vars) {
+      const root = document.documentElement;
+      Object.keys(preset.palette.vars).forEach(k => root.style.removeProperty(k));
+    }
+    setStep("input");
+    setPreset(null);
+  };
+
+  // Palette swatches from CSS vars
+  const swatchKeys  = ["--paper", "--accent", "--ink", "--muted", "--accent-wash"];
+  const swatchLabel = { "--paper": "bg", "--accent": "accent", "--ink": "ink", "--muted": "muted", "--accent-wash": "wash" };
+
   return (
-    <Dialog open={open} onClose={onClose} title="Import brand" width={680}>
+    <Dialog open={open} onClose={onClose} title="Import brand" width={700}>
+      {/* ── Input ───────────────────────────────────────────────────────────── */}
       {step === "input" && (
         <div>
           <div style={{ fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55, marginBottom: 18 }}>
-            FlowOS learns your brand from your website or a guidelines document.
-            We extract palette, fonts, voice, claims, and prohibited topics — then you review before anything goes live.
+            FlowOS analyses your website and builds a brand memory — palette, voice, claims, channels, and competitors.
+            Nothing is applied until you approve.
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 18 }}>
-            <button onClick={() => startScan(url)}
-              style={{
-                textAlign: "left", padding: 16,
-                border: "1px solid var(--ink)", borderRadius: 6, background: "var(--paper-2)",
-                cursor: "pointer", display: "flex", flexDirection: "column", gap: 8,
-              }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <Icon name="globe" size={14}/>
-                <span style={{ fontSize: 13, fontWeight: 500 }}>Website URL</span>
-                <Chip tone="accent">recommended</Chip>
-              </div>
-              <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.45 }}>
-                Crawl your homepage, PDPs, and About page. Best for working brands with a live site.
-              </div>
-            </button>
-            <button onClick={() => startScan("brand-guidelines.pdf")}
-              style={{
-                textAlign: "left", padding: 16,
-                border: "1px solid var(--rule)", borderRadius: 6, background: "var(--paper)",
-                cursor: "pointer", display: "flex", flexDirection: "column", gap: 8,
-              }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <Icon name="book" size={14}/>
-                <span style={{ fontSize: 13, fontWeight: 500 }}>Guidelines PDF</span>
-                <Chip>file upload</Chip>
-              </div>
-              <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.45 }}>
-                Upload a brand book or one-pager. Good for brands with formal guidelines.
-              </div>
-            </button>
-          </div>
-
-          <FormRow label="Website URL" hint="We'll fetch the homepage, 2 PDPs, and About — under 60 seconds.">
-            <Input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://yourbrand.com"/>
+          <FormRow label="Website URL" hint="We'll read your homepage and About page — takes ~15 seconds.">
+            <Input
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+              placeholder="https://yourbrand.com"
+              onKeyDown={e => e.key === "Enter" && startScan()}
+            />
           </FormRow>
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 6 }}>
@@ -107,94 +142,185 @@ function BrandImportModal({ open, onClose, onApply }) {
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
-              <Btn variant="primary" onClick={() => startScan(url)}>
-                <Icon name="flash" size={12}/> Scan website
+              <Btn variant="primary" onClick={startScan} disabled={!url.trim()}>
+                <Icon name="flash" size={12}/> Analyse brand
               </Btn>
             </div>
           </div>
         </div>
       )}
 
+      {/* ── Scanning ─────────────────────────────────────────────────────────── */}
       {step === "scanning" && (
         <div>
           <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14 }}>
-            Scanning · {url}
+            Analysing · {url}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 0, border: "1px solid var(--rule)", borderRadius: 5, overflow: "hidden" }}>
+          <div style={{ border: "1px solid var(--rule)", borderRadius: 5, overflow: "hidden" }}>
             {scanProgress.map((s, i) => (
               <div key={i} className="anim-slide" style={{
-                padding: "10px 14px", borderTop: i === 0 ? 0 : "1px solid var(--rule)",
+                padding: "9px 14px", borderTop: i === 0 ? 0 : "1px solid var(--rule)",
                 display: "flex", alignItems: "center", gap: 10, fontSize: 12.5,
                 background: "var(--paper)",
               }}>
                 <span style={{ color: "var(--success)" }}><Icon name="check" size={11}/></span>
                 <span style={{ flex: 1 }}>{s.label}</span>
-                <span className="mono" style={{ color: "var(--muted)", fontSize: 10.5, letterSpacing: "0.04em" }}>ok</span>
+                <span className="mono" style={{ color: "var(--muted)", fontSize: 10.5 }}>ok</span>
               </div>
             ))}
-            <div style={{ padding: "10px 14px", borderTop: scanProgress.length ? "1px solid var(--rule)" : 0, display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, background: "var(--paper-2)" }}>
-              <span className="dot-pulse" style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent)" }}/>
-              <span style={{ color: "var(--muted)" }}>Working…</span>
-            </div>
+            {scanProgress.length < 9 && (
+              <div style={{
+                padding: "9px 14px", borderTop: scanProgress.length ? "1px solid var(--rule)" : 0,
+                display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, background: "var(--paper-2)",
+              }}>
+                <span className="dot-pulse" style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent)", flexShrink: 0 }}/>
+                <span style={{ color: "var(--muted)" }}>Working…</span>
+              </div>
+            )}
           </div>
         </div>
       )}
 
+      {/* ── Error ─────────────────────────────────────────────────────────────── */}
+      {step === "error" && (
+        <div style={{ padding: "24px 0" }}>
+          <div style={{ display: "flex", gap: 14, alignItems: "flex-start", marginBottom: 20 }}>
+            <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--error-wash, oklch(95% 0.03 20))", display: "grid", placeItems: "center", flexShrink: 0 }}>
+              <Icon name="x" size={14}/>
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Brand analysis failed</div>
+              <div style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.55 }}>{errorMsg}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+            <Btn variant="primary" onClick={() => setStep("input")}>Try again</Btn>
+          </div>
+        </div>
+      )}
+
+      {/* ── Preview ───────────────────────────────────────────────────────────── */}
       {step === "preview" && preset && (
         <div>
-          <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12 }}>
-            Brand candidate · {preset.url}
+          {/* Header */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: 8,
+              background: preset.palette?.vars?.["--accent"] || "var(--accent)",
+              display: "grid", placeItems: "center",
+              fontSize: 16, fontWeight: 700, color: "#fff",
+            }}>
+              {preset.name?.[0] || "B"}
+            </div>
+            <div>
+              <div style={{ fontSize: 17, fontWeight: 600, letterSpacing: "-0.02em" }}>{preset.name}</div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 1 }}>{preset.industry}</div>
+            </div>
+            <div style={{ marginLeft: "auto" }}>
+              <Chip tone="ok">Live preview applied</Chip>
+            </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-            <div style={{ border: "1px solid var(--rule)", borderRadius: 6, padding: 16, background: "var(--paper)" }}>
+          {/* Palette + Voice */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <div style={{ border: "1px solid var(--rule)", borderRadius: 6, padding: 14, background: "var(--paper)" }}>
               <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Palette</div>
-              <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                {Object.entries(preset.palette).map(([name, c]) => (
-                  <div key={name} style={{ flex: 1 }}>
-                    <div style={{ height: 36, borderRadius: 4, background: `oklch(${c.l}% ${c.c} ${c.h})`, border: "1px solid var(--rule)" }}/>
-                    <div className="mono" style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 4, letterSpacing: "0.04em" }}>{name}</div>
+              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                {swatchKeys.map(k => (
+                  <div key={k} style={{ flex: 1 }}>
+                    <div style={{
+                      height: 32, borderRadius: 4,
+                      background: preset.palette?.vars?.[k] || "var(--paper-2)",
+                      border: "1px solid var(--rule)",
+                    }}/>
+                    <div className="mono" style={{ fontSize: 9, color: "var(--muted)", marginTop: 3 }}>{swatchLabel[k]}</div>
                   </div>
                 ))}
               </div>
-              <div className="mono" style={{ fontSize: 10, color: "var(--muted-2)", letterSpacing: "0.04em" }}>5 tones · oklch · WCAG AA verified</div>
+              <div className="mono" style={{ fontSize: 10, color: "var(--muted-2)" }}>oklch · UI already updated ↑</div>
             </div>
 
-            <div style={{ border: "1px solid var(--rule)", borderRadius: 6, padding: 16, background: "var(--paper)" }}>
-              <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Type</div>
-              <div style={{ fontFamily: "Cormorant Garamond, serif", fontSize: 26, lineHeight: 1.1, fontStyle: "italic", color: "var(--ink)" }}>{preset.fonts.display}</div>
-              <div style={{ fontSize: 13, marginTop: 6, color: "var(--ink-2)" }}>{preset.fonts.body} <span style={{ color: "var(--muted)" }}>· body</span></div>
-              <div className="mono" style={{ fontSize: 11.5, marginTop: 4, color: "var(--ink-2)" }}>{preset.fonts.mono} <span style={{ color: "var(--muted)" }}>· mono</span></div>
-            </div>
-          </div>
-
-          <div style={{ marginTop: 14, border: "1px solid var(--rule)", borderRadius: 6, padding: 16, background: "var(--paper)" }}>
-            <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Voice</div>
-            <div style={{ fontSize: 13.5, color: "var(--ink)", lineHeight: 1.55, fontStyle: "italic" }} className="serif">"{preset.voice}"</div>
-          </div>
-
-          <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <div style={{ border: "1px solid var(--rule)", borderRadius: 6, padding: 14, background: "var(--paper)" }}>
-              <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Brand values · {preset.values.length}</div>
+              <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Voice</div>
+              <div style={{ fontSize: 12.5, color: "var(--ink)", lineHeight: 1.5, fontStyle: "italic", marginBottom: 6 }}>"{preset.voice?.tone}"</div>
+              <div style={{ fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5 }}>{preset.voice?.personality}</div>
+            </div>
+          </div>
+
+          {/* Audience + Channels */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <div style={{ border: "1px solid var(--rule)", borderRadius: 6, padding: 14, background: "var(--paper)" }}>
+              <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Target audience</div>
+              <div style={{ fontSize: 12, color: "var(--ink-2)", lineHeight: 1.55 }}>{preset.targetAudience}</div>
+            </div>
+            <div style={{ border: "1px solid var(--rule)", borderRadius: 6, padding: 14, background: "var(--paper)" }}>
+              <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>
+                Recommended channels · {preset.recommendedConnectors?.length || 0}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                {(preset.recommendedConnectors || []).map(id => (
+                  <Chip key={id} tone="accent">{id}</Chip>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Values + Claims */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <div style={{ border: "1px solid var(--rule)", borderRadius: 6, padding: 14, background: "var(--paper)" }}>
+              <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>
+                Brand values · {(preset.values || []).length}
+              </div>
               <ul style={{ margin: 0, padding: 0, listStyle: "none", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.5 }}>
-                {preset.values.map(v => <li key={v} style={{ paddingLeft: 14, position: "relative", marginBottom: 4 }}><span style={{ position: "absolute", left: 0, color: "var(--accent)" }}>·</span>{v}</li>)}
+                {(preset.values || []).map(v => (
+                  <li key={v} style={{ paddingLeft: 14, position: "relative", marginBottom: 3 }}>
+                    <span style={{ position: "absolute", left: 0, color: "var(--accent)" }}>·</span>{v}
+                  </li>
+                ))}
               </ul>
             </div>
             <div style={{ border: "1px solid var(--rule)", borderRadius: 6, padding: 14, background: "var(--paper)" }}>
-              <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Approved claims · {preset.claims.length}</div>
+              <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>
+                Approved claims · {(preset.claims || []).length}
+              </div>
               <ul style={{ margin: 0, padding: 0, listStyle: "none", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.5 }}>
-                {preset.claims.slice(0,4).map(c => <li key={c} style={{ paddingLeft: 14, position: "relative", marginBottom: 4 }}><span style={{ position: "absolute", left: 0, color: "var(--success)" }}>✓</span>{c}</li>)}
-                {preset.claims.length > 4 && <li style={{ color: "var(--muted)", fontSize: 11, marginTop: 4 }}>+ {preset.claims.length - 4} more</li>}
+                {(preset.claims || []).slice(0, 4).map(c => (
+                  <li key={c} style={{ paddingLeft: 14, position: "relative", marginBottom: 3 }}>
+                    <span style={{ position: "absolute", left: 0, color: "var(--success)" }}>✓</span>{c}
+                  </li>
+                ))}
+                {(preset.claims || []).length > 4 && (
+                  <li style={{ color: "var(--muted)", fontSize: 11, marginTop: 4 }}>+ {preset.claims.length - 4} more</li>
+                )}
               </ul>
             </div>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 18 }}>
+          {/* Competitors */}
+          {(preset.competitors || []).length > 0 && (
+            <div style={{ border: "1px solid var(--rule)", borderRadius: 6, padding: 14, background: "var(--paper)", marginBottom: 12 }}>
+              <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>
+                Competitors · {preset.competitors.length}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {preset.competitors.map((c, i) => (
+                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 500, color: "var(--ink)", minWidth: 110 }}>{c.name}</div>
+                    <div style={{ fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.45 }}>{c.positioning}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 6 }}>
             <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.04em" }}>
-              You can edit any of this in Brand Memory after applying
+              Palette already applied — reject to revert
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <Btn variant="ghost" onClick={() => setStep("input")}>Back</Btn>
+              <Btn variant="ghost" onClick={revert}>Reject</Btn>
               <Btn variant="primary" onClick={apply}>
                 <Icon name="check" size={12}/> Apply brand
               </Btn>
