@@ -12,7 +12,7 @@
 
 export const config = { runtime: "edge" };
 
-const COMPOSIO_BASE  = "https://backend.composio.dev/api/v2";
+const COMPOSIO_BASE  = "https://backend.composio.dev/api/v3";
 const ANTHROPIC_BASE = "https://api.anthropic.com/v1";
 
 // ─── Composio helpers ─────────────────────────────────────────────────────────
@@ -28,38 +28,40 @@ function composioHeaders() {
  * Returns [] gracefully if Composio not configured or tenant has no connections.
  */
 async function fetchComposioTools(tenantId) {
-  if (!process.env.COMPOSIO_API_KEY || !tenantId) return [];
+  if (!process.env.COMPOSIO_API_KEY2 || !tenantId) return [];
 
   try {
-    // Get tenant's active connections
+    // Get tenant's active connections (v3)
     const connRes = await fetch(
-      `${COMPOSIO_BASE}/connectedAccounts?entityId=${tenantId}&showActiveOnly=true`,
+      `${COMPOSIO_BASE}/connected_accounts?user_ids=${encodeURIComponent(tenantId)}&statuses=ACTIVE&limit=50`,
       { headers: composioHeaders() }
     );
     if (!connRes.ok) return [];
 
     const connData = await connRes.json();
-    const accounts = connData.items || connData.connectedAccounts || [];
+    const accounts = connData.items || connData.connected_accounts || connData.data || [];
     if (accounts.length === 0) return [];
 
-    // Build app list from connected accounts
-    const apps = [...new Set(accounts.map(a => a.appName).filter(Boolean))].join(",");
+    // Build toolkit slug list from connected accounts (v3 uses toolkit.slug)
+    const apps = [...new Set(
+      accounts.map(a => a.toolkit?.slug || a.appName || a.app_name).filter(Boolean)
+    )].join(",");
 
-    // Fetch available actions for connected apps
+    // Fetch available actions for connected toolkits (v3)
     const actRes = await fetch(
-      `${COMPOSIO_BASE}/actions?apps=${apps}&limit=20&filterByAvailableApps=true`,
+      `${COMPOSIO_BASE}/tools?toolkits=${apps}&limit=20`,
       { headers: composioHeaders() }
     );
     if (!actRes.ok) return [];
 
     const actData = await actRes.json();
-    const actions = actData.items || actData.actions || [];
+    const actions = actData.items || actData.tools || actData.actions || [];
 
     // Map to Anthropic tool format
     return actions.map(action => ({
-      name:         action.name,
-      description:  action.description || `Execute ${action.name}`,
-      input_schema: action.parameters  || { type: "object", properties: {} },
+      name:         action.name || action.slug,
+      description:  action.description || `Execute ${action.name || action.slug}`,
+      input_schema: action.parameters || action.input_schema || { type: "object", properties: {} },
     }));
   } catch (e) {
     console.error("[chat] fetchComposioTools:", e.message);
@@ -72,10 +74,11 @@ async function fetchComposioTools(tenantId) {
  */
 async function executeComposioTool(toolName, toolInput, tenantId) {
   try {
-    const res = await fetch(`${COMPOSIO_BASE}/actions/${toolName}/execute`, {
+    // v3: tool execution endpoint + user_id instead of entityId
+    const res = await fetch(`${COMPOSIO_BASE}/tools/${toolName}/execute`, {
       method:  "POST",
       headers: composioHeaders(),
-      body:    JSON.stringify({ entityId: tenantId, params: toolInput }),
+      body:    JSON.stringify({ user_id: tenantId, input: toolInput }),
     });
 
     const text = await res.text();

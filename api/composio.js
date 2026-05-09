@@ -2,9 +2,13 @@
  * FlowOS — Composio connector
  * Vercel Edge Function: POST /api/composio
  *
- * Handles per-tenant platform connections via Composio managed OAuth.
- * Each tenant (entityId = tenantId) connects their own accounts.
- * Composio stores and refreshes credentials — we never touch OAuth tokens.
+ * Composio v3 API (backend.composio.dev/api/v3).
+ * Key v2→v3 changes:
+ *   - entityId        → user_id
+ *   - integrationId   → auth_config_id
+ *   - /connectedAccounts → /connected_accounts
+ *   - showActiveOnly  → statuses=ACTIVE
+ *   - initiate flow   → get/create auth_config, then POST /connected_accounts
  *
  * Actions:
  *   initiate_connection  — start OAuth flow for a tenant + app
@@ -15,7 +19,7 @@
 
 export const config = { runtime: "edge" };
 
-const COMPOSIO_BASE = "https://backend.composio.dev/api/v2";
+const COMPOSIO_BASE = "https://backend.composio.dev/api/v3";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
@@ -63,8 +67,8 @@ async function composioFetch(path, options = {}) {
   return data;
 }
 
-// ─── App → Composio integration name mapping ──────────────────────────────────
-// Maps the connector names used in FlowOS UI to Composio's integration IDs.
+// ─── App slug mapping ─────────────────────────────────────────────────────────
+// Maps FlowOS connector IDs to Composio toolkit slugs.
 
 const APP_MAP = {
   googleads:  "googleads",
@@ -81,33 +85,90 @@ function resolveApp(app) {
   return APP_MAP[app?.toLowerCase()] || app?.toLowerCase();
 }
 
+// ─── Auth config helper (v3) ──────────────────────────────────────────────────
+//
+// v3 requires an auth_config_id before creating a connected account.
+// This helper finds an existing Composio-managed config for the toolkit,
+// or creates one if none exists.
+
+async function getOrCreateAuthConfigId(toolkitSlug) {
+  // 1. Try to find an existing managed auth config for this toolkit
+  const list = await composioFetch(
+    `/auth_configs?toolkit_slug=${encodeURIComponent(toolkitSlug)}&limit=20`
+  );
+
+  const items = list.items || list.auth_configs || list.data || [];
+  const existing = items.find(c => {
+    const slug = c.toolkit?.slug || c.toolkit_slug || c.slug || "";
+    const isManaged = c.auth_config?.is_composio_managed ?? c.is_composio_managed ?? true;
+    return slug.toLowerCase() === toolkitSlug.toLowerCase() && isManaged;
+  });
+
+  if (existing) {
+    return existing.auth_config?.id || existing.id;
+  }
+
+  // 2. Create a Composio-managed auth config for this toolkit
+  const created = await composioFetch("/auth_configs", {
+    method: "POST",
+    body:   JSON.stringify({
+      toolkit:     { slug: toolkitSlug },
+      auth_config: { type: "use_composio_managed_auth" },
+    }),
+  });
+
+  return created.auth_config?.id || created.id;
+}
+
 // ─── Action handlers ──────────────────────────────────────────────────────────
 
 /**
  * initiate_connection
  * Starts OAuth for a tenant + app. Returns a redirect URL to send the user to.
- * After the user completes OAuth, Composio redirects to `redirectUri`.
+ * After OAuth completes, Composio redirects to `redirectUri`.
+ *
+ * v3 flow:
+ *   1. Get/create managed auth_config for the toolkit
+ *   2. POST /connected_accounts → get redirectUrl from connectionData
  */
 async function handleInitiateConnection({ tenantId, app, redirectUri }) {
   if (!tenantId)    return err("tenantId required");
   if (!app)         return err("app required");
   if (!redirectUri) return err("redirectUri required");
 
-  const integrationApp = resolveApp(app);
+  const toolkitSlug  = resolveApp(app);
+  const authConfigId = await getOrCreateAuthConfigId(toolkitSlug);
 
-  const data = await composioFetch("/connectedAccounts", {
+  const data = await composioFetch("/connected_accounts", {
     method: "POST",
-    body: JSON.stringify({
-      integrationId: integrationApp,
-      entityId:      tenantId,       // Composio uses entityId for multi-tenancy
-      redirectUri,
+    body:   JSON.stringify({
+      auth_config: { id: authConfigId },
+      connection:  {
+        user_id:      tenantId,
+        callback_url: redirectUri,
+      },
     }),
   });
 
+  // v3 nests the redirect URL: connectionData.val.redirectUrl
+  const redirectUrl =
+    data?.connectionData?.val?.redirectUrl ||
+    data?.connectionData?.redirectUrl      ||
+    data?.redirectUrl                      ||
+    data?.redirect_url                     ||
+    null;
+
+  if (!redirectUrl) {
+    throw new Error(
+      `No redirectUrl in Composio response. Status: ${data?.status}. ` +
+      `Connection may require API key auth instead of OAuth.`
+    );
+  }
+
   return json({
-    ok:          true,
-    redirectUrl: data.redirectUrl || data.redirect_url,
-    connectionId: data.connectionId || data.id,
+    ok:           true,
+    redirectUrl,
+    connectionId: data?.id || null,
   });
 }
 
@@ -119,23 +180,23 @@ async function handleConnectionStatus({ tenantId, app }) {
   if (!tenantId) return err("tenantId required");
   if (!app)      return err("app required");
 
-  const integrationApp = resolveApp(app);
+  const toolkitSlug = resolveApp(app);
 
   const data = await composioFetch(
-    `/connectedAccounts?entityId=${tenantId}&showActiveOnly=true`
+    `/connected_accounts?user_ids=${encodeURIComponent(tenantId)}&statuses=ACTIVE&limit=50`
   );
 
-  const accounts = data.items || data.connectedAccounts || [];
-  const match = accounts.find(a =>
-    a.appName?.toLowerCase() === integrationApp ||
-    a.integrationId?.toLowerCase().includes(integrationApp)
-  );
+  const accounts = data.items || data.connected_accounts || data.data || [];
+  const match = accounts.find(a => {
+    const slug = a.toolkit?.slug || a.appName || a.app_name || "";
+    return slug.toLowerCase() === toolkitSlug.toLowerCase();
+  });
 
   return json({
-    ok:          true,
-    connected:   !!match,
-    accountId:   match?.id || null,
-    status:      match?.status || "not_connected",
+    ok:        true,
+    connected: !!match,
+    accountId: match?.id || null,
+    status:    match?.status || "not_connected",
     app,
   });
 }
@@ -148,14 +209,14 @@ async function handleListConnections({ tenantId }) {
   if (!tenantId) return err("tenantId required");
 
   const data = await composioFetch(
-    `/connectedAccounts?entityId=${tenantId}&showActiveOnly=true`
+    `/connected_accounts?user_ids=${encodeURIComponent(tenantId)}&statuses=ACTIVE&limit=100`
   );
 
-  const accounts = (data.items || data.connectedAccounts || []).map(a => ({
-    id:       a.id,
-    app:      a.appName,
-    status:   a.status,
-    handle:   a.accountHandle || null,
+  const accounts = (data.items || data.connected_accounts || data.data || []).map(a => ({
+    id:     a.id,
+    app:    a.toolkit?.slug || a.appName || a.app_name,
+    status: a.status,
+    handle: a.account_handle || a.accountHandle || null,
   }));
 
   return json({ ok: true, connections: accounts });
@@ -168,7 +229,7 @@ async function handleListConnections({ tenantId }) {
 async function handleDisconnect({ accountId }) {
   if (!accountId) return err("accountId required");
 
-  await composioFetch(`/connectedAccounts/${accountId}`, { method: "DELETE" });
+  await composioFetch(`/connected_accounts/${accountId}`, { method: "DELETE" });
   return json({ ok: true });
 }
 
