@@ -135,10 +135,59 @@ function paletteFromUrl(url) {
   return BRAND_PALETTES[hash % BRAND_PALETTES.length];
 }
 
+// ─── Font pairings by industry type ──────────────────────────────────────────
+const FONT_PAIRINGS = [
+  {
+    match: ["beauty", "skincare", "luxury", "jewel", "wellness", "fashion", "apparel", "fragrance", "cosmetic"],
+    serif: "Cormorant Garamond",
+    sans:  "DM Sans",
+    url:   "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=DM+Sans:wght@400;500&display=swap",
+  },
+  {
+    match: ["hvac", "refriger", "plumb", "electric", "construct", "landscap", "roofing", "pest", "moving", "cleaning", "auto repair", "trades", "blue collar", "security", "locksmith"],
+    serif: "IBM Plex Sans",
+    sans:  "IBM Plex Sans",
+    url:   "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap",
+  },
+  {
+    match: ["saas", "software", "tech", "b2b", "consulting", "staffing", "legal", "accounting", "finance", "insurance"],
+    serif: "Inter",
+    sans:  "Inter",
+    url:   "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap",
+  },
+  {
+    match: ["restaurant", "café", "cafe", "food", "beverage", "hotel", "hospitality", "bakery"],
+    serif: "Lora",
+    sans:  "Inter",
+    url:   "https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400&family=Inter:wght@400;500&display=swap",
+  },
+];
+
+function applyFont(industry) {
+  const s = (industry || "").toLowerCase();
+  const pairing = FONT_PAIRINGS.find(p => p.match.some(kw => s.includes(kw)));
+  if (!pairing) return;
+
+  const linkId = "flowos-brand-font";
+  let link = document.getElementById(linkId);
+  if (!link) {
+    link = document.createElement("link");
+    link.id = linkId;
+    link.rel = "stylesheet";
+    document.head.appendChild(link);
+  }
+  link.href = pairing.url;
+
+  const root = document.documentElement;
+  root.style.setProperty("--font-serif", `'${pairing.serif}', Georgia, serif`);
+  root.style.setProperty("--font-sans",  `'${pairing.sans}', system-ui, sans-serif`);
+}
+
 // Apply palette to :root CSS variables
 function applyPalette(palette) {
   const root = document.documentElement;
   Object.entries(palette.vars).forEach(([k, v]) => root.style.setProperty(k, v));
+  if (palette.brandData?.industry) applyFont(palette.brandData.industry);
 }
 
 // Revert to token defaults
@@ -243,21 +292,28 @@ const GOALS = [
   { id: "scale",     icon: "chart",    label: "Scale paid spend",         sub: "Pmax, Advantage+, Meta Ads, keyword expansion" },
 ];
 
-const QUICK_CHANNELS = [
-  // Organic social
-  { id: "instagram",  label: "Instagram",   sub: "Organic social — feed, reels, stories", color: "#e1306c" },
-  { id: "tiktok",     label: "TikTok",      sub: "Organic social — short video",          color: "#010101" },
-  { id: "facebook",   label: "Facebook",    sub: "Organic social — pages & groups",       color: "#1877f2" },
-  { id: "pinterest",  label: "Pinterest",   sub: "Organic social — pins & boards",        color: "#e60023" },
-  { id: "youtube",    label: "YouTube",     sub: "Organic video — shorts & long-form",    color: "#ff0000" },
-  // Paid social
-  { id: "meta_ads",   label: "Meta Ads",    sub: "Paid social — Advantage+",              color: "#0866ff" },
-  { id: "tiktok_ads", label: "TikTok Ads",  sub: "Paid social — spark ads",               color: "#69c9d0" },
-  // Search
-  { id: "google",     label: "Google Ads",  sub: "Search, Shopping & Pmax",               color: "#4285f4" },
-  // Email & commerce
-  { id: "klaviyo",    label: "Klaviyo",     sub: "Email & SMS",                           color: "#36c" },
-  { id: "shopify",    label: "Shopify",     sub: "Commerce & data",                       color: "#96bf48" },
+// IDs match the recommendedConnectors values from brand analysis
+const ALL_CHANNELS = [
+  { id: "ig",         label: "Instagram",             sub: "Organic social — feed, reels, stories",  color: "#e1306c" },
+  { id: "tt",         label: "TikTok",                sub: "Organic social — short video",           color: "#010101" },
+  { id: "fb",         label: "Facebook",              sub: "Organic social — pages & groups",        color: "#1877f2" },
+  { id: "pn",         label: "Pinterest",             sub: "Organic social — pins & boards",         color: "#e60023" },
+  { id: "yt",         label: "YouTube",               sub: "Organic video — shorts & long-form",     color: "#ff0000" },
+  { id: "li",         label: "LinkedIn",              sub: "Professional network & B2B social",      color: "#0077b5" },
+  { id: "x",          label: "X",                     sub: "Organic social",                         color: "#000000" },
+  { id: "threads",    label: "Threads",               sub: "Organic social",                         color: "#000000" },
+  { id: "metaads",    label: "Meta Ads",              sub: "Paid social — Advantage+",               color: "#0866ff" },
+  { id: "ttads",      label: "TikTok Ads",            sub: "Paid social — spark ads",                color: "#69c9d0" },
+  { id: "googleads",  label: "Google Ads",            sub: "Search, Shopping & Pmax",                color: "#4285f4" },
+  { id: "liads",      label: "LinkedIn Ads",          sub: "Paid B2B — lead gen & awareness",        color: "#0077b5" },
+  { id: "klaviyo",    label: "Klaviyo",               sub: "Email & SMS",                            color: "#3366cc" },
+  { id: "mailchimp",  label: "Mailchimp",             sub: "Email marketing",                        color: "#ffe01b" },
+  { id: "shopify",    label: "Shopify",               sub: "Commerce & data",                        color: "#96bf48" },
+  { id: "ga4",        label: "Google Analytics",      sub: "Web analytics",                          color: "#e37400" },
+  { id: "gsc",        label: "Google Search Console", sub: "SEO & search performance",               color: "#4285f4" },
+  { id: "yelp",       label: "Yelp",                  sub: "Local reviews & reputation",             color: "#d32323" },
+  { id: "ahrefs",     label: "Ahrefs",                sub: "SEO & backlink analysis",                color: "#ff6200" },
+  { id: "semrush",    label: "SEMrush",               sub: "SEO & competitive research",             color: "#ff642d" },
 ];
 
 // ─── Progress dots ─────────────────────────────────────────────────────────
@@ -604,10 +660,22 @@ function Step3({ data, onChange, onNext, onBack }) {
   );
 }
 
-// ─── Step 4 — Connect first channel ───────────────────────────────────────
+// ─── Step 4 — Brand summary + channel connect ─────────────────────────────
 function Step4({ data, onChange, onFinish, onBack }) {
+  const [phase, setPhase]       = useStateOB("summary"); // "summary" | "channels"
   const [connecting, setConnecting] = useStateOB(null);
-  const [connected, setConnected] = useStateOB([]);
+  const [connected, setConnected]   = useStateOB([]);
+
+  const brandData   = data.chosenPalette?.brandData || null;
+  const summary     = brandData?.summary || null;
+  const recommended = brandData?.recommendedConnectors || [];
+
+  // Channels filtered to what the brand analysis recommended
+  const recommendedChannels = ALL_CHANNELS.filter(ch => recommended.includes(ch.id));
+  // Fall back to a sensible default set if no brand data
+  const channelList = recommendedChannels.length > 0
+    ? recommendedChannels
+    : ALL_CHANNELS.filter(ch => ["ig", "fb", "klaviyo", "googleads"].includes(ch.id));
 
   const connect = (id) => {
     setConnecting(id);
@@ -618,55 +686,110 @@ function Step4({ data, onChange, onFinish, onBack }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <div>
         <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 6 }}>Step 4 of 4</div>
         <h2 className="serif" style={{ margin: 0, fontSize: 32, fontWeight: 500, letterSpacing: "-0.02em", lineHeight: 1.1 }}>
-          Connect your<br/><em>first channel.</em>
+          {summary ? <>Here's what<br/><em>we found.</em></> : <>Connect your<br/><em>first channel.</em></>}
         </h2>
-        <p style={{ margin: "10px 0 0", fontSize: 13.5, color: "var(--muted)", lineHeight: 1.6 }}>
-          One click — you can always add more from Connections. Skip if you'd like to explore first.
-        </p>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {QUICK_CHANNELS.map(ch => {
-          const isConnected = connected.includes(ch.id);
-          const isConnecting = connecting === ch.id;
-          return (
-            <div key={ch.id} style={{
-              display: "flex", alignItems: "center", gap: 14, padding: "12px 16px",
-              border: `1.5px solid ${isConnected ? "var(--success)" : "var(--rule)"}`,
-              borderRadius: 7, background: isConnected ? "var(--success-wash)" : "var(--paper)",
-              transition: "all .2s",
-            }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: ch.color, flexShrink: 0 }}/>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 500 }}>{ch.label}</div>
-                <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{ch.sub}</div>
-              </div>
-              {isConnected ? (
-                <span className="mono" style={{ fontSize: 10.5, color: "var(--success)", letterSpacing: "0.06em" }}>Connected</span>
-              ) : (
-                <button onClick={() => connect(ch.id)} disabled={!!connecting} style={{
-                  padding: "6px 14px", borderRadius: 5, background: isConnecting ? "var(--rule)" : "var(--ink)",
-                  color: "var(--paper)", border: "none", fontSize: 12, fontFamily: "var(--font-sans)", cursor: connecting ? "not-allowed" : "pointer",
+      {/* ── Brand summary ──────────────────────────────────────────────── */}
+      {summary && (
+        <div style={{
+          background: "var(--paper-2)", borderRadius: 8, padding: "16px 18px",
+          borderLeft: "3px solid var(--accent)",
+        }}>
+          {summary.split("\n\n").map((para, i) => (
+            <p key={i} style={{ margin: i === 0 ? 0 : "10px 0 0", fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.65 }}>
+              {para}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {/* ── Phase: summary — ask connect now or later ──────────────────── */}
+      {phase === "summary" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <p style={{ margin: 0, fontSize: 13.5, color: "var(--muted)", lineHeight: 1.6 }}>
+            {recommendedChannels.length > 0
+              ? `We've pre-selected ${recommendedChannels.length} channels that fit this brand. Want to connect one now?`
+              : "Want to connect a channel now, or set them up later?"}
+          </p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button onClick={() => setPhase("channels")} style={{
+              padding: "11px 20px", borderRadius: 6, background: "var(--ink)", color: "var(--paper)",
+              border: "none", fontWeight: 500, fontSize: 13.5, fontFamily: "var(--font-sans)", cursor: "pointer",
+            }}>Connect a channel →</button>
+            <button onClick={() => onFinish({ connectedChannels: [] })} style={{
+              padding: "11px 20px", borderRadius: 6, background: "transparent",
+              border: "1px solid var(--rule-strong)", color: "var(--muted)",
+              fontFamily: "var(--font-sans)", fontSize: 13.5, cursor: "pointer",
+            }}>Skip — I'll do this in Connections</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Phase: channels — pick one to connect ──────────────────────── */}
+      {phase === "channels" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            {channelList.map(ch => {
+              const isConnected  = connected.includes(ch.id);
+              const isConnecting = connecting === ch.id;
+              return (
+                <div key={ch.id} style={{
+                  display: "flex", alignItems: "center", gap: 14, padding: "11px 14px",
+                  border: `1.5px solid ${isConnected ? "var(--accent)" : "var(--rule)"}`,
+                  borderRadius: 7,
+                  background: isConnected ? "var(--accent-wash)" : "var(--paper)",
+                  transition: "all .2s",
                 }}>
-                  {isConnecting ? "…" : "Connect"}
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: ch.color, flexShrink: 0 }}/>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 500 }}>{ch.label}</div>
+                    <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{ch.sub}</div>
+                  </div>
+                  {isConnected ? (
+                    <span className="mono" style={{ fontSize: 10.5, color: "var(--accent-ink)", letterSpacing: "0.06em" }}>Connected</span>
+                  ) : (
+                    <button onClick={() => connect(ch.id)} disabled={!!connecting} style={{
+                      padding: "6px 14px", borderRadius: 5,
+                      background: isConnecting ? "var(--rule)" : "var(--ink)",
+                      color: "var(--paper)", border: "none", fontSize: 12,
+                      fontFamily: "var(--font-sans)", cursor: connecting ? "not-allowed" : "pointer",
+                    }}>{isConnecting ? "…" : "Connect"}</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
 
-      <div style={{ display: "flex", gap: 10 }}>
-        <button onClick={onBack} style={{ padding: "11px 18px", borderRadius: 6, background: "transparent", border: "1px solid var(--rule-strong)", color: "var(--ink-2)", fontFamily: "var(--font-sans)", fontSize: 13.5, cursor: "pointer" }}>← Back</button>
-        <button onClick={() => onFinish({ connectedChannels: connected })} style={{
-          padding: "11px 24px", borderRadius: 6, background: "var(--accent)", color: "var(--paper)",
-          border: "none", fontWeight: 500, fontSize: 14, fontFamily: "var(--font-sans)", cursor: "pointer",
-        }}>{connected.length > 0 ? "Enter your workspace →" : "Skip — enter workspace →"}</button>
-      </div>
+          <p className="mono" style={{ margin: 0, fontSize: 10.5, color: "var(--muted)", lineHeight: 1.6 }}>
+            Additional setup and API keys live in Settings under Connections and can be set up anytime.
+          </p>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setPhase("summary")} style={{
+              padding: "11px 18px", borderRadius: 6, background: "transparent",
+              border: "1px solid var(--rule-strong)", color: "var(--ink-2)",
+              fontFamily: "var(--font-sans)", fontSize: 13.5, cursor: "pointer",
+            }}>← Back</button>
+            <button onClick={() => onFinish({ connectedChannels: connected })} style={{
+              padding: "11px 24px", borderRadius: 6, background: "var(--accent)", color: "var(--paper)",
+              border: "none", fontWeight: 500, fontSize: 14, fontFamily: "var(--font-sans)", cursor: "pointer",
+            }}>{connected.length > 0 ? "Enter workspace →" : "Skip — enter workspace →"}</button>
+          </div>
+        </div>
+      )}
+
+      {phase === "summary" && (
+        <button onClick={onBack} style={{
+          alignSelf: "flex-start", padding: "11px 18px", borderRadius: 6,
+          background: "transparent", border: "1px solid var(--rule-strong)",
+          color: "var(--ink-2)", fontFamily: "var(--font-sans)", fontSize: 13.5, cursor: "pointer",
+        }}>← Back</button>
+      )}
     </div>
   );
 }
