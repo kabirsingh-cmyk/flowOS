@@ -160,10 +160,79 @@ const SCAN_STEPS = [
 ];
 
 // ─── Industries ────────────────────────────────────────────────────────────
-const INDUSTRIES = [
-  "Beauty & wellness", "Fashion & apparel", "Home & living",
-  "Food & beverage", "Sports & outdoor", "Health & supplements",
-  "Jewellery & accessories", "Pet care", "Consumer tech", "Other",
+const INDUSTRY_GROUPS = [
+  {
+    group: "E-commerce & DTC",
+    options: [
+      "Beauty & skincare",
+      "Health & supplements",
+      "Fashion & apparel",
+      "Jewellery & accessories",
+      "Home & living",
+      "Food & beverage",
+      "Sports & outdoor",
+      "Pet care",
+      "Baby & kids",
+      "Consumer electronics",
+      "Automotive accessories",
+    ],
+  },
+  {
+    group: "Trades & Blue Collar",
+    options: [
+      "HVAC & refrigeration",
+      "Plumbing",
+      "Electrical",
+      "Construction & contracting",
+      "Landscaping & lawn care",
+      "Cleaning & janitorial",
+      "Auto repair & bodywork",
+      "Painting & decorating",
+      "Roofing",
+      "Pest control",
+      "Security & locksmith",
+      "Moving & storage",
+    ],
+  },
+  {
+    group: "B2B & Professional Services",
+    options: [
+      "SaaS & software",
+      "Marketing & creative agency",
+      "Legal & compliance",
+      "Accounting & finance",
+      "Consulting",
+      "Staffing & recruitment",
+      "Real estate",
+      "Insurance",
+    ],
+  },
+  {
+    group: "Hospitality & Local",
+    options: [
+      "Restaurant & café",
+      "Hotel & accommodation",
+      "Fitness & gym",
+      "Salon & beauty services",
+      "Retail (brick & mortar)",
+      "Events & entertainment",
+    ],
+  },
+  {
+    group: "Healthcare & Wellness",
+    options: [
+      "Medical practice",
+      "Dental",
+      "Mental health",
+      "Pharmacy & compounding",
+      "Veterinary",
+      "Chiropractic & physio",
+    ],
+  },
+  {
+    group: "Other",
+    options: ["Non-profit", "Education & training", "Government & public sector", "Other"],
+  },
 ];
 
 const GOALS = [
@@ -266,7 +335,11 @@ function Step1({ data, onChange, onNext }) {
             style={{ padding: "10px 12px", border: "1px solid var(--rule-strong)", borderRadius: 6, fontSize: 14, fontFamily: "var(--font-sans)", background: "var(--paper)", color: data.industry ? "var(--ink)" : "var(--muted)", appearance: "none", cursor: "pointer" }}
           >
             <option value="">Select industry…</option>
-            {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
+            {INDUSTRY_GROUPS.map(g => (
+              <optgroup key={g.group} label={g.group}>
+                {g.options.map(o => <option key={o} value={o}>{o}</option>)}
+              </optgroup>
+            ))}
           </select>
         </label>
 
