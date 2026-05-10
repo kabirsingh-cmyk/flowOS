@@ -766,7 +766,7 @@ function Step4({ data, onChange, onFinish, onBack }) {
           </div>
 
           <p className="mono" style={{ margin: 0, fontSize: 10.5, color: "var(--muted)", lineHeight: 1.6 }}>
-            Additional setup and API keys live in Connections once you're inside.
+            Additional setup and API keys live in Settings under Connections and can be set up anytime.
           </p>
 
           <div style={{ display: "flex", gap: 8 }}>
