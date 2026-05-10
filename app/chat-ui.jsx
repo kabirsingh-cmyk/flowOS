@@ -15,7 +15,15 @@ function SpecialistAvatar({ id, size = 28 }) {
   );
 }
 
-function UserAvatar({ name, size = 28 }) {
+function UserAvatar({ name, src, size = 28 }) {
+  if (src) {
+    return (
+      <img src={src} alt={name} style={{
+        width: size, height: size, borderRadius: 5,
+        objectFit: "cover", border: "1px solid var(--rule)", flexShrink: 0,
+      }}/>
+    );
+  }
   const initials = name.split(/\s+/).map(s => s[0]).slice(0,2).join("");
   return (
     <div style={{

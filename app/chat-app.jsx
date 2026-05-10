@@ -261,7 +261,7 @@ function ChannelList({ channels, active, onSelect, brandImported, brandPreset, a
       </div>
 
       <div style={{ borderTop: "1px solid var(--rule)", padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-        <UserAvatar name={auth?.name || "Greg O"} size={22}/>
+        <UserAvatar name={auth?.name || "Greg O"} src={auth?.avatar} size={22}/>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{auth?.name || "Greg O."}</div>
           {auth?.via && <div className="mono" style={{ fontSize: 9.5, color: "var(--muted)", letterSpacing: "0.04em" }}>via {auth.via}</div>}
@@ -400,7 +400,7 @@ function ChatHeader({ channels, activeId, onSelect, brandImported, brandPreset, 
         </div>
       )}
       <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
-        <UserAvatar name={auth?.name || "G"} size={20}/>
+        <UserAvatar name={auth?.name || "G"} src={auth?.avatar} size={20}/>
         {onLogout && <button onClick={onLogout} title="Sign out" style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", padding: 3, display: "flex" }}><Icon name="x" size={11}/></button>}
       </div>
     </div>
@@ -540,9 +540,16 @@ function Thread({ messages, channel, onOpenArtifact, onConfirm, onAction, typing
 
 // ────────────────────────────── AUTH HELPERS ──────────────────────────────
 function mapUser(sbUser) {
-  const raw = sbUser.user_metadata?.name || sbUser.email.split("@")[0];
-  const name = raw.split(/[._-]/).map(w => w[0]?.toUpperCase() + w.slice(1)).join(" ");
-  return { id: sbUser.id, email: sbUser.email, name, via: "email", at: Date.now() };
+  const meta     = sbUser.user_metadata || {};
+  const provider = sbUser.app_metadata?.provider || "email";
+  // Google sends full_name; email/password signup sends name
+  const raw  = meta.full_name || meta.name || sbUser.email?.split("@")[0] || "User";
+  const name = raw.includes(" ")
+    ? raw  // already formatted (Google full name)
+    : raw.split(/[._-]/).map(w => w[0]?.toUpperCase() + w.slice(1)).join(" ");
+  const via    = provider === "google" ? "Google" : "email";
+  const avatar = meta.avatar_url || meta.picture || null;
+  return { id: sbUser.id, email: sbUser.email, name, via, avatar, at: Date.now() };
 }
 
 // ────────────────────────────── MAIN APP ──────────────────────────────
