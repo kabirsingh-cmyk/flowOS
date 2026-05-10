@@ -306,26 +306,58 @@ function Step2({ data, onChange, onNext, onBack }) {
   const [chosen, setChosen] = useStateOB(null);
   const timerRef = useRefOB(null);
 
-  const startScan = () => {
+  const startScan = async () => {
     if (!data.website.trim()) return;
     setScanState("scanning");
     setScanLog([]);
-    const detected = paletteFromUrl(data.website);
+
+    // ── Animation: play through steps, resolve when done ──
+    const animPromise = new Promise(resolve => {
+      let i = 0;
+      const tick = () => {
+        if (i >= SCAN_STEPS.length) { resolve(); return; }
+        setScanLog(prev => [...prev, { ...SCAN_STEPS[i], status: "ok" }]);
+        i++;
+        timerRef.current = setTimeout(tick, SCAN_STEPS[i - 1].delay);
+      };
+      timerRef.current = setTimeout(tick, 200);
+    });
+
+    // ── Real API call: Claude brand analysis ──
+    const apiPromise = fetch("/api/brand-import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: data.website }),
+    }).then(r => r.json()).catch(() => null);
+
+    // Wait for both — show preview only when both complete
+    const [, apiResult] = await Promise.all([animPromise, apiPromise]);
+
+    let detected;
+    if (apiResult?.ok && apiResult.brand?.palette?.vars) {
+      const vars = apiResult.brand.palette.vars;
+      detected = {
+        id: "custom",
+        name: apiResult.brand.name || "Brand",
+        desc: apiResult.brand.industry || "Custom palette",
+        swatches: [
+          vars["--paper"],
+          vars["--accent"],
+          vars["--ink"],
+          vars["--accent-wash"],
+        ],
+        vars,
+        brandData: apiResult.brand, // carry full brand analysis forward
+      };
+    } else {
+      // Fallback to hash-based preset if API fails
+      detected = paletteFromUrl(data.website);
+    }
+
     setPalette(detected);
-    let i = 0;
-    const tick = () => {
-      if (i >= SCAN_STEPS.length) {
-        setScanState("done");
-        setChosen(detected);
-        // Apply preview immediately so user sees their colours live
-        applyPalette(detected);
-        return;
-      }
-      setScanLog(prev => [...prev, { ...SCAN_STEPS[i], status: "ok" }]);
-      i++;
-      timerRef.current = setTimeout(tick, SCAN_STEPS[i - 1].delay);
-    };
-    timerRef.current = setTimeout(tick, 200);
+    setChosen(detected);
+    applyPalette(detected);
+    setScanState("done");
   };
 
   useEffectOB(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
@@ -587,16 +619,26 @@ function OnboardingWizard({ auth, onComplete }) {
     // Save brand to Supabase (fire-and-forget — don't block the UI)
     sb.auth.getSession().then(({ data: { session } }) => {
       if (!session?.user) return;
+      const bd = result.chosenPalette?.brandData || null;
       sb.from("brands").upsert({
-        user_id:    session.user.id,
-        name:       result.storeName || "My Brand",
-        industry:   result.industry  || null,
-        website:    result.website   || null,
-        palette:    result.chosenPalette || null,
-        goal:       result.goal      || null,
-        budget:     result.budget    || null,
-        revenue:    result.revenue   || null,
-        updated_at: new Date().toISOString(),
+        user_id:                session.user.id,
+        name:                   bd?.name       || result.storeName || "My Brand",
+        industry:               bd?.industry   || result.industry  || null,
+        website:                result.website || null,
+        palette:                result.chosenPalette || null,
+        palette_vars:           result.chosenPalette?.vars || null,
+        goal:                   result.goal    || null,
+        budget:                 result.budget  || null,
+        revenue:                result.revenue || null,
+        voice:                  bd?.voice      || null,
+        values:                 bd?.values     || null,
+        claims:                 bd?.claims     || null,
+        prohibited_topics:      bd?.prohibitedTopics || null,
+        target_audience:        bd?.targetAudience   || null,
+        recommended_connectors: bd?.recommendedConnectors || null,
+        competitors:            bd?.competitors || null,
+        brand_analysis:         bd             || null,
+        updated_at:             new Date().toISOString(),
       }, { onConflict: "user_id" })
       .then(({ error }) => { if (error) console.error("[FlowOS] brand save:", error); });
     });
