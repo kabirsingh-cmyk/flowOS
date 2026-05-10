@@ -94,16 +94,50 @@ async function executeComposioTool(toolName, toolInput, tenantId) {
   }
 }
 
+// ─── Supabase brand profile fetch ─────────────────────────────────────────────
+
+async function fetchBrandProfile(tenantId) {
+  const supaUrl = process.env.SUPABASE_URL;
+  const supaKey = process.env.SUPABASE_SERVICE_KEY;
+  if (!supaUrl || !supaKey || !tenantId) return null;
+  try {
+    const res = await fetch(
+      `${supaUrl}/rest/v1/brands?user_id=eq.${encodeURIComponent(tenantId)}&select=*&limit=1`,
+      { headers: { "apikey": supaKey, "Authorization": `Bearer ${supaKey}` } }
+    );
+    if (!res.ok) return null;
+    const rows = await res.json();
+    return rows?.[0] || null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── System prompt builder (tenant-aware) ─────────────────────────────────────
 
 function buildSystemPrompt(specialist, brand, connectedApps) {
+  // brand may be the full Supabase row (snake_case) or the lightweight
+  // preset object from the frontend — normalise both shapes here.
+  const name       = brand?.name                                   || "Unknown";
+  const industry   = brand?.industry                               || null;
+  const audience   = brand?.target_audience   || brand?.targetAudience || null;
+  const voiceTone  = brand?.voice?.tone                            || null;
+  const voicePerso = brand?.voice?.personality                     || null;
+  const banned     = brand?.voice?.bannedPhrases
+    || (brand?.voice?.banned_phrases)
+    || [];
+  const values     = brand?.values                                 || [];
+  const claims     = brand?.claims                                 || [];
+  const prohibited = brand?.prohibited_topics || brand?.prohibitedTopics || [];
+
   const brandBlock = brand ? `
-TENANT BRAND CONTEXT
-- Brand: ${brand.name || "Unknown"}
-- Industry: ${brand.industry || "Unknown"}
-- Voice: ${brand.voice?.tone || "Professional"}
-- Banned phrases: ${(brand.voice?.bannedPhrases || []).join(", ") || "none"}
-- Connected platforms: ${connectedApps.length > 0 ? connectedApps.join(", ") : "none yet"}
+BRAND CONTEXT
+Name: ${name}${industry ? `\nIndustry: ${industry}` : ""}${audience ? `\nTarget audience: ${audience}` : ""}
+
+VOICE${voiceTone ? `\nTone: ${voiceTone}` : ""}${voicePerso ? `\nPersonality: ${voicePerso}` : ""}${banned.length ? `\nNever say: ${banned.join(", ")}` : ""}
+${values.length ? `\nVALUES\n${values.map(v => `- ${v}`).join("\n")}` : ""}
+${claims.length ? `\nVERIFIED CLAIMS (use these — do not invent others)\n${claims.map(c => `- ${c}`).join("\n")}` : ""}
+${prohibited.length ? `\nPROHIBITED TOPICS\n${prohibited.map(p => `- ${p}`).join("\n")}` : ""}
 `.trim() : "";
 
   const toolBlock = connectedApps.length > 0
@@ -333,21 +367,28 @@ export default async function handler(req) {
   try { body = await req.json(); }
   catch { return new Response("Bad request", { status: 400 }); }
 
-  const { messages, specialist = "supervisor", tenantId, brand } = body;
+  const { messages, specialist = "supervisor", tenantId, brand: brandFromClient } = body;
 
   try {
-    // Fetch live Composio tools for this tenant
-    const composioTools = await fetchComposioTools(tenantId);
+    // Fetch Composio tools + full brand profile from Supabase in parallel
+    const [composioTools, brandProfile] = await Promise.all([
+      fetchComposioTools(tenantId),
+      fetchBrandProfile(tenantId),
+    ]);
+
     const connectedApps = [...new Set(
       composioTools.map(t => t.name.split("_")[0].toLowerCase())
     )].filter(Boolean);
+
+    // Prefer full Supabase profile; fall back to lightweight client-side brand
+    const brand = brandProfile || brandFromClient || null;
 
     // Supervisor gets internal + Composio tools; specialists get neither
     const tools = specialist === "supervisor"
       ? [...INTERNAL_TOOLS, ...composioTools]
       : [];
 
-    const systemPrompt = buildSystemPrompt(specialist, brand || null, connectedApps);
+    const systemPrompt = buildSystemPrompt(specialist, brand, connectedApps);
 
     const content = await runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey });
 
