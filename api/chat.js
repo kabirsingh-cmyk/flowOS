@@ -96,6 +96,29 @@ async function executeComposioTool(toolName, toolInput, tenantId) {
 
 // ─── Supabase helpers ──────────────────────────────────────────────────────────
 
+async function fetchAnalyticsInsights(tenantId, period = "30d") {
+  const supaUrl = process.env.SUPABASE_URL;
+  const supaKey = process.env.SUPABASE_SERVICE_KEY;
+  if (!supaUrl || !supaKey || !tenantId) return null;
+  try {
+    const [insRes, snapRes] = await Promise.all([
+      fetch(
+        `${supaUrl}/rest/v1/analytics_insights?tenant_id=eq.${encodeURIComponent(tenantId)}&period=eq.${encodeURIComponent(period)}&select=*&order=generated_at.desc&limit=1`,
+        { headers: { "apikey": supaKey, "Authorization": `Bearer ${supaKey}` } }
+      ),
+      fetch(
+        `${supaUrl}/rest/v1/analytics_snapshots?tenant_id=eq.${encodeURIComponent(tenantId)}&period=eq.${encodeURIComponent(period)}&select=channel,metrics,fetched_at`,
+        { headers: { "apikey": supaKey, "Authorization": `Bearer ${supaKey}` } }
+      ),
+    ]);
+    const insights  = insRes.ok  ? (await insRes.json())?.[0]  || null : null;
+    const snapshots = snapRes.ok ? await snapRes.json() : [];
+    return { insights, snapshots };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchAgentOverride(tenantId, agentId) {
   const supaUrl = process.env.SUPABASE_URL;
   const supaKey = process.env.SUPABASE_SERVICE_KEY;
@@ -134,7 +157,7 @@ async function fetchBrandProfile(tenantId) {
 
 // ─── System prompt builder (tenant-aware) ─────────────────────────────────────
 
-function buildSystemPrompt(specialist, brand, connectedApps, agentOverride) {
+function buildSystemPrompt(specialist, brand, connectedApps, agentOverride, analyticsData) {
   // brand may be the full Supabase row (snake_case) or the lightweight
   // preset object from the frontend — normalise both shapes here.
   const name       = brand?.name                                   || "Unknown";
@@ -200,12 +223,32 @@ Formats:
 
 Use show_drafts to display output for review.`,
 
-    analyst: `You are Analyst — the data AI for FlowOS.
-${brandBlock}
+    analyst: (() => {
+      let analyticsBlock = "";
+      if (analyticsData?.insights || analyticsData?.snapshots?.length > 0) {
+        const parts = [];
+        if (analyticsData.insights?.summary) {
+          parts.push(`LATEST ANALYSIS SUMMARY:\n${analyticsData.insights.summary}`);
+        }
+        if (analyticsData.snapshots?.length > 0) {
+          parts.push("LIVE METRICS DATA:\n" + analyticsData.snapshots.map(s =>
+            `${s.channel.toUpperCase()}:\n${JSON.stringify(s.metrics, null, 2)}`
+          ).join("\n\n"));
+        }
+        analyticsBlock = parts.length > 0
+          ? `\n\nANALYTICS CONTEXT (real data — always reference specific numbers)\n${parts.join("\n\n")}`
+          : "";
+      }
+
+      return `You are Analyst — the data AI for FlowOS.
+${brandBlock}${analyticsBlock}
 
 Interpret marketing performance and surface insights clearly.
 Lead with the number → implication → one action.
-Use show_metric for headline numbers.`,
+When analytics data is provided above, always ground your answers in those specific numbers.
+If no data is available, tell the user to click Refresh in the Analytics tab to pull live metrics.
+Use show_metric for headline numbers.`;
+    })(),
 
     brand_guard: `You are Brand Guard — the policy AI for FlowOS.
 ${brandBlock}
@@ -397,11 +440,12 @@ export default async function handler(req) {
   const { messages, specialist = "supervisor", tenantId, brand: brandFromClient } = body;
 
   try {
-    // Fetch Composio tools, brand profile, and agent override in parallel
-    const [composioTools, brandProfile, agentOverride] = await Promise.all([
+    // Fetch Composio tools, brand profile, agent override, and analytics data in parallel
+    const [composioTools, brandProfile, agentOverride, analyticsData] = await Promise.all([
       fetchComposioTools(tenantId),
       fetchBrandProfile(tenantId),
       fetchAgentOverride(tenantId, specialist),
+      specialist === "analyst" ? fetchAnalyticsInsights(tenantId) : Promise.resolve(null),
     ]);
 
     const connectedApps = [...new Set(
@@ -418,7 +462,7 @@ export default async function handler(req) {
 
     // Build system prompt — agent override replaces the specialist-specific section
     // but brand context is always prepended
-    const systemPrompt = buildSystemPrompt(specialist, brand, connectedApps, agentOverride);
+    const systemPrompt = buildSystemPrompt(specialist, brand, connectedApps, agentOverride, analyticsData);
 
     const content = await runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey });
 

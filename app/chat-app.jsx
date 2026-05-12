@@ -657,6 +657,15 @@ function ChatOSAuthed({ auth, onLogout }) {
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
+  useEffectApp(() => {
+    const onNavigate = (e) => {
+      const target = e.detail?.workspace;
+      if (target) dispatch({ type: "OPEN_CANVAS", canvas: { kind: "workspace", target } });
+    };
+    window.addEventListener("flowos:navigate", onNavigate);
+    return () => window.removeEventListener("flowos:navigate", onNavigate);
+  }, []);
+
   const channel = CHANNELS.find(c => c.id === chat.activeChannel) || CHANNELS[0];
   const messages = chat.threads[channel.id] || [];
 
