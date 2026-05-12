@@ -310,6 +310,7 @@ function NavRail({ active, onOpen, state, actions }) {
     { icon: "calendar", label: "Planner",  t: "planner"   },
     { icon: "chart",    label: "Insights", t: "insights"  },
     { icon: "inbox",    label: "Inbox",    t: "inbox"     },
+    { icon: "flash",    label: "Agents",   t: "agents"    },
     { icon: "sliders",  label: "Settings", t: "settings"  },
   ];
 
@@ -426,6 +427,7 @@ function Canvas({ canvas, onClose, state, actions, go }) {
     retention: "Retention", cx: "CX signals", seasonal: "Seasonal mode",
     abtests: "A/B tests", team: "Team & guests", discounts: "Discount ops",
     mobile: "Mobile preview", settings: "Settings",
+    agents: "Agents",
   };
 
   return (
@@ -457,6 +459,7 @@ function CanvasBody({ canvas, state, actions, go }) {
       retention: RetentionDashboard, cx: CxSignals, seasonal: SeasonalMode,
       abtests: AbTestLab, team: TeamSeats, discounts: DiscountOps, mobile: MobileShell,
       settings: SettingsHub,
+      agents: AgentsWorkspace,
     }[canvas.target];
     if (!Comp) return <div style={{ padding: 40, color: "var(--muted)" }}>Unknown workspace</div>;
     return <Comp state={state} actions={actions} go={go} payload={{}}/>;
@@ -738,7 +741,7 @@ function ChatOSAuthed({ auth, onLogout }) {
           <Composer onSend={onSend} channelName={channel.name}/>
         </div>
 
-        <Canvas canvas={chat.canvas} onClose={closeCanvas} state={state} actions={actions} go={openWorkspace}/>
+        <Canvas canvas={chat.canvas} onClose={closeCanvas} state={{ ...state, auth }} actions={actions} go={openWorkspace}/>
 
         {tweakOpen && (
           <div style={{
