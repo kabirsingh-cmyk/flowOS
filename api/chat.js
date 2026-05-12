@@ -94,6 +94,25 @@ async function executeComposioTool(toolName, toolInput, tenantId) {
   }
 }
 
+// ─── Supabase helpers ──────────────────────────────────────────────────────────
+
+async function fetchAgentOverride(tenantId, agentId) {
+  const supaUrl = process.env.SUPABASE_URL;
+  const supaKey = process.env.SUPABASE_SERVICE_KEY;
+  if (!supaUrl || !supaKey || !tenantId || !agentId) return null;
+  try {
+    const res = await fetch(
+      `${supaUrl}/rest/v1/agent_overrides?tenant_id=eq.${encodeURIComponent(tenantId)}&agent_id=eq.${encodeURIComponent(agentId)}&select=custom_name,system_prompt,enabled&limit=1`,
+      { headers: { "apikey": supaKey, "Authorization": `Bearer ${supaKey}` } }
+    );
+    if (!res.ok) return null;
+    const rows = await res.json();
+    return rows?.[0] || null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Supabase brand profile fetch ─────────────────────────────────────────────
 
 async function fetchBrandProfile(tenantId) {
@@ -115,7 +134,7 @@ async function fetchBrandProfile(tenantId) {
 
 // ─── System prompt builder (tenant-aware) ─────────────────────────────────────
 
-function buildSystemPrompt(specialist, brand, connectedApps) {
+function buildSystemPrompt(specialist, brand, connectedApps, agentOverride) {
   // brand may be the full Supabase row (snake_case) or the lightweight
   // preset object from the frontend — normalise both shapes here.
   const name       = brand?.name                                   || "Unknown";
@@ -202,7 +221,15 @@ Triage: Urgent / Standard / Low.
 Output: classification → suggested reply → flag if human review needed.`,
   };
 
-  return prompts[specialist] || prompts.supervisor;
+  const defaultPrompt = prompts[specialist] || prompts.supervisor;
+
+  // If the tenant has saved a custom system prompt for this agent, use it
+  // (brand context block is always included regardless)
+  if (agentOverride?.system_prompt) {
+    return `${brandBlock ? brandBlock + "\n\n" : ""}${agentOverride.system_prompt}`;
+  }
+
+  return defaultPrompt;
 }
 
 // ─── Internal FlowOS tools (always available to supervisor) ───────────────────
@@ -370,10 +397,11 @@ export default async function handler(req) {
   const { messages, specialist = "supervisor", tenantId, brand: brandFromClient } = body;
 
   try {
-    // Fetch Composio tools + full brand profile from Supabase in parallel
-    const [composioTools, brandProfile] = await Promise.all([
+    // Fetch Composio tools, brand profile, and agent override in parallel
+    const [composioTools, brandProfile, agentOverride] = await Promise.all([
       fetchComposioTools(tenantId),
       fetchBrandProfile(tenantId),
+      fetchAgentOverride(tenantId, specialist),
     ]);
 
     const connectedApps = [...new Set(
@@ -388,7 +416,9 @@ export default async function handler(req) {
       ? [...INTERNAL_TOOLS, ...composioTools]
       : [];
 
-    const systemPrompt = buildSystemPrompt(specialist, brand, connectedApps);
+    // Build system prompt — agent override replaces the specialist-specific section
+    // but brand context is always prepended
+    const systemPrompt = buildSystemPrompt(specialist, brand, connectedApps, agentOverride);
 
     const content = await runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey });
 

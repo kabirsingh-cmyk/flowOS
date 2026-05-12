@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "mveda-marketing-os",
+      "name": "flowos",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8765", "--bind", "127.0.0.1", "--directory", "/Users/deadstar811/mveda-marketing-os"],
+      "runtimeArgs": ["-m", "http.server", "8765", "--bind", "127.0.0.1", "--directory", "/Users/deadstar811/Desktop/flowOS"],
       "port": 8765
     }
   ]
