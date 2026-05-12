@@ -1,4 +1,13 @@
 // MVEDA demo seed — Ayurvedic skincare brand (real)
+
+// Single source of truth for MVEDA brand values (referenced in brandPresets and brandValues)
+const MVEDA_VALUES = [
+  "5,000 years of Ayurveda, made modern",
+  "Ritual over routine",
+  "Quiet luxury — never demanding attention",
+  "Plant-led, cold-pressed, small batch",
+];
+
 const SEED = {
   brand: {
     name: "MVEDA",
@@ -25,12 +34,7 @@ const SEED = {
       },
       fonts: { display: "Cormorant Garamond", body: "Jost", mono: "JetBrains Mono" },
       voice: "Ritualistic, opulent, quietly confident · 'Daily, until it becomes yours.'",
-      values: [
-        "5,000 years of Ayurveda, made modern",
-        "Ritual over routine",
-        "Quiet luxury — never demanding attention",
-        "Plant-led, cold-pressed, small batch",
-      ],
+      values: MVEDA_VALUES,
       claims: [
         "Cold-pressed extraction · single source",
         "Ayurvedic tradition · 5,000 years documented",
@@ -347,13 +351,7 @@ const SEED = {
     },
   ],
 
-  brandValues: [
-    "5,000 years of Ayurveda, made modern",
-    "Ritual over routine",
-    "Quiet luxury — never demanding attention",
-    "Plant-led, cold-pressed, small batch",
-    "Named for Mitha · the dachshund-pug who embodied quiet grace",
-  ],
+  brandValues: MVEDA_VALUES,
   approvedClaims: [
     "Cold-pressed extraction · single source",
     "Ayurvedic tradition · 5,000 years documented",

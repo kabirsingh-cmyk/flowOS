@@ -1,3 +1,4 @@
+(function () {
 // MVEDA workspaces — part 4: Connections + Brand Import flow
 const { useState: useState4, useEffect: useEffect4, useMemo: useMemo4, useRef: useRef4 } = React;
 
@@ -892,3 +893,4 @@ function ConnectorAuthModal({ step, onClose, onComplete }) {
 }
 
 Object.assign(window, { Connections, BrandImportModal, ConnectorIcon });
+})();

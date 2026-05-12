@@ -1,3 +1,4 @@
+(function () {
 // MVEDA workspaces — part 2: Campaign Planner (hero flow), Content Studio
 const { useState: useState2, useMemo: useMemo2, useEffect: useEffect2 } = React;
 
@@ -455,3 +456,4 @@ function ContentStudio({ state, actions, payload, go }) {
 }
 
 Object.assign(window, { CampaignPlanner, ContentStudio });
+})();

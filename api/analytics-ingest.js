@@ -12,20 +12,21 @@
  *   7. Return { snapshots, insights }
  */
 
+import { getConnectedAccountSlugs, executeComposioTool as runComposioTool } from './lib/composio.js';
+import { sbHeaders, fetchBrandProfile } from './lib/supabase.js';
+
 export const config = { runtime: "edge" };
 
-const COMPOSIO_BASE  = "https://backend.composio.dev/api/v3";
 const ANTHROPIC_BASE = "https://api.anthropic.com/v1";
 const SUPABASE_URL   = process.env.SUPABASE_URL;
-const SUPABASE_KEY   = process.env.SUPABASE_SERVICE_KEY;
 const ANTHROPIC_KEY  = process.env.ANTHROPIC_API_KEY;
-const COMPOSIO_KEY   = process.env.COMPOSIO_API_KEY2;
+
+// ─── Composio helpers ─────────────────────────────────────────────────────────
+
+// analytics-ingest needs null-on-error behaviour
+const runTool = (name, input, tenantId) => runComposioTool(name, input, tenantId, { onError: "null" });
 
 // ─── Supabase helpers ──────────────────────────────────────────────────────────
-
-function sbHeaders() {
-  return { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" };
-}
 
 async function upsertSnapshot(tenantId, channel, period, metrics, source = "live") {
   const res = await fetch(
@@ -39,56 +40,18 @@ async function upsertSnapshot(tenantId, channel, period, metrics, source = "live
   return res.ok;
 }
 
+// NOTE: upsert requires a unique constraint on (tenant_id, period) in analytics_insights
 async function upsertInsights(tenantId, period, summary, insights, recommended_actions) {
-  // Delete old row for this tenant+period, then insert fresh
-  await fetch(
-    `${SUPABASE_URL}/rest/v1/analytics_insights?tenant_id=eq.${encodeURIComponent(tenantId)}&period=eq.${encodeURIComponent(period)}`,
-    { method: "DELETE", headers: sbHeaders() }
-  );
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/analytics_insights`,
     {
       method: "POST",
-      headers: { ...sbHeaders(), "Prefer": "return=representation" },
+      headers: { ...sbHeaders(), "Prefer": "resolution=merge-duplicates,return=representation" },
       body: JSON.stringify({ tenant_id: tenantId, period, summary, insights, recommended_actions, generated_at: new Date().toISOString() }),
     }
   );
   if (!res.ok) throw new Error(`Failed to save insights: ${res.status}`);
   return await res.json();
-}
-
-// ─── Composio helpers ─────────────────────────────────────────────────────────
-
-function composioHeaders() {
-  return { "Content-Type": "application/json", "x-api-key": COMPOSIO_KEY };
-}
-
-async function getConnectedApps(tenantId) {
-  if (!COMPOSIO_KEY || !tenantId) return [];
-  const res = await fetch(
-    `${COMPOSIO_BASE}/connected_accounts?user_ids=${encodeURIComponent(tenantId)}&statuses=ACTIVE&limit=50`,
-    { headers: composioHeaders() }
-  );
-  if (!res.ok) return [];
-  const data = await res.json();
-  const accounts = data.items || data.connected_accounts || data.data || [];
-  return [...new Set(accounts.map(a => a.toolkit?.slug || a.appName || a.app_name).filter(Boolean))];
-}
-
-async function runComposioTool(toolName, input, tenantId) {
-  try {
-    const res = await fetch(`${COMPOSIO_BASE}/tools/${toolName}/execute`, {
-      method: "POST",
-      headers: composioHeaders(),
-      body: JSON.stringify({ user_id: tenantId, input }),
-    });
-    const text = await res.text();
-    let data;
-    try { data = JSON.parse(text); } catch { data = { raw: text }; }
-    return res.ok ? (data?.response || data?.data || data) : null;
-  } catch {
-    return null;
-  }
 }
 
 // ─── Platform metric fetchers ────────────────────────────────────────────────
@@ -112,7 +75,7 @@ function dateRange(period) {
 // ── Meta Ads ─────────────────────────────────────────────────────────────────
 async function fetchMetaAds(tenantId, period) {
   const { start, end } = dateRange(period);
-  const data = await runComposioTool("FACEBOOK_ADS_GET_AD_ACCOUNT_INSIGHTS", {
+  const data = await runTool("FACEBOOK_ADS_GET_AD_ACCOUNT_INSIGHTS", {
     date_preset: period === "7d" ? "last_7_days" : period === "90d" ? "last_90_days" : "last_30_days",
     fields: ["spend", "impressions", "clicks", "ctr", "cpc", "cpm", "reach", "frequency", "actions", "action_values", "roas"].join(","),
     level: "account",
@@ -144,7 +107,7 @@ async function fetchMetaAds(tenantId, period) {
 // ── Google Ads ────────────────────────────────────────────────────────────────
 async function fetchGoogleAds(tenantId, period) {
   const days = periodDays(period);
-  const data = await runComposioTool("GOOGLEADS_GET_CAMPAIGN_PERFORMANCE_REPORT", {
+  const data = await runTool("GOOGLEADS_GET_CAMPAIGN_PERFORMANCE_REPORT", {
     date_range_type: "LAST_N_DAYS",
     number_of_days: days,
   }, tenantId);
@@ -175,7 +138,7 @@ async function fetchGoogleAds(tenantId, period) {
 async function fetchKlaviyo(tenantId, period) {
   const days = periodDays(period);
   // Klaviyo campaign metrics for the period
-  const data = await runComposioTool("KLAVIYO_GET_CAMPAIGNS", {
+  const data = await runTool("KLAVIYO_GET_CAMPAIGNS", {
     filter: `greater-than(send_time,${new Date(Date.now() - days * 86400000).toISOString()})`,
     fields: ["name", "send_time", "status"].join(","),
   }, tenantId);
@@ -183,19 +146,20 @@ async function fetchKlaviyo(tenantId, period) {
 
   const campaigns = (data?.data || data || []).filter(c => c?.attributes?.status === "sent" || c?.status === "sent");
 
-  // Aggregate basic stats — pull first campaign's report as representative
-  let openRate = 0, clickRate = 0, revenue = 0, sends = 0;
-  if (campaigns.length > 0) {
-    const reportData = await runComposioTool("KLAVIYO_GET_CAMPAIGN_CAMPAIGN_MESSAGE_ASSIGN", {
-      campaign_id: campaigns[0]?.id,
-    }, tenantId);
-    if (reportData) {
-      openRate  = parseFloat(reportData?.open_rate || 0);
-      clickRate = parseFloat(reportData?.click_rate || 0);
-      revenue   = parseFloat(reportData?.revenue || 0);
-      sends     = parseInt(reportData?.sent_count || 0);
-    }
-  }
+  // Fetch reports for up to 5 recent campaigns in parallel
+  const recentCampaigns = campaigns.slice(0, 5);
+  const reports = await Promise.all(
+    recentCampaigns.map(c =>
+      runTool("KLAVIYO_GET_CAMPAIGN_CAMPAIGN_MESSAGE_ASSIGN", { campaign_id: c?.id }, tenantId)
+        .catch(() => null)
+    )
+  );
+  // Aggregate across reports
+  const validReports = reports.filter(Boolean);
+  const openRate  = validReports.length ? validReports.reduce((s, r) => s + parseFloat(r?.open_rate || 0), 0) / validReports.length : 0;
+  const clickRate = validReports.length ? validReports.reduce((s, r) => s + parseFloat(r?.click_rate || 0), 0) / validReports.length : 0;
+  const revenue   = validReports.reduce((s, r) => s + parseFloat(r?.revenue || 0), 0);
+  const sends     = validReports.reduce((s, r) => s + parseInt(r?.sent_count || 0), 0);
 
   return {
     channel: "klaviyo",
@@ -213,7 +177,7 @@ async function fetchKlaviyo(tenantId, period) {
 // ── GA4 / Web (organic) ───────────────────────────────────────────────────────
 async function fetchGA4(tenantId, period) {
   const days = periodDays(period);
-  const data = await runComposioTool("GOOGLEANALYTICS_RUN_REPORT", {
+  const data = await runTool("GOOGLEANALYTICS_RUN_REPORT", {
     date_ranges: [{ start_date: `${days}daysAgo`, end_date: "today" }],
     dimensions:  [{ name: "sessionDefaultChannelGroup" }],
     metrics:     [
@@ -259,7 +223,7 @@ async function fetchGA4(tenantId, period) {
 // ── Shopify ───────────────────────────────────────────────────────────────────
 async function fetchShopify(tenantId, period) {
   const { start, end } = dateRange(period);
-  const data = await runComposioTool("SHOPIFY_GET_ORDERS", {
+  const data = await runTool("SHOPIFY_GET_ORDERS", {
     created_at_min: `${start}T00:00:00Z`,
     created_at_max: `${end}T23:59:59Z`,
     status: "any",
@@ -393,7 +357,7 @@ export default async function handler(req) {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  if (!SUPABASE_URL || !SUPABASE_KEY) {
+  if (!SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
     return new Response(JSON.stringify({ ok: false, error: "Supabase not configured" }), {
       status: 500, headers: { "Content-Type": "application/json" },
     });
@@ -412,14 +376,10 @@ export default async function handler(req) {
 
   try {
     // 1. Fetch brand profile + connected apps in parallel
-    const [brandRes, connectedApps] = await Promise.all([
-      fetch(
-        `${SUPABASE_URL}/rest/v1/brands?user_id=eq.${encodeURIComponent(tenantId)}&select=*&limit=1`,
-        { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
-      ).then(r => r.ok ? r.json() : []),
-      getConnectedApps(tenantId),
+    const [brand, connectedApps] = await Promise.all([
+      fetchBrandProfile(tenantId),
+      getConnectedAccountSlugs(tenantId),
     ]);
-    const brand = brandRes?.[0] || null;
 
     // 2. Fetch metrics for each connected platform in parallel
     const fetchPromises = connectedApps
@@ -439,7 +399,7 @@ export default async function handler(req) {
     if (snapshots.length === 0) {
       const existingRes = await fetch(
         `${SUPABASE_URL}/rest/v1/analytics_snapshots?tenant_id=eq.${encodeURIComponent(tenantId)}&period=eq.${encodeURIComponent(period)}&select=*`,
-        { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+        { headers: sbHeaders() }
       );
       if (existingRes.ok) {
         const existing = await existingRes.json();

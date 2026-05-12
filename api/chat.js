@@ -10,18 +10,14 @@
  *   5. Return final response as JSON (content blocks)
  */
 
+import { COMPOSIO_BASE, composioHeaders, getConnectedAccountSlugs, executeComposioTool as _execTool } from './lib/composio.js';
+import { sbHeaders, fetchBrandProfile } from './lib/supabase.js';
+
 export const config = { runtime: "edge" };
 
-const COMPOSIO_BASE  = "https://backend.composio.dev/api/v3";
 const ANTHROPIC_BASE = "https://api.anthropic.com/v1";
 
 // ─── Composio helpers ─────────────────────────────────────────────────────────
-
-function composioHeaders() {
-  const key = process.env.COMPOSIO_API_KEY2;
-  if (!key) throw new Error("COMPOSIO_API_KEY2 not set");
-  return { "Content-Type": "application/json", "x-api-key": key };
-}
 
 /**
  * Fetch Anthropic-compatible tool definitions for a tenant's connected accounts.
@@ -31,21 +27,9 @@ async function fetchComposioTools(tenantId) {
   if (!process.env.COMPOSIO_API_KEY2 || !tenantId) return [];
 
   try {
-    // Get tenant's active connections (v3)
-    const connRes = await fetch(
-      `${COMPOSIO_BASE}/connected_accounts?user_ids=${encodeURIComponent(tenantId)}&statuses=ACTIVE&limit=50`,
-      { headers: composioHeaders() }
-    );
-    if (!connRes.ok) return [];
-
-    const connData = await connRes.json();
-    const accounts = connData.items || connData.connected_accounts || connData.data || [];
-    if (accounts.length === 0) return [];
-
-    // Build toolkit slug list from connected accounts (v3 uses toolkit.slug)
-    const apps = [...new Set(
-      accounts.map(a => a.toolkit?.slug || a.appName || a.app_name).filter(Boolean)
-    )].join(",");
+    const slugs = await getConnectedAccountSlugs(tenantId);
+    if (slugs.length === 0) return [];
+    const apps = slugs.join(",");
 
     // Fetch available actions for connected toolkits (v3)
     const actRes = await fetch(
@@ -69,29 +53,8 @@ async function fetchComposioTools(tenantId) {
   }
 }
 
-/**
- * Execute a Composio tool call against a real platform API.
- */
 async function executeComposioTool(toolName, toolInput, tenantId) {
-  try {
-    // v3: tool execution endpoint + user_id instead of entityId
-    const res = await fetch(`${COMPOSIO_BASE}/tools/${toolName}/execute`, {
-      method:  "POST",
-      headers: composioHeaders(),
-      body:    JSON.stringify({ user_id: tenantId, input: toolInput }),
-    });
-
-    const text = await res.text();
-    let data;
-    try { data = JSON.parse(text); } catch { data = { raw: text }; }
-
-    if (!res.ok) {
-      return { error: data?.message || `Composio execution failed (${res.status})` };
-    }
-    return data?.response || data?.data || data;
-  } catch (e) {
-    return { error: e.message };
-  }
+  return _execTool(toolName, toolInput, tenantId, { onError: "object" });
 }
 
 // ─── Supabase helpers ──────────────────────────────────────────────────────────
@@ -126,25 +89,6 @@ async function fetchAgentOverride(tenantId, agentId) {
   try {
     const res = await fetch(
       `${supaUrl}/rest/v1/agent_overrides?tenant_id=eq.${encodeURIComponent(tenantId)}&agent_id=eq.${encodeURIComponent(agentId)}&select=custom_name,system_prompt,enabled&limit=1`,
-      { headers: { "apikey": supaKey, "Authorization": `Bearer ${supaKey}` } }
-    );
-    if (!res.ok) return null;
-    const rows = await res.json();
-    return rows?.[0] || null;
-  } catch {
-    return null;
-  }
-}
-
-// ─── Supabase brand profile fetch ─────────────────────────────────────────────
-
-async function fetchBrandProfile(tenantId) {
-  const supaUrl = process.env.SUPABASE_URL;
-  const supaKey = process.env.SUPABASE_SERVICE_KEY;
-  if (!supaUrl || !supaKey || !tenantId) return null;
-  try {
-    const res = await fetch(
-      `${supaUrl}/rest/v1/brands?user_id=eq.${encodeURIComponent(tenantId)}&select=*&limit=1`,
       { headers: { "apikey": supaKey, "Authorization": `Bearer ${supaKey}` } }
     );
     if (!res.ok) return null;
@@ -345,12 +289,17 @@ const INTERNAL_TOOLS = [
 // ─── Tool execution loop ──────────────────────────────────────────────────────
 
 const INTERNAL_TOOL_NAMES = new Set(INTERNAL_TOOLS.map(t => t.name));
-const MAX_ITERATIONS = 5;
+const MAX_ITERATIONS = 3;
 
 async function runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey }) {
   let currentMessages = [...messages];
+  const deadline = Date.now() + 22_000;
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
+    if (Date.now() > deadline) {
+      return [{ type: "text", text: "The request took too long. Please try a simpler task or break it into steps." }];
+    }
+
     const res = await fetch(`${ANTHROPIC_BASE}/messages`, {
       method:  "POST",
       headers: {
@@ -383,25 +332,19 @@ async function runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey }) 
     if (data.stop_reason === "tool_use") {
       currentMessages.push({ role: "assistant", content: data.content });
 
-      const toolResults = [];
-      for (const block of data.content) {
-        if (block.type !== "tool_use") continue;
-
-        let result;
-        if (INTERNAL_TOOL_NAMES.has(block.name)) {
-          // Internal tools are handled by the frontend — just signal success
-          result = { ok: true, tool: block.name, action: block.input };
-        } else {
-          // Composio tool — hit the real platform API
-          result = await executeComposioTool(block.name, block.input, tenantId);
-        }
-
-        toolResults.push({
-          type:        "tool_result",
-          tool_use_id: block.id,
-          content:     JSON.stringify(result),
-        });
-      }
+      const toolUseBlocks = data.content.filter(b => b.type === "tool_use");
+      const toolResults = await Promise.all(
+        toolUseBlocks.map(async (block) => {
+          const result = INTERNAL_TOOL_NAMES.has(block.name)
+            ? { ok: true, tool: block.name, action: block.input }
+            : await executeComposioTool(block.name, block.input, tenantId);
+          return {
+            type:        "tool_result",
+            tool_use_id: block.id,
+            content:     JSON.stringify(result),
+          };
+        })
+      );
 
       currentMessages.push({ role: "user", content: toolResults });
       continue;

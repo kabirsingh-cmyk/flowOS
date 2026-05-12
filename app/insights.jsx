@@ -74,48 +74,19 @@
     return Number(val).toFixed(2);
   }
 
-  // ─── Shared micro-components ──────────────────────────────────────────────────
+  // ─── Shared micro-components ─────────────────────────────────────────────────
+  // Spinner, Chip, Dot are provided by ui.jsx via window globals
 
-  function Spinner() {
-    return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 0" }}>
-        <div style={{
-          width: 24, height: 24, borderRadius: "50%",
-          border: "2px solid var(--rule)", borderTopColor: "var(--accent)",
-          animation: "spin 0.7s linear infinite",
-        }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-      </div>
-    );
-  }
-
+  // Map insight severity → Dot status
   function SeverityDot({ severity }) {
-    const colors = { warning: "#F59E0B", ok: "#10B981", info: "var(--muted)" };
-    return (
-      <span style={{
-        display: "inline-block", width: 8, height: 8, borderRadius: "50%",
-        background: colors[severity] || colors.info, flexShrink: 0,
-        marginTop: 2,
-      }} />
-    );
+    const statusMap = { warning: "warn", ok: "ok", info: "err" };
+    return <Dot status={statusMap[severity] || "err"} />;
   }
 
+  // Map action priority → Chip tone
   function PriorityBadge({ priority }) {
-    const styles = {
-      high:   { background: "#FEF2F2", color: "#EF4444", border: "1px solid #FECACA" },
-      medium: { background: "#FFFBEB", color: "#D97706", border: "1px solid #FDE68A" },
-      low:    { background: "#F0FDF4", color: "#10B981", border: "1px solid #BBF7D0" },
-    };
-    const s = styles[priority] || styles.low;
-    return (
-      <span style={{
-        ...s, padding: "1px 7px", borderRadius: 999,
-        fontSize: 10, fontWeight: 600, letterSpacing: "0.04em",
-        textTransform: "uppercase",
-      }}>
-        {priority}
-      </span>
-    );
+    const toneMap = { high: "danger", medium: "warn", low: "ok" };
+    return <Chip tone={toneMap[priority] || "neutral"}>{priority}</Chip>;
   }
 
   // ─── Summary + KPI strip ─────────────────────────────────────────────────────
@@ -541,11 +512,13 @@
       setLoading(true);
       setError(null);
       try {
-        // Snapshots
-        const snapRes = await fetch(
-          `${supaUrl}/rest/v1/analytics_snapshots?tenant_id=eq.${encodeURIComponent(tenantId)}&period=eq.${encodeURIComponent(period)}&select=*`,
-          { headers: { "apikey": supaKey, "Authorization": `Bearer ${supaKey}` } }
-        );
+        const [snapRes, insRes] = await Promise.all([
+          fetch(`${supaUrl}/rest/v1/analytics_snapshots?tenant_id=eq.${encodeURIComponent(tenantId)}&period=eq.${encodeURIComponent(period)}&select=*`,
+            { headers: { "apikey": supaKey, "Authorization": `Bearer ${supaKey}` } }),
+          fetch(`${supaUrl}/rest/v1/analytics_insights?tenant_id=eq.${encodeURIComponent(tenantId)}&period=eq.${encodeURIComponent(period)}&select=*&order=generated_at.desc&limit=1`,
+            { headers: { "apikey": supaKey, "Authorization": `Bearer ${supaKey}` } }),
+        ]);
+
         if (snapRes.ok) {
           const rows = await snapRes.json();
           setSnapshots(rows.map(r => ({ channel: r.channel, metrics: r.metrics, fetched_at: r.fetched_at })));
@@ -554,11 +527,6 @@
           }
         }
 
-        // Insights
-        const insRes = await fetch(
-          `${supaUrl}/rest/v1/analytics_insights?tenant_id=eq.${encodeURIComponent(tenantId)}&period=eq.${encodeURIComponent(period)}&select=*&order=generated_at.desc&limit=1`,
-          { headers: { "apikey": supaKey, "Authorization": `Bearer ${supaKey}` } }
-        );
         if (insRes.ok) {
           const rows = await insRes.json();
           if (rows.length > 0) {
