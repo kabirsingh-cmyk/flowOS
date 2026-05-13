@@ -6,6 +6,22 @@ const { useState: useState3, useMemo: useMemo3, useEffect: useEffect3, useRef: u
 function PublishingQueue({ state, actions }) {
   const [view, setView]         = useState3("calendar"); // "calendar" | "list"
   const [editItem, setEditItem] = useState3(null);
+  const [editDraft, setEditDraft] = useState3(null); // controlled form state
+
+  // Sync editDraft when editItem changes
+  useEffect3(() => {
+    if (editItem) {
+      setEditDraft({
+        body:        editItem.body        || editItem.title || "",
+        imagePrompt: editItem.imagePrompt || "",
+        scheduledAt: editItem.scheduledAt || "",
+        day:         editItem.day != null ? String(editItem.day) : "",
+        campaign:    editItem.campaign    || "",
+      });
+    } else {
+      setEditDraft(null);
+    }
+  }, [editItem?.id]);
 
   const DAYS  = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const SLOTS = [
@@ -14,20 +30,49 @@ function PublishingQueue({ state, actions }) {
     { id: "evening",   label: "Evening",   hours: [18, 24] },
   ];
 
+  // Character limits per platform
+  const CHAR_LIMIT = {
+    instagram: 2200, tiktok: 2200, linkedin: 3000, facebook: 63206,
+    x: 280, twitter: 280, pinterest: 500, youtube: 5000,
+    threads: 500, bluesky: 300, reddit: 40000,
+    sms: 160, snapchat: 250,
+  };
+
   const CH_COLOR = {
     Instagram: "oklch(62% 0.18 340)", TikTok:      "oklch(45% 0.08 260)",
     Email:     "oklch(56% 0.14 250)", SMS:          "oklch(55% 0.16 150)",
     "Google Ads": "oklch(60% 0.18 30)", "Meta Ads": "oklch(48% 0.18 260)",
     Pinterest: "oklch(52% 0.20 28)",  YouTube:      "oklch(55% 0.22 25)",
+    X:         "var(--ink)",          LinkedIn:     "oklch(48% 0.14 235)",
+    Facebook:  "oklch(50% 0.18 265)", Reddit:       "oklch(58% 0.22 30)",
+    Snapchat:  "oklch(88% 0.18 100)", Threads:      "var(--ink)",
+    Bluesky:   "oklch(56% 0.18 240)",
+    // platform slugs (fromChat drafts)
+    instagram: "oklch(62% 0.18 340)", tiktok: "oklch(45% 0.08 260)",
+    linkedin:  "oklch(48% 0.14 235)", facebook: "oklch(50% 0.18 265)",
+    x:         "var(--ink)",          pinterest: "oklch(52% 0.20 28)",
+    youtube:   "oklch(55% 0.22 25)",  email: "oklch(56% 0.14 250)",
+    sms:       "oklch(55% 0.16 150)", reddit: "oklch(58% 0.22 30)",
+    snapchat:  "oklch(88% 0.18 100)", threads: "var(--ink)",
+    bluesky:   "oklch(56% 0.18 240)",
   };
   const CH_ABBR = {
     Instagram: "IG", TikTok: "TT", Email: "Em", SMS: "SMS",
     "Google Ads": "Goo", "Meta Ads": "FB", Pinterest: "Pin", YouTube: "YT",
+    X: "X", LinkedIn: "LI", Facebook: "FB", Reddit: "Rd",
+    Snapchat: "Sn", Threads: "Th", Bluesky: "Bk",
+    instagram: "IG", tiktok: "TT", email: "Em", sms: "SMS",
+    x: "X", linkedin: "LI", facebook: "FB", pinterest: "Pin",
+    youtube: "YT", reddit: "Rd", snapchat: "Sn", threads: "Th", bluesky: "Bk",
   };
 
-  const queue = state.calendar.filter(c =>
+  // Split calendar into scheduled + unscheduled drafts
+  const scheduled = state.calendar.filter(c =>
     ["approved", "scheduled", "review", "policy", "paused"].includes(c.status)
   );
+  const drafts = state.calendar.filter(c => c.status === "draft");
+  // legacy alias so calendar grid still works
+  const queue = scheduled;
 
   const slotOf = (item) => {
     const h = parseInt((item.scheduledAt || "09:00").split(":")[0], 10);
@@ -92,6 +137,44 @@ function PublishingQueue({ state, actions }) {
       </div>
 
       <div style={{ flex: 1, overflow: "auto" }}>
+
+        {/* ── Drafts strip (unscheduled, from chat or proactive) ── */}
+        {drafts.length > 0 && (
+          <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--rule)", background: "oklch(97% 0.006 240 / 0.5)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                Drafts · {drafts.length}
+              </div>
+              <span style={{ fontSize: 10.5, color: "var(--muted)" }}>— not yet scheduled</span>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {drafts.map(item => {
+                const platformKey = item.platform || item.channel || "";
+                const color = CH_COLOR[platformKey] || "var(--accent)";
+                const abbr  = CH_ABBR[platformKey]  || platformKey.slice(0, 2).toUpperCase();
+                return (
+                  <div key={item.id} onClick={() => setEditItem(item)} className="cell-btn"
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+                      border: "1px dashed var(--rule-strong)", borderRadius: 6,
+                      background: "var(--paper)", cursor: "pointer", maxWidth: 260,
+                    }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }}/>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 11, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {(item.body || item.title || "").slice(0, 50)}
+                      </div>
+                      <div style={{ fontSize: 10, color: "var(--muted)" }}>
+                        {abbr} · {item.kind || item.contentType || "Post"} · draft
+                      </div>
+                    </div>
+                    <Icon name="edit" size={11} style={{ color: "var(--muted)", flexShrink: 0 }}/>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* ── Today strip ── */}
         {todayItems.length > 0 && (
@@ -232,43 +315,181 @@ function PublishingQueue({ state, actions }) {
       </div>
 
       {/* ── Edit drawer ── */}
-      <Drawer open={!!editItem} onClose={() => setEditItem(null)} title={editItem?.title || ""}
-        actions={editItem && <>
-          <Btn variant="ghost" onClick={() => { togglePause(editItem); setEditItem(null); }}>
-            <Icon name={editItem?.status === "paused" ? "play" : "pause"} size={12}/>
-            {editItem?.status === "paused" ? " Resume" : " Pause"}
-          </Btn>
-          <Btn variant="danger" onClick={() => { actions.removeItem(editItem.id); setEditItem(null); }}>
-            <Icon name="x" size={12}/> Remove
-          </Btn>
-          <Btn variant="primary" onClick={() => {
-            actions.updateItem(editItem.id, { status: "sent" }, {
-              logEvent: `sent · '${editItem.title}'`,
-              notify: { tone: "ok", text: `Sent '${editItem.title}'` },
-            });
-            setEditItem(null);
-          }}><Icon name="send" size={12}/> Send now</Btn>
-        </>}
-      >
-        {editItem && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Chip tone="accent">{editItem.channel}</Chip>
-              <Chip>{editItem.tone}</Chip>
-              <Chip tone={statusChip(editItem.status).tone}>{editItem.status}</Chip>
+      {editItem && editDraft && (() => {
+        const isDraft     = editItem.status === "draft";
+        const platformKey = (editItem.platform || editItem.channel || "").toLowerCase();
+        const charLimit   = CHAR_LIMIT[platformKey] || null;
+        const charCount   = (editDraft.body || "").length;
+        const overLimit   = charLimit && charCount > charLimit;
+        const platformLabel = editItem.platform
+          ? editItem.platform.charAt(0).toUpperCase() + editItem.platform.slice(1)
+          : editItem.channel;
+        const kindLabel = editItem.kind || editItem.contentType || "Post";
+
+        const handleSave = () => {
+          actions.updateItem(editItem.id, {
+            body:        editDraft.body,
+            title:       editDraft.body.slice(0, 80),
+            imagePrompt: editDraft.imagePrompt || null,
+            scheduledAt: editDraft.scheduledAt || null,
+            day:         editDraft.day !== "" ? Number(editDraft.day) : null,
+            campaign:    editDraft.campaign || null,
+          }, {
+            logEvent: `edited · '${editDraft.body.slice(0, 40)}'`,
+            notify:   { tone: "ok", text: "Draft saved" },
+          });
+          setEditItem(null);
+        };
+
+        const handleSchedule = () => {
+          actions.updateItem(editItem.id, {
+            body:        editDraft.body,
+            title:       editDraft.body.slice(0, 80),
+            imagePrompt: editDraft.imagePrompt || null,
+            scheduledAt: editDraft.scheduledAt || "09:00",
+            day:         editDraft.day !== "" ? Number(editDraft.day) : 0,
+            status:      "scheduled",
+            campaign:    editDraft.campaign || null,
+          }, {
+            logEvent: `scheduled · '${editDraft.body.slice(0, 40)}'`,
+            notify:   { tone: "ok", text: `Scheduled · ${platformLabel}` },
+          });
+          setEditItem(null);
+        };
+
+        const handleSendNow = () => {
+          actions.updateItem(editItem.id, {
+            body:   editDraft.body,
+            title:  editDraft.body.slice(0, 80),
+            status: "sent",
+          }, {
+            logEvent: `sent · '${editDraft.body.slice(0, 40)}'`,
+            notify:   { tone: "ok", text: `Sent · ${platformLabel}` },
+          });
+          setEditItem(null);
+        };
+
+        return (
+          <Drawer open={true} onClose={() => setEditItem(null)}
+            title={`${platformLabel} · ${kindLabel}`}
+            actions={<>
+              {!isDraft && (
+                <Btn variant="ghost" onClick={() => { togglePause(editItem); setEditItem(null); }}>
+                  <Icon name={editItem.status === "paused" ? "play" : "pause"} size={12}/>
+                  {editItem.status === "paused" ? " Resume" : " Pause"}
+                </Btn>
+              )}
+              <Btn variant="danger" onClick={() => { actions.removeItem(editItem.id); setEditItem(null); }}>
+                <Icon name="x" size={12}/> Remove
+              </Btn>
+              {isDraft
+                ? <Btn variant="primary" onClick={handleSchedule} disabled={!editDraft.scheduledAt || !editDraft.day}>
+                    <Icon name="calendar" size={12}/> Schedule
+                  </Btn>
+                : <Btn variant="primary" onClick={handleSendNow}>
+                    <Icon name="send" size={12}/> Send now
+                  </Btn>
+              }
+            </>}
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+              {/* Status chips */}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Chip tone="accent">{platformLabel}</Chip>
+                <Chip>{kindLabel}</Chip>
+                <Chip tone={isDraft ? "warn" : statusChip(editItem.status).tone}>
+                  {editItem.status}
+                </Chip>
+                {editItem.fromChat && <Chip tone="accent">from chat</Chip>}
+              </div>
+
+              {/* Copy / Caption editor */}
+              <FormRow label="Copy">
+                <div style={{ position: "relative" }}>
+                  <Textarea
+                    value={editDraft.body}
+                    onChange={e => setEditDraft(d => ({ ...d, body: e.target.value }))}
+                    rows={6}
+                    style={{ borderColor: overLimit ? "oklch(48% 0.16 25)" : undefined }}
+                    placeholder="Write your copy here…"
+                  />
+                  {charLimit && (
+                    <div style={{
+                      position: "absolute", bottom: 8, right: 10,
+                      fontSize: 10, fontFamily: "var(--font-mono)",
+                      color: overLimit ? "oklch(48% 0.16 25)" : "var(--muted)",
+                    }}>
+                      {charCount}/{charLimit}
+                    </div>
+                  )}
+                </div>
+              </FormRow>
+
+              {/* Image prompt (always show for visual formats, hidden for email/sms) */}
+              {platformKey !== "email" && platformKey !== "sms" && (
+                <FormRow label="Image prompt" hint="Runware will generate from this description">
+                  <Textarea
+                    value={editDraft.imagePrompt}
+                    onChange={e => setEditDraft(d => ({ ...d, imagePrompt: e.target.value }))}
+                    rows={2}
+                    placeholder="Describe the visual — subject, mood, lighting, style…"
+                  />
+                </FormRow>
+              )}
+
+              {/* Schedule section */}
+              <FormRow label="Schedule">
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 4 }}>Day</div>
+                    <select
+                      value={editDraft.day}
+                      onChange={e => setEditDraft(d => ({ ...d, day: e.target.value }))}
+                      style={{
+                        width: "100%", padding: "6px 8px", fontSize: 12.5,
+                        border: "1px solid var(--rule)", borderRadius: 4,
+                        background: "var(--paper-2)", color: "var(--ink)",
+                        fontFamily: "var(--font-sans)",
+                      }}
+                    >
+                      <option value="">— unscheduled —</option>
+                      {DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 4 }}>Time</div>
+                    <Input
+                      type="time"
+                      value={editDraft.scheduledAt}
+                      onChange={e => setEditDraft(d => ({ ...d, scheduledAt: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </FormRow>
+
+              {/* Campaign (non-draft items) */}
+              {!editItem.fromChat && (
+                <FormRow label="Campaign">
+                  <Input
+                    value={editDraft.campaign}
+                    onChange={e => setEditDraft(d => ({ ...d, campaign: e.target.value }))}
+                    placeholder="Campaign name"
+                  />
+                </FormRow>
+              )}
+
+              {/* Save button (separate from the drawer action bar for inline feel) */}
+              <div style={{ paddingTop: 4 }}>
+                <Btn variant="ghost" onClick={handleSave} style={{ width: "100%" }}>
+                  Save changes
+                </Btn>
+              </div>
+
             </div>
-            <FormRow label="Scheduled for">
-              <Input defaultValue={`${DAYS[editItem.day ?? 0]} · ${editItem.scheduledAt || "09:00"}`}/>
-            </FormRow>
-            <FormRow label="Caption">
-              <Textarea defaultValue={editItem.body || ""} rows={4}/>
-            </FormRow>
-            <FormRow label="Campaign">
-              <Input defaultValue={editItem.campaign}/>
-            </FormRow>
-          </div>
-        )}
-      </Drawer>
+          </Drawer>
+        );
+      })()}
     </div>
   );
 }
