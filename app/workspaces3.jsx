@@ -808,111 +808,206 @@ function InsightsCenter({ state, actions }) {
 
 // ────────────────────────────── INBOX & ESCALATION ──────────────────────────────
 function InboxEscalation({ state, actions }) {
-  const open = state.inbox.filter(i => i.status !== "replied" && i.status !== "archived");
-  const [selectedId, setSelectedId] = useState3(open[0]?.id || state.inbox[0]?.id);
-  const [draft, setDraft] = useState3("");
-  const selected = state.inbox.find(i => i.id === selectedId) || open[0];
+  const open     = state.inbox.filter(i => i.status !== "replied" && i.status !== "archived");
+  const urgent   = open.filter(i => i.risk === "high" || i.risk === "medium")
+                       .sort((a, b) => (a.risk === "high" ? -1 : b.risk === "high" ? 1 : 0));
+  const ready    = open.filter(i => i.risk === "low");
 
-  React.useEffect(() => { if (selected) setDraft(selected.draft); }, [selectedId, selected?.id]);
+  const defaultId = (urgent[0] || ready[0])?.id;
+  const [selectedId, setSelectedId] = useState3(defaultId);
+  const [draft, setDraft]           = useState3("");
 
-  if (!selected) return <div style={{ padding: 40, color: "var(--muted)" }}>Inbox empty.</div>;
+  const selected = open.find(i => i.id === selectedId) || urgent[0] || ready[0];
 
-  const riskTone = selected.risk === "high" ? "danger" : selected.risk === "medium" ? "warn" : "ok";
+  React.useEffect(() => {
+    if (selected) setDraft(selected.draft || "");
+  }, [selectedId, selected?.id]);
+
+  const riskBorder = { high: "var(--danger)", medium: "var(--warn)", low: "var(--success)" };
+  const riskTone   = { high: "danger",        medium: "warn",        low: "ok" };
+
+  const archive = (item) => actions.updateInbox(item.id, { status: "archived" }, {
+    logEvent: `archived · ${item.author}`,
+    notify:   { tone: "neutral", text: `Archived · ${item.author}` },
+  });
+
+  const sendReply = (item, replyDraft) => actions.updateInbox(item.id, { status: "replied", draft: replyDraft }, {
+    logEvent: `replied · ${item.source} · ${item.author}`,
+    notify:   { tone: "ok", text: `Reply sent to ${item.author}` },
+  });
+
+  // Left panel row
+  const Row = ({ item, section }) => {
+    const isActive = selected?.id === item.id;
+    const border   = riskBorder[item.risk] || "var(--rule)";
+    return (
+      <div onClick={() => setSelectedId(item.id)} className="cell-btn"
+        style={{
+          padding: "11px 14px", cursor: "pointer",
+          borderBottom: "1px solid var(--rule)",
+          borderLeft: `3px solid ${isActive ? border : "transparent"}`,
+          background: isActive ? "var(--paper-2)" : "transparent",
+          transition: "background 0.1s",
+        }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)" }}>{item.author}</span>
+          <span className="mono" style={{ fontSize: 9.5, color: "var(--muted)", letterSpacing: "0.04em" }}>{item.timeAgo}</span>
+        </div>
+        <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4, letterSpacing: "0.02em" }}>
+          {item.source}
+        </div>
+        <div style={{
+          fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.4,
+          overflow: "hidden", textOverflow: "ellipsis",
+          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+        }}>{item.text}</div>
+      </div>
+    );
+  };
+
+  if (open.length === 0) return (
+    <div style={{ padding: 40, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
+      <div style={{ fontSize: 28, marginBottom: 12 }}>✓</div>
+      Inbox clear.
+    </div>
+  );
 
   return (
-    <div className="anim-fade" style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: 20, height: "100%" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-        <div>
-          <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>07 · Listen</div>
-          <h1 style={{ fontSize: 28, fontWeight: 500, letterSpacing: "-0.025em", margin: "6px 0 0" }}>Inbox &amp; Escalation</h1>
-          <div style={{ color: "var(--muted)", marginTop: 4, fontSize: 13 }}>{open.length} inbound · {open.filter(i => i.risk !== "low").length} need a human</div>
+    <div className="anim-fade" style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+
+      {/* ── Header ── */}
+      <div style={{ padding: "20px 24px 14px", borderBottom: "1px solid var(--rule)", background: "var(--paper)", flexShrink: 0 }}>
+        <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>07 · Listen</div>
+        <h1 style={{ fontSize: 24, fontWeight: 500, letterSpacing: "-0.025em", margin: "4px 0 8px" }}>Inbox</h1>
+        <div style={{ display: "flex", gap: 8 }}>
+          {urgent.length > 0 && <Chip tone="danger">{urgent.length} need a decision</Chip>}
+          {ready.length  > 0 && <Chip tone="ok">{ready.length} ready to send</Chip>}
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: "var(--gap)", flex: 1, minHeight: 0 }}>
-        <div style={{ border: "1px solid var(--rule)", borderRadius: 6, background: "var(--paper)", overflow: "auto" }}>
-          {state.inbox.map((item, i) => {
-            if (item.status === "replied" || item.status === "archived") return null;
-            const rt = item.risk === "high" ? "danger" : item.risk === "medium" ? "warn" : "ok";
-            return (
-              <div key={item.id} onClick={() => setSelectedId(item.id)} className="cell-btn"
-                style={{
-                  padding: "14px 16px",
-                  borderTop: i === 0 ? 0 : "1px solid var(--rule)",
-                  background: selected?.id === item.id ? "var(--paper-2)" : "transparent",
-                  cursor: "pointer",
-                }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                  <span className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.04em" }}>{item.source}</span>
-                  <Chip tone={rt}>{item.risk}</Chip>
+      <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", flex: 1, minHeight: 0 }}>
+
+        {/* ── Left panel ── */}
+        <div style={{ borderRight: "1px solid var(--rule)", background: "var(--paper)", overflow: "auto", display: "flex", flexDirection: "column" }}>
+          {urgent.length > 0 && (
+            <>
+              <div style={{ padding: "8px 14px 4px", background: "var(--paper-2)", borderBottom: "1px solid var(--rule)" }}>
+                <span className="mono" style={{ fontSize: 9.5, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Needs a decision</span>
+              </div>
+              {urgent.map(item => <Row key={item.id} item={item}/>)}
+            </>
+          )}
+          {ready.length > 0 && (
+            <>
+              <div style={{ padding: "8px 14px 4px", background: "var(--paper-2)", borderBottom: "1px solid var(--rule)", borderTop: urgent.length > 0 ? "1px solid var(--rule)" : "none" }}>
+                <span className="mono" style={{ fontSize: 9.5, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Ready to send</span>
+              </div>
+              {ready.map(item => <Row key={item.id} item={item}/>)}
+            </>
+          )}
+        </div>
+
+        {/* ── Detail panel ── */}
+        {selected && (
+          <div key={selected.id} className="anim-slide" style={{ background: "var(--paper)", overflow: "auto", display: "flex", flexDirection: "column" }}>
+
+            {/* Sender + meta */}
+            <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid var(--rule)" }}>
+              <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
+                {selected.source} · {selected.timeAgo} ago
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 500, letterSpacing: "-0.02em" }}>{selected.author}</div>
+              <div style={{ marginTop: 6 }}>
+                <Chip tone={riskTone[selected.risk] || "neutral"}>{selected.category}</Chip>
+              </div>
+            </div>
+
+            <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 20, flex: 1 }}>
+
+              {/* ── AI Triage block — FIRST ── */}
+              <div style={{
+                padding: "14px 16px",
+                borderRadius: 6,
+                border: "1px solid var(--rule)",
+                borderLeft: `3px solid ${riskBorder[selected.risk] || "var(--rule)"}`,
+                background: "var(--paper-2)",
+              }}>
+                <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                  <Icon name="shield" size={11}/> AI Triage
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 3 }}>{item.author}</div>
-                <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
-                  {item.text}
+                <div style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.55 }}>
+                  {selected.reason || "No triage note."}
                 </div>
               </div>
-            );
-          })}
-          {open.length === 0 && <div style={{ padding: 30, textAlign: "center", color: "var(--muted)", fontSize: 12 }}>Inbox clear.</div>}
-        </div>
 
-        <div key={selected.id} className="anim-slide" style={{ border: "1px solid var(--rule)", borderRadius: 6, background: "var(--paper)", padding: 22, overflow: "auto" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
-            <div>
-              <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase" }}>{selected.source} · {selected.category}</div>
-              <div style={{ fontSize: 18, fontWeight: 500, letterSpacing: "-0.015em", marginTop: 4 }}>{selected.author}</div>
+              {/* ── Message ── */}
+              <div>
+                <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>Message</div>
+                <div style={{
+                  padding: "14px 16px", background: "var(--paper-2)",
+                  borderRadius: 5, border: "1px solid var(--rule)",
+                  fontSize: 14, lineHeight: 1.65, color: "var(--ink)",
+                  fontFamily: "var(--font-serif)", letterSpacing: "-0.01em",
+                }}>
+                  "{selected.text}"
+                </div>
+              </div>
+
+              {/* ── Response area ── */}
+              {selected.risk === "high" ? (
+                <div style={{
+                  padding: "14px 16px", border: "1px solid var(--rule)",
+                  borderLeft: "3px solid var(--danger)", borderRadius: 5,
+                  background: "var(--paper-2)",
+                }}>
+                  <div className="mono" style={{ fontSize: 10, color: "var(--danger)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>Hard boundary — no AI reply</div>
+                  <div style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.5 }}>
+                    This category is blocked from AI drafting. Forward directly to your comms lead.
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Drafted reply</div>
+                    <div className="mono" style={{ fontSize: 9.5, color: "var(--muted)" }}>brand voice · {selected.risk === "low" ? "auto" : "review"}</div>
+                  </div>
+                  {selected.draft ? (
+                    <Textarea value={draft} onChange={e => setDraft(e.target.value)} rows={4}
+                      style={{ borderLeft: "3px solid var(--accent)" }}/>
+                  ) : (
+                    <div style={{
+                      padding: "14px 16px", border: "1px solid var(--rule)",
+                      borderLeft: "3px solid var(--warn)", borderRadius: 5,
+                      fontSize: 13, color: "var(--muted)", fontStyle: "italic",
+                    }}>
+                      No auto-draft — requires human review before reply.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <Chip tone={riskTone}>risk: {selected.risk}</Chip>
-              {selected.risk !== "low" && <Chip tone="accent">human required</Chip>}
+
+            {/* ── Actions ── */}
+            <div style={{ padding: "14px 24px", borderTop: "1px solid var(--rule)", background: "var(--paper)", display: "flex", gap: 8, justifyContent: "flex-end", flexShrink: 0 }}>
+              <Btn size="sm" variant="ghost" onClick={() => archive(selected)}>
+                <Icon name="x" size={12}/> Archive
+              </Btn>
+              {selected.risk === "high" ? (
+                <Btn size="sm" variant="primary" onClick={() => archive(selected)}>
+                  <Icon name="send" size={12}/> Forward to comms →
+                </Btn>
+              ) : selected.draft ? (
+                <Btn size="sm" variant="primary" onClick={() => sendReply(selected, draft)}>
+                  <Icon name="send" size={12}/> {selected.risk === "low" ? "Send reply" : "Approve & send"}
+                </Btn>
+              ) : (
+                <Btn size="sm" variant="default" disabled>
+                  Human review required
+                </Btn>
+              )}
             </div>
           </div>
-
-          <div style={{ padding: 16, background: "var(--paper-2)", borderRadius: 5, border: "1px solid var(--rule)", marginBottom: 20, fontSize: 14, lineHeight: 1.55, color: "var(--ink)" }}>
-            {selected.text}
-          </div>
-
-          <div style={{ marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase" }}>Drafted response</div>
-            <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.04em" }}>Supervisor · tone: {selected.risk === "low" ? "Wink" : "Direct"}</div>
-          </div>
-          {selected.risk === "high" ? (
-            <div style={{
-              padding: 16, border: "1px solid var(--rule)",
-              borderLeft: "3px solid var(--danger)", borderRadius: 5,
-              fontSize: 14, lineHeight: 1.55, marginBottom: 18,
-              color: "var(--muted)", fontStyle: "italic",
-            }}>
-              — routing to press contact — <br/>
-              <span style={{ fontSize: 12 }}>Press/PR is a hard boundary. No AI reply permitted. Draft handed to comms lead.</span>
-            </div>
-          ) : (
-            <Textarea value={draft} onChange={e => setDraft(e.target.value)} rows={4}
-              style={{ marginBottom: 18, borderLeft: "3px solid var(--accent)" }}/>
-          )}
-
-          <div style={{ padding: 14, background: "var(--paper-2)", borderRadius: 5, marginBottom: 20, fontSize: 12 }}>
-            <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>
-              <Icon name="shield" size={11}/> Policy Guard · decision
-            </div>
-            {selected.risk === "low" && <div><Chip tone="ok">allow</Chip> <span style={{ color: "var(--ink-2)", marginLeft: 8 }}>low-risk · product question · confidence 0.91 · auto-reply permitted</span></div>}
-            {selected.risk === "medium" && <div><Chip tone="warn">require approval</Chip> <span style={{ color: "var(--ink-2)", marginLeft: 8 }}>medium-risk category · service/partnership · must route to human</span></div>}
-            {selected.risk === "high" && <div><Chip tone="danger">require approval</Chip> <span style={{ color: "var(--ink-2)", marginLeft: 8 }}>hard boundary · press/PR · no AI-drafted reply permitted</span></div>}
-          </div>
-
-          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            <Btn size="sm" variant="ghost" onClick={() => actions.updateInbox(selected.id, { status: "archived" }, {
-              logEvent: `archived inbox · ${selected.author}`, notify: { tone: "neutral", text: `Archived message from ${selected.author}` }
-            })}><Icon name="x" size={12}/> Archive</Btn>
-            <Btn size="sm" variant={selected.risk === "high" ? "default" : "primary"} disabled={selected.risk === "high"}
-              onClick={() => actions.updateInbox(selected.id, { status: "replied", draft }, {
-                logEvent: `replied · ${selected.source} · ${selected.author}`,
-                notify: { tone: "ok", text: `Reply sent to ${selected.author}` }
-              })}>
-              <Icon name="send" size={12}/> {selected.risk === "low" ? "Send reply" : "Approve & send"}
-            </Btn>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
