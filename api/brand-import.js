@@ -46,6 +46,54 @@ async function jinaFetch(url) {
   }
 }
 
+// Fetch HTML format from Jina to extract embedded hex color codes
+async function jinaFetchHTML(url) {
+  try {
+    const res = await fetch(`${JINA_BASE}/${url}`, {
+      headers: {
+        "Accept":          "text/html",
+        "X-Return-Format": "html",
+        "X-Timeout":       "8",
+      },
+    });
+    if (!res.ok) return null;
+    return await res.text(); // don't cap — need full HTML for color scan
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extract the most-frequent hex color codes from HTML/CSS content.
+ * Returns up to `limit` colors sorted by frequency (most common first).
+ * Filters out pure black (#000000, #111111…), pure white (#ffffff, #fefefe…),
+ * and very-low-chroma greys so we surface actual brand colours.
+ */
+function extractColorHints(html, limit = 10) {
+  if (!html) return [];
+
+  const hexRe = /#([0-9A-Fa-f]{6})\b/g;
+  const freq   = {};
+  let m;
+  while ((m = hexRe.exec(html)) !== null) {
+    const c = m[0].toLowerCase();
+    // Skip near-black, near-white, and low-chroma greys
+    const r = parseInt(c.slice(1, 3), 16);
+    const g = parseInt(c.slice(3, 5), 16);
+    const b = parseInt(c.slice(5, 7), 16);
+    const maxC   = Math.max(r, g, b);
+    const minC   = Math.min(r, g, b);
+    const chroma = maxC - minC; // 0–255
+    if (maxC < 30 || minC > 225 || chroma < 25) continue; // skip greys/blacks/whites
+    freq[c] = (freq[c] || 0) + 1;
+  }
+
+  return Object.entries(freq)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([color]) => color);
+}
+
 // ─── Supabase upsert ──────────────────────────────────────────────────────────
 
 async function upsertBrand(tenantId, brand) {
@@ -104,11 +152,12 @@ export default async function handler(req) {
   const cleanUrl  = url.replace(/^https?:\/\//, "").replace(/\/$/, "");
   const fullUrl   = `https://${cleanUrl}`;
 
-  // Scrape homepage + about in parallel
-  const [mainContent, aboutContent, contactContent] = await Promise.all([
+  // Scrape homepage + about in parallel; also fetch raw HTML for color extraction
+  const [mainContent, aboutContent, contactContent, homeHTML] = await Promise.all([
     jinaFetch(fullUrl),
     jinaFetch(`${fullUrl}/about`),
     jinaFetch(`${fullUrl}/contact`),
+    jinaFetchHTML(fullUrl),
   ]);
 
   if (!mainContent) {
@@ -117,6 +166,8 @@ export default async function handler(req) {
       error: "Could not read the website. Check the URL is correct and the site is publicly accessible.",
     }), { status: 422 });
   }
+
+  const colorHints = extractColorHints(homeHTML);
 
   const combinedContent = [
     `=== HOMEPAGE ===\n${mainContent}`,
@@ -180,8 +231,14 @@ Return ONLY valid JSON — no markdown fences, no commentary, no extra text. Use
 CONNECTOR IDs (pick 5–8 most relevant for this brand's marketing mix):
 ${CONNECTOR_IDS.join(", ")}
 
+DETECTED HEX COLORS FROM SITE (extracted from live HTML — strong signal for brand palette):
+${colorHints.length > 0 ? colorHints.join("  ") : "none detected"}
+
+If detected colors are present above, use them as your PRIMARY signal for --accent and --paper hues.
+Convert hex to OKLCH: multiply sRGB channel values by the appropriate OKLCH transfer function.
+Approximate conversion: hex #RRGGBB → find dominant hue angle H (0=red, 60=yellow, 120=green, 180=cyan, 240=blue, 300=magenta), then set C proportional to saturation, L proportional to lightness.
+
 PALETTE RULES — use OKLCH format oklch(L% C H):
-- Infer colors from the brand's aesthetic, product descriptions, and visual language in the content
 - --paper: main background. Light brands: L 95–99, C 0.003–0.015. Dark/luxury: L 10–18, C 0.008–0.015
 - --paper-2: slightly darker than paper (L -2 to -4)
 - --paper-3: slightly darker still (L -4 to -7)
@@ -191,15 +248,25 @@ PALETTE RULES — use OKLCH format oklch(L% C H):
 - --muted-2: even softer muted
 - --rule: subtle borders, low chroma (C 0.006–0.014)
 - --rule-strong: stronger borders (L 5–8 darker than rule)
-- --accent: brand primary color — the main brand hue, C 0.12–0.25
+- --accent: brand primary color — the dominant brand hue from logo/nav/CTAs, C 0.12–0.25
 - --accent-ink: darker accent for text on light bg (L -15 from accent)
 - --accent-wash: very faint tint of accent for wash backgrounds (L 92–96, C 0.02–0.05)
 
-EXAMPLES:
-- Luxury skincare: warm ivory background, saffron/gold accent (H 45–70), dark oud ink
-- SaaS startup: clean white, cobalt/electric blue accent (H 240–265)
-- Eco/natural brand: parchment background, forest green accent (H 140–160)
-- Premium dark brand: near-black background, champagne/gold accent`;
+CRITICAL: Do NOT infer palette from sustainability content, product category, or nature imagery.
+Infer palette ONLY from actual brand identity signals: logo color, navigation bar color, primary CTA button color, hero background.
+A brand selling electronics with a sustainability program is NOT an eco brand — it is an electronics brand.
+
+BRAND TYPE → ACCENT HUE REFERENCE (use these as anchors, refine from detected hex colors):
+- Consumer electronics / big-box retail: white/light bg, cobalt-to-royal blue accent (H 240–260) or brand-specific
+- B2B SaaS / tech: white bg, electric blue or indigo accent (H 240–280)
+- Luxury / premium skincare: warm ivory bg, gold/saffron accent (H 45–70), dark ink
+- Food / QSR: white bg, bold red or orange accent (H 10–35)
+- Eco / sustainability-ONLY brand (primary purpose is eco, not a feature): parchment bg, forest green (H 140–160)
+- Fashion / apparel (non-luxury): white bg, black ink, minimal accent
+- Healthcare / wellness: white bg, medium teal-blue accent (H 195–220)
+- Financial services: white/navy bg, dark blue or green accent (H 140–250)
+- Premium dark brand: near-black bg, champagne/gold accent (H 50–70)
+- Sports / fitness: white or dark bg, bold accent (brand-specific — often red, orange, or blue)`;
 
   try {
     const claudeRes = await fetch(`${ANTHROPIC_BASE}/messages`, {
