@@ -29,6 +29,11 @@ function mveda_initialState() {
       { name: "TikTok Ads",    publish: "human", reply: "n/a",   ai: "review" },
       { name: "LinkedIn Ads",  publish: "human", reply: "n/a",   ai: "review" },
       { name: "Pinterest Ads", publish: "human", reply: "n/a",   ai: "review" },
+      { name: "X Ads",         publish: "human", reply: "n/a",   ai: "review" },
+      { name: "Reddit Ads",    publish: "human", reply: "n/a",   ai: "review" },
+      { name: "Snap Ads",      publish: "human", reply: "n/a",   ai: "review" },
+      { name: "X",             publish: "auto",  reply: "human", ai: "review" },
+      { name: "Pinterest",     publish: "auto",  reply: "n/a",   ai: "review" },
     ],
     thresholds: { confidence: 85, dailyCap: 12, sla: 90 },
     activity: SEED.audit.map(a => ({ ...a, id: "e_" + Math.random().toString(36).slice(2,8) })),
@@ -270,6 +275,33 @@ function mveda_reducer(s, a) {
         notifications: [notify("ok", `Channel strategy v${next.version} approved · routed to Planning`), ...s.notifications],
       };
     }
+    case "QUEUE_LOAD_PROACTIVE": {
+      // Bulk-load proactive drafts into calendar, deduplicating by id so refresh-reloads are idempotent
+      const existingIds = new Set(s.calendar.map(c => c.id));
+      const newItems = (a.items || [])
+        .filter(d => !existingIds.has(d.id))
+        .map(d => ({
+          id:          d.id || "p_" + Math.random().toString(36).slice(2,8),
+          platform:    d.platform,
+          kind:        d.contentType,
+          title:       (d.copy || "").slice(0, 80),
+          body:        d.copy,
+          imagePrompt: d.imagePrompt || null,
+          status:      "draft",
+          scheduledAt: d.suggestedTime || null,
+          fromChat:    false,
+          day:         d.suggestedDay ?? null,
+          channel:     d.platform,
+          tone:        "Proactive",
+          source:      "proactive",
+          createdAt:   new Date().toISOString(),
+        }));
+      if (newItems.length === 0) return s;
+      return { ...s,
+        calendar: [...newItems, ...s.calendar],
+        notifications: [notify("ok", `${newItems.length} proactive draft${newItems.length !== 1 ? "s" : ""} loaded`), ...s.notifications],
+      };
+    }
     case "QUEUE_ADD_DRAFT": {
       const item = {
         id:          "d_" + Math.random().toString(36).slice(2,8),
@@ -343,6 +375,8 @@ function useMvedaStore() {
     toggleSeasonal:   (id) => dispatch({ type: "SEASONAL_TOGGLE", id }),
     addDraft: (platform, contentType, copy, imagePrompt) =>
       dispatch({ type: "QUEUE_ADD_DRAFT", platform, contentType, copy, imagePrompt }),
+    loadProactiveDrafts: (items) =>
+      dispatch({ type: "QUEUE_LOAD_PROACTIVE", items }),
   };
   return [state, actions];
 }

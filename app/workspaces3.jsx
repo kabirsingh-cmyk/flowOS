@@ -24,10 +24,19 @@ function PublishingQueue({ state, actions }) {
       });
       const data = await res.json();
       if (data.ok && data.drafts?.length) {
-        data.drafts.forEach(d => {
-          actions.addDraft(d.platform, d.contentType, d.copy, d.imagePrompt);
-        });
-        actions.notify("ok", `${data.drafts.length} proactive drafts ready · ${data.source === "claude" ? "Claude" : "template"}`);
+        // Filter out platforms where the AI rule is disabled in Autonomy Settings
+        const aiBlocked = new Set(
+          (state.channelRules || [])
+            .filter(r => r.ai === "n/a")
+            .map(r => r.name.toLowerCase())
+        );
+        const allowed = data.drafts.filter(d => !aiBlocked.has((d.platform || "").toLowerCase()));
+        if (allowed.length > 0) {
+          actions.loadProactiveDrafts(allowed);
+          actions.notify("ok", `${allowed.length} proactive draft${allowed.length !== 1 ? "s" : ""} ready · ${data.source === "claude" ? "Claude" : "template"}`);
+        } else {
+          actions.notify("warn", "All generated platforms are blocked by Autonomy Settings — update AI rules");
+        }
       } else {
         actions.notify("warn", data.error || "No drafts returned");
       }
@@ -393,7 +402,19 @@ function PublishingQueue({ state, actions }) {
           setEditItem(null);
         };
 
+        const PLATFORM_TO_RULE = {
+          instagram: "Instagram", linkedin: "LinkedIn", tiktok: "TikTok",
+          facebook: "Facebook",   youtube: "YouTube",   email: "Email",
+          x: "X", twitter: "X",  pinterest: "Pinterest",
+        };
         const handleSendNow = () => {
+          // Enforce channel publish rule from Autonomy Settings
+          const ruleName = PLATFORM_TO_RULE[platformKey] || editItem.channel;
+          const rule     = (state.channelRules || []).find(r => r.name === ruleName);
+          if (rule && rule.publish === "human") {
+            actions.notify("warn", `${ruleName || platformLabel} requires manual approval — update in Autonomy Settings`);
+            return;
+          }
           actions.updateItem(editItem.id, {
             body:   editDraft.body,
             title:  editDraft.body.slice(0, 80),
@@ -1088,10 +1109,20 @@ function InboxEscalation({ state, actions }) {
     notify:   { tone: "neutral", text: `Archived · ${item.author}` },
   });
 
-  const sendReply = (item, replyDraft) => actions.updateInbox(item.id, { status: "replied", draft: replyDraft }, {
-    logEvent: `replied · ${item.source} · ${item.author}`,
-    notify:   { tone: "ok", text: `Reply sent to ${item.author}` },
-  });
+  const INBOX_CHANNEL_NAMES = ["Instagram", "LinkedIn", "TikTok", "Facebook", "X", "Twitter", "YouTube", "Email", "Pinterest"];
+  const sendReply = (item, replyDraft) => {
+    // Enforce reply rule from Autonomy Settings
+    const matchedChannel = INBOX_CHANNEL_NAMES.find(ch => (item.source || "").startsWith(ch));
+    const rule = matchedChannel ? (state.channelRules || []).find(r => r.name === matchedChannel) : null;
+    if (rule && rule.reply === "n/a") {
+      actions.notify("warn", `${matchedChannel}: replies not configured — check Autonomy Settings`);
+      return;
+    }
+    actions.updateInbox(item.id, { status: "replied", draft: replyDraft }, {
+      logEvent: `replied · ${item.source} · ${item.author}`,
+      notify:   { tone: "ok", text: `Reply sent to ${item.author}` },
+    });
+  };
 
   // Left panel row
   const Row = ({ item, section }) => {

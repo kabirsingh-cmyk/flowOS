@@ -11,7 +11,7 @@
  *   { ok: true, drafts: [{ platform, contentType, copy, imagePrompt, suggestedDay, suggestedTime }] }
  */
 
-import { fetchBrandProfile } from './lib/supabase.js';
+import { fetchBrandProfile, sbHeaders } from './lib/supabase.js';
 
 export const config = { runtime: "edge" };
 
@@ -63,6 +63,76 @@ const FALLBACK_DRAFTS = [
     suggestedDay: 4, suggestedTime: "12:00",
   },
 ];
+
+// ─── Supabase persistence helpers ─────────────────────────────────────────────
+
+async function loadPending(tenantId) {
+  const sbUrl = process.env.SUPABASE_URL;
+  const sbKey = process.env.SUPABASE_SERVICE_KEY;
+  if (!sbUrl || !sbKey) return [];
+  try {
+    const res = await fetch(
+      `${sbUrl}/rest/v1/proactive_drafts?tenant_id=eq.${encodeURIComponent(tenantId)}&status=eq.pending&order=created_at.desc`,
+      { headers: sbHeaders() }
+    );
+    if (!res.ok) return [];
+    const rows = await res.json();
+    return rows.map(r => ({
+      id:            r.id,
+      platform:      r.platform,
+      contentType:   r.content_type,
+      copy:          r.copy,
+      imagePrompt:   r.image_prompt,
+      suggestedDay:  r.suggested_day,
+      suggestedTime: r.suggested_time,
+      source:        r.source,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function persistDrafts(tenantId, drafts, source) {
+  const sbUrl = process.env.SUPABASE_URL;
+  const sbKey = process.env.SUPABASE_SERVICE_KEY;
+  if (!sbUrl || !sbKey || !tenantId) return null;
+  try {
+    // Archive existing pending batch for this tenant
+    await fetch(
+      `${sbUrl}/rest/v1/proactive_drafts?tenant_id=eq.${encodeURIComponent(tenantId)}&status=eq.pending`,
+      {
+        method:  "PATCH",
+        headers: { ...sbHeaders(), "Prefer": "return=minimal" },
+        body:    JSON.stringify({ status: "archived" }),
+      }
+    );
+    // Insert new batch, ask Supabase to return the persisted rows (with UUIDs)
+    const rows = drafts.map(d => ({
+      tenant_id:     tenantId,
+      platform:      d.platform,
+      content_type:  d.contentType,
+      copy:          d.copy,
+      image_prompt:  d.imagePrompt || null,
+      suggested_day: d.suggestedDay ?? null,
+      suggested_time: d.suggestedTime || null,
+      status:        "pending",
+      source:        source || "claude",
+    }));
+    const insertRes = await fetch(
+      `${sbUrl}/rest/v1/proactive_drafts`,
+      {
+        method:  "POST",
+        headers: { ...sbHeaders(), "Prefer": "return=representation" },
+        body:    JSON.stringify(rows),
+      }
+    );
+    if (!insertRes.ok) return null;
+    return await insertRes.json(); // array of inserted rows with server-assigned UUIDs
+  } catch (e) {
+    console.warn("[proactive-drafts] persist failed:", e.message);
+    return null;
+  }
+}
 
 // ─── Prompt builder ───────────────────────────────────────────────────────────
 
@@ -133,25 +203,42 @@ Write copy in the brand voice. No preamble. No explanations. Only the JSON array
 // ─── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req) {
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ ok: false, error: "POST required" }), { status: 405 });
+
+  // ── GET: return persisted pending drafts for a tenant ────────────────────────
+  if (req.method === "GET") {
+    const url      = new URL(req.url);
+    const tenantId = url.searchParams.get("tenantId");
+    if (!tenantId) return json(400, { ok: false, error: "tenantId required" });
+    const drafts = await loadPending(tenantId);
+    return json(200, { ok: true, drafts, source: "supabase" });
   }
 
+  if (req.method !== "POST") {
+    return json(405, { ok: false, error: "GET or POST required" });
+  }
+
+  // ── POST: generate + persist drafts ──────────────────────────────────────────
   let body;
   try { body = await req.json(); }
-  catch { return new Response(JSON.stringify({ ok: false, error: "Invalid JSON" }), { status: 400 }); }
+  catch { return json(400, { ok: false, error: "Invalid JSON" }); }
 
   const { tenantId, brand: brandFromClient, days = 7, count = 7 } = body;
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
-  // If no API key, return fallback drafts immediately
+  // Helper: persist then return
+  const finalize = async (drafts, source, extra = {}) => {
+    const persisted = await persistDrafts(tenantId, drafts, source);
+    // Merge server-assigned UUIDs back so client can deduplicate on reload
+    if (Array.isArray(persisted) && persisted.length === drafts.length) {
+      drafts = drafts.map((d, i) => ({ ...d, id: persisted[i].id }));
+    }
+    return json(200, { ok: true, drafts, source, ...extra });
+  };
+
+  // If no API key, return (and persist) fallback drafts immediately
   if (!apiKey) {
-    return new Response(JSON.stringify({
-      ok:     true,
-      drafts: FALLBACK_DRAFTS.slice(0, count),
-      source: "fallback",
-    }), { status: 200, headers: { "Content-Type": "application/json" } });
+    return finalize(FALLBACK_DRAFTS.slice(0, count), "fallback");
   }
 
   // Prefer Supabase brand profile; fall back to client-provided
@@ -197,29 +284,16 @@ export default async function handler(req) {
       drafts = JSON.parse(jsonStr);
       if (!Array.isArray(drafts)) throw new Error("Not an array");
     } catch {
-      // Parse failed — return fallback with warning
       console.error("[proactive-drafts] JSON parse failed:", rawText.slice(0, 200));
-      return new Response(JSON.stringify({
-        ok:     true,
-        drafts: FALLBACK_DRAFTS.slice(0, count),
-        source: "fallback",
-        warn:   "Claude returned malformed JSON — using fallback drafts",
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
+      return finalize(FALLBACK_DRAFTS.slice(0, count), "fallback", {
+        warn: "Claude returned malformed JSON — using fallback drafts",
+      });
     }
 
-    return new Response(JSON.stringify({ ok: true, drafts, source: "claude" }), {
-      status:  200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return finalize(drafts, "claude");
 
   } catch (e) {
     console.error("[proactive-drafts] error:", e.message);
-    // Graceful fallback — don't break the UI
-    return new Response(JSON.stringify({
-      ok:     true,
-      drafts: FALLBACK_DRAFTS.slice(0, count),
-      source: "fallback",
-      warn:   e.message,
-    }), { status: 200, headers: { "Content-Type": "application/json" } });
+    return finalize(FALLBACK_DRAFTS.slice(0, count), "fallback", { warn: e.message });
   }
 }

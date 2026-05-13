@@ -788,6 +788,19 @@ function ChatOSAuthed({ auth, onLogout }) {
     return () => window.removeEventListener("flowos:navigate", onNavigate);
   }, []);
 
+  // ── Load persisted proactive drafts on auth ──────────────────────────────────
+  useEffectApp(() => {
+    if (!auth?.id) return;
+    fetch(`/api/proactive-drafts?tenantId=${encodeURIComponent(auth.id)}`)
+      .then(r => r.ok ? r.json() : null)
+      .catch(() => null)
+      .then(data => {
+        if (data?.ok && Array.isArray(data.drafts) && data.drafts.length > 0) {
+          actions.loadProactiveDrafts(data.drafts);
+        }
+      });
+  }, [auth?.id]);
+
   const channel = CHANNELS.find(c => c.id === chat.activeChannel) || CHANNELS[0];
   const messages = chat.threads[channel.id] || [];
 
