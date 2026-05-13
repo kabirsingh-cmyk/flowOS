@@ -134,6 +134,9 @@ const SEED = {
     { id: "ttads",     category: "Social Ads", name: "TikTok Ads",       desc: "Spark Ads, paid creator content",                                  auth: "OAuth",   icon: "ta" },
     { id: "liads",     category: "Social Ads", name: "LinkedIn Ads",     desc: "Sponsored content · B2B",                                          auth: "OAuth",   icon: "lia"},
     { id: "pinads",    category: "Social Ads", name: "Pinterest Ads",    desc: "Promoted pins · discovery intent",                                  auth: "OAuth",   icon: "pa" },
+    { id: "xads",      category: "Social Ads", name: "X Ads",            desc: "Promoted posts, Amplify · interest + keyword targeting",            auth: "OAuth",   icon: "xa" },
+    { id: "redditads", category: "Social Ads", name: "Reddit Ads",       desc: "Promoted posts, Conversation Ads · community + interest targeting", auth: "OAuth",   icon: "ra" },
+    { id: "snapads",   category: "Social Ads", name: "Snap Ads",         desc: "Snap Ads, Story Ads, Collection Ads · Gen Z reach",                 auth: "OAuth",   icon: "sna"},
 
     // ── Commerce ─────────────────────────────────────────────────────────────
     { id: "shopify",   category: "Commerce",   name: "Shopify",          desc: "Products, inventory, orders, customers",                           auth: "OAuth",   icon: "sh" },
@@ -201,6 +204,9 @@ const SEED = {
     ttads:     { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
     liads:     { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
     pinads:    { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
+    xads:      { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
+    redditads: { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
+    snapads:   { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
     // Commerce
     shopify:   { connected: true,  status: "ok",   note: "32 products · 1,408 orders MTD",   syncCount: "" },
     // Reviews & Local
@@ -259,6 +265,9 @@ const SEED = {
       ttads:       { connected: false, status: "—",  note: "not connected — not relevant for B2B commercial",     syncCount: "—" },
       liads:       { connected: true,  status: "ok", note: "synced 22m ago · facility manager targeting",         syncCount: "2 campaigns active" },
       pinads:      { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      xads:        { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      redditads:   { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      snapads:     { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
       shopify:     { connected: false, status: "—",  note: "not connected — service business, no storefront",     syncCount: "—" },
       yelp:        { connected: true,  status: "ok", note: "4.8 ★ · 142 reviews · synced 1h ago",                syncCount: "142 reviews" },
       ga4:         { connected: true,  status: "ok", note: "synced live · ericksonrefrigeration.com",             syncCount: "62 events tracked" },

@@ -20,7 +20,7 @@ const JINA_BASE      = "https://r.jina.ai";
 // All connector IDs Claude can recommend
 const CONNECTOR_IDS = [
   "ig", "tt", "fb", "li", "yt", "pn", "x", "threads", "reddit", "snap", "bluesky",
-  "googleads", "msads", "metaads", "ttads", "liads", "pinads",
+  "googleads", "msads", "metaads", "ttads", "liads", "pinads", "xads", "redditads", "snapads",
   "klaviyo", "klaviyo_sms", "mailchimp", "attentive",
   "shopify", "ga4", "amplitude", "gsc", "ahrefs", "semrush",
   "yelp", "refersion", "impact", "growthbook",
