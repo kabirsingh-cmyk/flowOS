@@ -408,6 +408,37 @@ function ChatHeader({ channels, activeId, onSelect, brandImported, brandPreset, 
   );
 }
 
+// ─────────────── CHAT RAIL HEADER (compact, right-rail mode) ───────────────
+function ChatRailHeader({ channels, activeId, onSelect, auth, onLogout }) {
+  const ch = channels.find(c => c.id === activeId);
+  return (
+    <div style={{
+      padding: "8px 10px", borderBottom: "1px solid var(--rule)", background: "var(--paper)",
+      display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
+    }}>
+      <span style={{
+        fontSize: 11.5, fontWeight: 600, flex: 1, minWidth: 0,
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        letterSpacing: "-0.01em",
+      }}>{ch?.name || "Chat"}</span>
+      <select value={activeId} onChange={e => onSelect(e.target.value)} style={{
+        fontSize: 10, border: "1px solid var(--rule)", borderRadius: 4,
+        background: "var(--paper-2)", color: "var(--muted)", padding: "2px 4px",
+        fontFamily: "var(--font-sans)", cursor: "pointer", maxWidth: 90,
+      }}>
+        {channels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+      </select>
+      <UserAvatar name={auth?.name || "G"} src={auth?.avatar} size={18}/>
+      {onLogout && (
+        <button onClick={onLogout} title="Sign out"
+          style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", padding: 2, display: "flex" }}>
+          <Icon name="x" size={10}/>
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ────────────────────────────── CANVAS ──────────────────────────────
 function Canvas({ canvas, onClose, state, actions, go }) {
   if (!canvas) return null;
@@ -415,7 +446,6 @@ function Canvas({ canvas, onClose, state, actions, go }) {
   const titleMap = {
     calendar: "Campaign plan", drafts: "Drafts", email: "Email draft",
     strategy: "Channel strategy",
-    workspace: state ? "Workspace" : "Workspace",
   };
   const workspaceTitles = {
     planner: "Campaign Planner", inbox: "Inbox & Escalation", memory: "Brand Memory",
@@ -426,20 +456,27 @@ function Canvas({ canvas, onClose, state, actions, go }) {
     sms: "SMS", seo: "SEO Studio", affiliate: "Affiliate & referral",
     retention: "Retention", cx: "CX signals", seasonal: "Seasonal mode",
     abtests: "A/B tests", team: "Team & guests", discounts: "Discount ops",
-    mobile: "Mobile preview", settings: "Settings",
-    agents: "Agents",
+    mobile: "Mobile preview", settings: "Settings", agents: "Agents",
   };
 
+  const isHome = canvas.kind === "workspace" && canvas.target === "command";
+  const label  = canvas.kind === "workspace"
+    ? (workspaceTitles[canvas.target] || canvas.target)
+    : (titleMap[canvas.kind] || canvas.kind);
+
   return (
-    <div style={{ flex: 1, background: "var(--paper-2)", display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <div style={{ padding: "10px 18px", borderBottom: "1px solid var(--rule)", background: "var(--paper)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Canvas</span>
-          <span style={{ color: "var(--muted)", fontSize: 11 }}>/</span>
-          <span style={{ fontSize: 12.5, fontWeight: 500 }}>{canvas.kind === "workspace" ? (workspaceTitles[canvas.target] || canvas.target) : titleMap[canvas.kind] || canvas.kind}</span>
+    <div style={{ background: "var(--paper-2)", display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+      {!isHome && (
+        <div style={{
+          padding: "6px 16px", borderBottom: "1px solid var(--rule)", background: "var(--paper)",
+          display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, height: 32,
+        }}>
+          <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+            {label}
+          </span>
+          {onClose && <Btn size="sm" variant="ghost" onClick={onClose}><Icon name="x" size={11}/> Close</Btn>}
         </div>
-        <Btn size="sm" variant="ghost" onClick={onClose}><Icon name="x" size={11}/> Close</Btn>
-      </div>
+      )}
       <div style={{ flex: 1, overflow: "auto" }}>
         <CanvasBody canvas={canvas} state={state} actions={actions} go={go}/>
       </div>
@@ -744,19 +781,51 @@ function ChatOSAuthed({ auth, onLogout }) {
     window.parent.postMessage({ type: "__edit_mode_set_keys", edits: { density: d } }, "*");
   };
 
+  const activeCanvas = chat.canvas || { kind: "workspace", target: "command" };
+
+  const handleNav = (t) => {
+    if (t === "command") dispatch({ type: "CLOSE_CANVAS" });
+    else openWorkspace(t);
+  };
+
   return (
     <>
       <style>{ANIM_STYLE}</style>
-      <div style={{ display: "grid", gridTemplateColumns: chat.canvas ? "56px 1fr 44%" : "56px 1fr", height: "100vh", background: "var(--paper-2)", transition: "grid-template-columns 0.18s ease" }} data-screen-label="FlowOS">
-        <NavRail active={chat.canvas?.target} onOpen={openWorkspace} state={state} actions={actions}/>
+      <div style={{
+        display: "grid", gridTemplateColumns: "56px 1fr 320px",
+        height: "100vh", background: "var(--paper-2)",
+      }} data-screen-label="FlowOS">
 
-        <div style={{ display: "flex", flexDirection: "column", minHeight: 0, borderRight: "1px solid var(--rule)", background: "var(--paper)" }}>
-          <ChatHeader channels={CHANNELS} activeId={channel.id} onSelect={id => dispatch({ type: "SET_CHANNEL", id })} brandImported={state.brandImported} brandPreset={state.brandPreset} auth={auth} onLogout={onLogout}/>
-          <Thread messages={messages} channel={channel} onOpenArtifact={openCanvas} onConfirm={onConfirm} onAction={onBriefingAction} typingAgent={chat.typingAgent}/>
+        <NavRail active={activeCanvas.target} onOpen={handleNav} state={state} actions={actions}/>
+
+        {/* Centre: workspace / canvas */}
+        <Canvas
+          canvas={activeCanvas}
+          onClose={chat.canvas ? closeCanvas : null}
+          state={{ ...state, auth }}
+          actions={actions}
+          go={openWorkspace}
+        />
+
+        {/* Right rail: chat */}
+        <div style={{ display: "flex", flexDirection: "column", minHeight: 0, borderLeft: "1px solid var(--rule)", background: "var(--paper)" }}>
+          <ChatRailHeader
+            channels={CHANNELS}
+            activeId={channel.id}
+            onSelect={id => dispatch({ type: "SET_CHANNEL", id })}
+            auth={auth}
+            onLogout={onLogout}
+          />
+          <Thread
+            messages={messages}
+            channel={channel}
+            onOpenArtifact={openCanvas}
+            onConfirm={onConfirm}
+            onAction={onBriefingAction}
+            typingAgent={chat.typingAgent}
+          />
           <Composer onSend={onSend} channelName={channel.name}/>
         </div>
-
-        <Canvas canvas={chat.canvas} onClose={closeCanvas} state={{ ...state, auth }} actions={actions} go={openWorkspace}/>
 
         {tweakOpen && (
           <div style={{

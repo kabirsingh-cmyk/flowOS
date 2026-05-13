@@ -4,8 +4,51 @@ const { useState: useState3, useMemo: useMemo3, useEffect: useEffect3, useRef: u
 
 // ────────────────────────────── PUBLISHING QUEUE ──────────────────────────────
 function PublishingQueue({ state, actions }) {
+  const [view, setView]         = useState3("calendar"); // "calendar" | "list"
   const [editItem, setEditItem] = useState3(null);
-  const queue = state.calendar.filter(c => ["approved", "scheduled", "review", "policy", "paused"].includes(c.status));
+
+  const DAYS  = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const SLOTS = [
+    { id: "morning",   label: "Morning",   hours: [6,  12] },
+    { id: "afternoon", label: "Afternoon", hours: [12, 18] },
+    { id: "evening",   label: "Evening",   hours: [18, 24] },
+  ];
+
+  const CH_COLOR = {
+    Instagram: "oklch(62% 0.18 340)", TikTok:      "oklch(45% 0.08 260)",
+    Email:     "oklch(56% 0.14 250)", SMS:          "oklch(55% 0.16 150)",
+    "Google Ads": "oklch(60% 0.18 30)", "Meta Ads": "oklch(48% 0.18 260)",
+    Pinterest: "oklch(52% 0.20 28)",  YouTube:      "oklch(55% 0.22 25)",
+  };
+  const CH_ABBR = {
+    Instagram: "IG", TikTok: "TT", Email: "Em", SMS: "SMS",
+    "Google Ads": "Goo", "Meta Ads": "FB", Pinterest: "Pin", YouTube: "YT",
+  };
+
+  const queue = state.calendar.filter(c =>
+    ["approved", "scheduled", "review", "policy", "paused"].includes(c.status)
+  );
+
+  const slotOf = (item) => {
+    const h = parseInt((item.scheduledAt || "09:00").split(":")[0], 10);
+    if (h < 12) return "morning";
+    if (h < 18) return "afternoon";
+    return "evening";
+  };
+
+  const grid = useMemo3(() => {
+    const g = {};
+    DAYS.forEach((_, i) => { g[i] = { morning: [], afternoon: [], evening: [] }; });
+    queue.forEach(item => {
+      const d = item.day ?? 0;
+      if (g[d]) g[d][slotOf(item)].push(item);
+    });
+    return g;
+  }, [queue.length]);
+
+  const todayItems = queue
+    .filter(item => (item.day ?? 0) === 0)
+    .sort((a, b) => (a.scheduledAt || "").localeCompare(b.scheduledAt || ""));
 
   const togglePause = (item) => {
     const next = item.status === "paused" ? "scheduled" : "paused";
@@ -14,101 +57,215 @@ function PublishingQueue({ state, actions }) {
       notify: { tone: "neutral", text: `'${item.title}' ${next === "paused" ? "paused" : "resumed"}` },
     });
   };
-  const pauseAll = () => {
-    queue.forEach(q => { if (q.status !== "paused") actions.updateItem(q.id, { status: "paused" }); });
-    actions.notify("warn", `Paused ${queue.length} items`);
-    actions.log("Ana O.", `paused all queued items · ${queue.length}`);
-  };
-  const sendNow = () => {
-    const first = queue.find(q => q.status !== "paused");
-    if (!first) return actions.notify("warn", "Nothing to send");
-    actions.updateItem(first.id, { status: "sent" }, {
-      logEvent: `sent · '${first.title}'`,
-      notify: { tone: "ok", text: `Sent '${first.title}' to ${first.channel}` },
-    });
-  };
-  const time = (i) => {
-    const base = 9 + i * 1.7;
-    const h = Math.floor(base); const m = Math.floor((base - h) * 60);
-    return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
-  };
+
+  const dotOf = (status) =>
+    status === "approved" || status === "scheduled" ? "ok"
+    : status === "review" || status === "policy"    ? "warn"
+    : "neutral";
 
   return (
-    <div className="anim-fade" style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: 20, height: "100%" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-        <div>
-          <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>05 · Ship</div>
-          <h1 style={{ fontSize: 28, fontWeight: 500, letterSpacing: "-0.025em", margin: "6px 0 0" }}>Publishing Queue</h1>
-          <div style={{ color: "var(--muted)", marginTop: 4, fontSize: 13 }}>{queue.length} items scheduled · next send 09:42 · autopause available</div>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <Btn size="sm" onClick={pauseAll}><Icon name="pause" size={12}/> Pause all</Btn>
-          <Btn size="sm" variant="primary" onClick={sendNow}><Icon name="send" size={12}/> Send now</Btn>
+    <div className="anim-fade" style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+
+      {/* ── Header ── */}
+      <div style={{ padding: "20px 24px 14px", borderBottom: "1px solid var(--rule)", background: "var(--paper)", flexShrink: 0 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+          <div>
+            <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>05 · Ship</div>
+            <h1 style={{ fontSize: 24, fontWeight: 500, letterSpacing: "-0.025em", margin: "4px 0 0" }}>Publishing Queue</h1>
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {["calendar", "list"].map(v => (
+              <button key={v} onClick={() => setView(v)} style={{
+                padding: "4px 10px", borderRadius: 4, fontSize: 11, fontWeight: 500,
+                border: "1px solid " + (v === view ? "var(--ink)" : "var(--rule)"),
+                background: v === view ? "var(--ink)" : "var(--paper)",
+                color: v === view ? "var(--paper)" : "var(--muted)",
+                cursor: "pointer", fontFamily: "var(--font-sans)", textTransform: "capitalize",
+              }}>{v}</button>
+            ))}
+            <Btn size="sm" onClick={() => {
+              queue.forEach(q => { if (q.status !== "paused") actions.updateItem(q.id, { status: "paused" }); });
+              actions.notify("warn", `Paused ${queue.length} items`);
+            }}><Icon name="pause" size={11}/> Pause all</Btn>
+          </div>
         </div>
       </div>
 
-      <div style={{ border: "1px solid var(--rule)", borderRadius: 6, background: "var(--paper)", overflow: "hidden", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-        <div style={{
-          display: "grid", gridTemplateColumns: "70px 100px 110px 1fr 110px 110px 80px",
-          padding: "10px 14px", background: "var(--paper-2)", borderBottom: "1px solid var(--rule)",
-          fontFamily: "var(--font-mono)", fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.06em", textTransform: "uppercase",
-        }}>
-          <span>Time</span><span>Channel</span><span>Campaign</span><span>Item</span><span>Tone</span><span>Status</span><span/>
-        </div>
-        <div style={{ overflow: "auto", flex: 1 }}>
-          {queue.length === 0 && <div style={{ padding: 40, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Queue is empty.</div>}
-          {queue.map((item, i) => {
-            const isPaused = item.status === "paused";
-            const chip = statusChip(isPaused ? "draft" : item.status);
-            return (
-              <div key={item.id} className="row-hover" style={{
-                display: "grid", gridTemplateColumns: "70px 100px 110px 1fr 110px 110px 80px",
-                padding: "12px 14px", borderBottom: "1px solid var(--rule)",
-                alignItems: "center", fontSize: 12.5, opacity: isPaused ? 0.5 : 1,
-              }}>
-                <span className="mono" style={{ color: "var(--muted)", fontSize: 11 }}>{time(i)}</span>
-                <span>{item.channel}</span>
-                <span style={{ color: "var(--muted)", fontSize: 11.5 }}>{item.campaign}</span>
-                <span style={{ fontWeight: 500 }}>{item.title}</span>
-                <span style={{ color: "var(--muted)", fontSize: 11.5 }}>{item.tone}</span>
-                <span>{isPaused ? <Chip>paused</Chip> : <Chip tone={chip.tone}>{chip.label}</Chip>}</span>
-                <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
-                  <Btn size="sm" variant="ghost" onClick={() => togglePause(item)}>
-                    <Icon name={isPaused ? "play" : "pause"} size={11}/>
-                  </Btn>
-                  <Btn size="sm" variant="ghost" onClick={() => setEditItem(item)}><Icon name="edit" size={11}/></Btn>
+      <div style={{ flex: 1, overflow: "auto" }}>
+
+        {/* ── Today strip ── */}
+        {todayItems.length > 0 && (
+          <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--rule)", background: "var(--paper)" }}>
+            <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>
+              Today · {DAYS[0]}
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {todayItems.map(item => {
+                const color    = CH_COLOR[item.channel] || "var(--accent)";
+                const isPaused = item.status === "paused";
+                return (
+                  <div key={item.id} onClick={() => setEditItem(item)} className="cell-btn"
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+                      border: "1px solid var(--rule)", borderRadius: 6, background: "var(--paper-2)",
+                      cursor: "pointer", opacity: isPaused ? 0.55 : 1, maxWidth: 240,
+                    }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }}/>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.title}</div>
+                      <div style={{ fontSize: 10, color: "var(--muted)" }}>{item.scheduledAt} · {CH_ABBR[item.channel] || item.channel}</div>
+                    </div>
+                    <Dot status={dotOf(item.status)}/>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {view === "calendar" ? (
+          /* ── Weekly calendar grid ── */
+          <div style={{ padding: "16px 24px" }}>
+            {/* Day header row */}
+            <div style={{ display: "grid", gridTemplateColumns: "72px repeat(7, 1fr)", gap: 5, marginBottom: 5 }}>
+              <div/>
+              {DAYS.map((d, i) => (
+                <div key={d} style={{
+                  textAlign: "center", fontSize: 11, fontWeight: 600, letterSpacing: "0.04em",
+                  color: i === 0 ? "var(--accent)" : "var(--muted)", padding: "4px 0",
+                }}>{d}</div>
+              ))}
+            </div>
+
+            {/* Slot rows */}
+            {SLOTS.map(slot => (
+              <div key={slot.id} style={{ display: "grid", gridTemplateColumns: "72px repeat(7, 1fr)", gap: 5, marginBottom: 5 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "flex-end", paddingRight: 8, paddingTop: 7 }}>
+                  <span className="mono" style={{ fontSize: 9, color: "var(--muted)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                    {slot.label}
+                  </span>
                 </div>
+                {DAYS.map((_, dayIdx) => {
+                  const items = grid[dayIdx]?.[slot.id] || [];
+                  return (
+                    <div key={dayIdx} style={{
+                      minHeight: 52, background: "var(--paper)", border: "1px solid var(--rule)",
+                      borderRadius: 5, padding: 4, display: "flex", flexDirection: "column", gap: 3,
+                    }}>
+                      {items.map(item => {
+                        const color    = CH_COLOR[item.channel] || "var(--accent)";
+                        const abbr     = CH_ABBR[item.channel] || item.channel.slice(0, 2);
+                        const isPaused = item.status === "paused";
+                        return (
+                          <div key={item.id} onClick={() => setEditItem(item)} className="cell-btn"
+                            style={{
+                              display: "flex", alignItems: "center", gap: 4, padding: "3px 5px",
+                              borderRadius: 3, background: "var(--paper-2)", cursor: "pointer",
+                              borderLeft: `2px solid ${color}`, opacity: isPaused ? 0.5 : 1,
+                            }}>
+                            <span className="mono" style={{ fontSize: 9, color: "var(--muted)", flexShrink: 0 }}>{abbr}</span>
+                            <span style={{ fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{item.title}</span>
+                            <Dot status={dotOf(item.status)}/>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        ) : (
+          /* ── List view ── */
+          <div style={{ padding: "16px 24px" }}>
+            <div style={{ border: "1px solid var(--rule)", borderRadius: 6, overflow: "hidden" }}>
+              <div style={{
+                display: "grid", gridTemplateColumns: "90px 90px 1fr 90px 90px 64px",
+                padding: "8px 12px", background: "var(--paper-2)", borderBottom: "1px solid var(--rule)",
+                fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)",
+                letterSpacing: "0.06em", textTransform: "uppercase",
+              }}>
+                <span>Day / Time</span><span>Channel</span><span>Item</span>
+                <span>Campaign</span><span>Status</span><span/>
+              </div>
+              {queue.length === 0 && (
+                <div style={{ padding: 32, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Queue empty.</div>
+              )}
+              {[...queue]
+                .sort((a, b) => (a.day ?? 0) - (b.day ?? 0) || (a.scheduledAt || "").localeCompare(b.scheduledAt || ""))
+                .map(item => {
+                  const isPaused = item.status === "paused";
+                  const chip     = statusChip(isPaused ? "draft" : item.status);
+                  const color    = CH_COLOR[item.channel] || "var(--accent)";
+                  return (
+                    <div key={item.id} className="row-hover" style={{
+                      display: "grid", gridTemplateColumns: "90px 90px 1fr 90px 90px 64px",
+                      padding: "10px 12px", borderBottom: "1px solid var(--rule)",
+                      alignItems: "center", fontSize: 12, opacity: isPaused ? 0.55 : 1,
+                    }}>
+                      <span className="mono" style={{ color: "var(--muted)", fontSize: 10 }}>
+                        {DAYS[item.day ?? 0]} {item.scheduledAt}
+                      </span>
+                      <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: color, flexShrink: 0 }}/>
+                        {CH_ABBR[item.channel] || item.channel}
+                      </span>
+                      <span style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {item.title}
+                      </span>
+                      <span style={{ color: "var(--muted)", fontSize: 11 }}>{item.campaign}</span>
+                      <span><Chip tone={chip.tone}>{isPaused ? "paused" : chip.label}</Chip></span>
+                      <div style={{ display: "flex", gap: 3, justifyContent: "flex-end" }}>
+                        <Btn size="sm" variant="ghost" onClick={() => togglePause(item)}>
+                          <Icon name={isPaused ? "play" : "pause"} size={11}/>
+                        </Btn>
+                        <Btn size="sm" variant="ghost" onClick={() => setEditItem(item)}>
+                          <Icon name="edit" size={11}/>
+                        </Btn>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* ── Edit drawer ── */}
       <Drawer open={!!editItem} onClose={() => setEditItem(null)} title={editItem?.title || ""}
         actions={editItem && <>
-          <Btn variant="ghost" onClick={() => setEditItem(null)}>Close</Btn>
+          <Btn variant="ghost" onClick={() => { togglePause(editItem); setEditItem(null); }}>
+            <Icon name={editItem?.status === "paused" ? "play" : "pause"} size={12}/>
+            {editItem?.status === "paused" ? " Resume" : " Pause"}
+          </Btn>
           <Btn variant="danger" onClick={() => { actions.removeItem(editItem.id); setEditItem(null); }}>
             <Icon name="x" size={12}/> Remove
           </Btn>
           <Btn variant="primary" onClick={() => {
-            actions.updateItem(editItem.id, { status: "sent" }, { logEvent: `sent · '${editItem.title}'`, notify: { tone: "ok", text: `Sent '${editItem.title}'` }});
+            actions.updateItem(editItem.id, { status: "sent" }, {
+              logEvent: `sent · '${editItem.title}'`,
+              notify: { tone: "ok", text: `Sent '${editItem.title}'` },
+            });
             setEditItem(null);
           }}><Icon name="send" size={12}/> Send now</Btn>
-        </>}>
+        </>}
+      >
         {editItem && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <Chip tone="accent">{editItem.channel}</Chip>
               <Chip>{editItem.tone}</Chip>
               <Chip tone={statusChip(editItem.status).tone}>{editItem.status}</Chip>
             </div>
             <FormRow label="Scheduled for">
-              <Input defaultValue={`${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][editItem.day]} · 09:42`}/>
+              <Input defaultValue={`${DAYS[editItem.day ?? 0]} · ${editItem.scheduledAt || "09:00"}`}/>
             </FormRow>
             <FormRow label="Caption">
-              <Textarea defaultValue={`Built for the 12th mile, not the first. Stride 03 · now yours.\n\n#trailready #northwarren`}/>
+              <Textarea defaultValue={editItem.body || ""} rows={4}/>
             </FormRow>
-            <FormRow label="Campaign"><Input defaultValue={editItem.campaign}/></FormRow>
+            <FormRow label="Campaign">
+              <Input defaultValue={editItem.campaign}/>
+            </FormRow>
           </div>
         )}
       </Drawer>
