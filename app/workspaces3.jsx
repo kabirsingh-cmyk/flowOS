@@ -4,9 +4,38 @@ const { useState: useState3, useMemo: useMemo3, useEffect: useEffect3, useRef: u
 
 // ────────────────────────────── PUBLISHING QUEUE ──────────────────────────────
 function PublishingQueue({ state, actions }) {
-  const [view, setView]         = useState3("calendar"); // "calendar" | "list"
-  const [editItem, setEditItem] = useState3(null);
+  const [view, setView]           = useState3("calendar"); // "calendar" | "list"
+  const [editItem, setEditItem]   = useState3(null);
   const [editDraft, setEditDraft] = useState3(null); // controlled form state
+  const [generating, setGenerating] = useState3(false);
+
+  const handleGenerateDrafts = async () => {
+    setGenerating(true);
+    try {
+      const res = await fetch("/api/proactive-drafts", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          tenantId: state.auth?.id,
+          brand:    state.brandPreset || null,
+          days:     7,
+          count:    7,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok && data.drafts?.length) {
+        data.drafts.forEach(d => {
+          actions.addDraft(d.platform, d.contentType, d.copy, d.imagePrompt);
+        });
+        actions.notify("ok", `${data.drafts.length} proactive drafts ready · ${data.source === "claude" ? "Claude" : "template"}`);
+      } else {
+        actions.notify("warn", data.error || "No drafts returned");
+      }
+    } catch (e) {
+      actions.notify("warn", "Draft generation failed — check connection");
+    }
+    setGenerating(false);
+  };
 
   // Sync editDraft when editItem changes
   useEffect3(() => {
@@ -118,7 +147,7 @@ function PublishingQueue({ state, actions }) {
             <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>05 · Ship</div>
             <h1 style={{ fontSize: 24, fontWeight: 500, letterSpacing: "-0.025em", margin: "4px 0 0" }}>Publishing Queue</h1>
           </div>
-          <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             {["calendar", "list"].map(v => (
               <button key={v} onClick={() => setView(v)} style={{
                 padding: "4px 10px", borderRadius: 4, fontSize: 11, fontWeight: 500,
@@ -128,6 +157,13 @@ function PublishingQueue({ state, actions }) {
                 cursor: "pointer", fontFamily: "var(--font-sans)", textTransform: "capitalize",
               }}>{v}</button>
             ))}
+            <Btn size="sm" variant="primary" onClick={handleGenerateDrafts} disabled={generating}
+              style={{ minWidth: 130 }}>
+              {generating
+                ? <><span className="dot-pulse" style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "currentColor", marginRight: 6 }}/> Generating…</>
+                : <><Icon name="edit" size={11}/> Generate drafts</>
+              }
+            </Btn>
             <Btn size="sm" onClick={() => {
               queue.forEach(q => { if (q.status !== "paused") actions.updateItem(q.id, { status: "paused" }); });
               actions.notify("warn", `Paused ${queue.length} items`);
