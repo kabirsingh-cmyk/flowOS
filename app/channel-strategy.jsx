@@ -156,6 +156,7 @@ function ChannelStrategyCanvas({ state, actions }) {
       klaviyo: "Email", mailchimp: "Email",
       googleads: "Google Ads", msads: "Microsoft Ads", appleads: "Apple Search", amazonads: "Amazon Ads",
       metaads: "Meta Ads", ttads: "TikTok Ads", liads: "LinkedIn Ads", pinads: "Pinterest Ads",
+      xads: "X Ads", redditads: "Reddit Ads", snapads: "Snap Ads",
     };
     const set = new Set();
     Object.entries(state.connectors || {}).forEach(([id, c]) => {

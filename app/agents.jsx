@@ -931,6 +931,7 @@ const CONNECTOR_LABELS = {
   yt: "YouTube", pn: "Pinterest", x: "X", threads: "Threads", reddit: "Reddit",
   googleads: "Google Ads", msads: "Microsoft Ads", metaads: "Meta Ads",
   ttads: "TikTok Ads", liads: "LinkedIn Ads", pinads: "Pinterest Ads",
+  xads: "X Ads", redditads: "Reddit Ads", snapads: "Snap Ads",
   klaviyo: "Klaviyo", klaviyo_sms: "Klaviyo SMS", mailchimp: "Mailchimp",
   attentive: "Attentive", shopify: "Shopify", ga4: "GA4",
   amplitude: "Amplitude", gsc: "Search Console", ahrefs: "Ahrefs",
