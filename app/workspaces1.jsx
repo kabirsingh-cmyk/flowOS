@@ -1,3 +1,4 @@
+(function () {
 // MVEDA workspaces — part 1: Command Center, Brand Memory
 const { useState: useState1, useMemo: useMemo1, useEffect: useEffect1, useRef: useRef1 } = React;
 
@@ -792,3 +793,4 @@ function ProposeToneDrawer({ open, onClose, actions }) {
 }
 
 Object.assign(window, { CommandCenter, BrandMemory });
+})();

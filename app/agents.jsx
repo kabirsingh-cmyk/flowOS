@@ -1060,6 +1060,14 @@ function AgentsWorkspace({ state, actions, go }) {
     setOverrides(prev => ({ ...prev, [agent.id]: { ...(prev[agent.id] || {}), ...payload } }));
   };
 
+  const statusMap = React.useMemo(() => {
+    const map = {};
+    AGENTS.forEach(a => {
+      map[a.id] = agentStatus(a, recommendedConnectors, overrides);
+    });
+    return map;
+  }, [recommendedConnectors, overrides]);
+
   const filteredAgents = AGENTS.filter(a => a.category === activeCategory);
   const catCounts = {};
   AGENT_CATEGORIES.forEach(cat => {
@@ -1080,7 +1088,7 @@ function AgentsWorkspace({ state, actions, go }) {
         {AGENT_CATEGORIES.map(cat => {
           const on = activeCategory === cat.id;
           const catAgents = AGENTS.filter(a => a.category === cat.id);
-          const activeCount = catAgents.filter(a => agentStatus(a, recommendedConnectors, overrides) === "active").length;
+          const activeCount = catAgents.filter(a => statusMap[a.id] === "active").length;
           return (
             <button key={cat.id} onClick={() => { setActiveCategory(cat.id); setSelectedAgent(null); }}
               style={{
@@ -1105,7 +1113,7 @@ function AgentsWorkspace({ state, actions, go }) {
         {/* All agents count */}
         <div style={{ marginTop: "auto", padding: "12px 14px", borderTop: "1px solid var(--rule)" }}>
           <div className="mono" style={{ fontSize: 9.5, color: "var(--muted)", letterSpacing: "0.04em" }}>
-            {AGENTS.filter(a => agentStatus(a, recommendedConnectors, overrides) === "active").length} / {AGENTS.length} active
+            {AGENTS.filter(a => statusMap[a.id] === "active").length} / {AGENTS.length} active
           </div>
         </div>
       </div>
@@ -1132,7 +1140,7 @@ function AgentsWorkspace({ state, actions, go }) {
                 <AgentCard
                   key={agent.id}
                   agent={agent}
-                  status={agentStatus(agent, recommendedConnectors, overrides)}
+                  status={statusMap[agent.id]}
                   override={overrides[agent.id]}
                   onOpen={() => openAgent(agent)}
                   onToggle={() => toggleEnabled(agent, (overrides[agent.id]?.enabled ?? true))}
@@ -1160,8 +1168,8 @@ function AgentsWorkspace({ state, actions, go }) {
               <div style={{ fontSize: 10.5, color: "var(--muted)" }}>{selectedAgent.role}</div>
             </div>
             {selectedAgent.compound && <Chip tone="accent">Compound</Chip>}
-            <Chip tone={agentStatus(selectedAgent, recommendedConnectors, overrides) === "active" ? "ok" : "neutral"}>
-              {statusDot(agentStatus(selectedAgent, recommendedConnectors, overrides)).label}
+            <Chip tone={statusMap[selectedAgent.id] === "active" ? "ok" : "neutral"}>
+              {statusDot(statusMap[selectedAgent.id]).label}
             </Chip>
           </div>
 

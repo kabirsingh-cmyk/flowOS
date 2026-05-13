@@ -1,3 +1,4 @@
+(function () {
 // MVEDA workspaces — part 3: Publishing, Insights, Inbox, Autonomy
 const { useState: useState3, useMemo: useMemo3, useEffect: useEffect3, useRef: useRef3 } = React;
 
@@ -897,3 +898,4 @@ function ThresholdSlider({ label, value, unit, suffix, min, max, onChange }) {
 }
 
 Object.assign(window, { PublishingQueue, InsightsCenter, InboxEscalation, AutonomySettings });
+})();

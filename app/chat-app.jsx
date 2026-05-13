@@ -581,23 +581,29 @@ function ChatOS() {
   };
 
   useEffectApp(() => {
-    // Check for existing session on mount
+    const initializedRef = { current: false };
+
+    // Check for existing session on mount — just set auth state.
+    // checkOnboarded will be called by onAuthStateChange which fires
+    // immediately with the current session, avoiding a double round-trip.
     sb.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setAuth(mapUser(session.user));
-        checkOnboarded(session.user.id);
       } else {
         setAuth(null);
       }
     });
 
-    // Listen for sign-in / sign-out events
+    // onAuthStateChange fires immediately with the current session on mount,
+    // so checkOnboarded runs exactly once per login here.
     const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setAuth(mapUser(session.user));
+      setAuth(session?.user ? mapUser(session.user) : null);
+      if (session?.user && !initializedRef.current) {
+        initializedRef.current = true;
         checkOnboarded(session.user.id);
-      } else {
-        setAuth(null);
+      }
+      if (!session?.user) {
+        initializedRef.current = false;
         setOnboarded(false);
       }
     });
