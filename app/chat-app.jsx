@@ -74,8 +74,89 @@ function chatReducer(s, a) {
 }
 
 // ────────────────────────────── AI RESPONSE LOGIC ──────────────────────────────
+// ── Draft helper — platform-aware copy for fallback simulation ─────────────────
+function makeDraftArtifact(t) {
+  const platform =
+    /instagram|ig\b/.test(t) ? "instagram" :
+    /tiktok|tt\b/.test(t)    ? "tiktok"    :
+    /linkedin|li\b/.test(t)  ? "linkedin"  :
+    /facebook|fb\b/.test(t)  ? "facebook"  :
+    /\bx\b|twitter|tweet/.test(t) ? "x"   :
+    /youtube/.test(t)        ? "youtube"   :
+    /pinterest|pin\b/.test(t) ? "pinterest" :
+    /reddit/.test(t)         ? "reddit"    :
+    /snap/.test(t)           ? "snapchat"  :
+    /threads/.test(t)        ? "threads"   :
+    /bluesky/.test(t)        ? "bluesky"   :
+    /email/.test(t)          ? "email"     :
+    /\bsms\b|text message/.test(t) ? "sms" :
+    "instagram";
+
+  const contentType =
+    /reel/.test(t)         ? "Reel"      :
+    /carousel/.test(t)     ? "Carousel"  :
+    /story/.test(t)        ? "Story"     :
+    /thread/.test(t)       ? "Thread"    :
+    /\bemail\b/.test(t)    ? "Email"     :
+    /\bsms\b/.test(t)      ? "SMS"       :
+    /blog|article/.test(t) ? "Article"   :
+    /video/.test(t)        ? "Video"     :
+    "Post";
+
+  const copies = {
+    instagram: "Warm a few drops between your palms.\nDraw them slowly through damp lengths.\nReturn to it tomorrow — until it becomes yours.\n\n#ayurveda #hairritual #coldpressed",
+    tiktok:    "POV: you just discovered the hair ritual your grandmother kept secret 🪷\n\nBhringraj. Saffron. Cold-pressed at source.\n\n#haircare #ayurveda #hairoil #hairgrowth",
+    linkedin:  "The best-performing products in our portfolio weren't born from trend reports.\n\nThey were born from 5,000 years of Ayurvedic practice — and one question: what did our grandmothers know that we forgot?\n\nAt MVEDA, we cold-press every ingredient at source. Small batches. Nothing added. Here's why that matters for your skin.",
+    facebook:  "There's a hair ritual older than any influencer trend.\n\nBhringraj. Saffron. Three drops, warmed between your palms.\n\nWe just made it easy to bring home. 🌿",
+    x:         "hair care that doesn't ask you to hustle. just warm it, work it through, and let it do what it's done for centuries.",
+    youtube:   "In this video: how we cold-press Bhringraj at source — and why the extraction method changes everything about what goes into your hair. No shortcuts. No heat damage. Just the way it's always been done.",
+    pinterest: "5,000 years of Ayurveda. One ritual. Three drops of Bhringraj & Saffron Hair Oil, warmed between the palms.\n\nDiscover the MVEDA Hair Ritual ↓",
+    reddit:    "We've been formulating Ayurvedic hair oils for 8 years. Here's what we've learned about Bhringraj that most brands get wrong — and why cold-pressing matters more than the ingredient list.",
+    snapchat:  "Your grandma's hair secret? We bottled it. 3 drops of Bhringraj & Saffron. That's it. 🪷",
+    threads:   "slow hair care is having a moment. bhringraj oil, three drops, palms warmed, drawn through the lengths. been doing this for centuries. we're just catching up.",
+    bluesky:   "Warm three drops of Bhringraj & Saffron oil between your palms. Draw through damp lengths. That's it — 5,000 years of Ayurvedic practice in 90 seconds.",
+    email:     "Subject: The ritual starts with three drops.\nPreview: Your hair remembers what your grandmother knew.\n\nWarm three drops of Bhringraj & Saffron Hair Oil between your palms. Draw them slowly through damp lengths. That's it — no 12-step routine, no clinical promises.\n\nJust 5,000 years of Ayurvedic practice, cold-pressed at source, and ready when you are.\n\n→ Shop the Hair Ritual",
+    sms:       "Your Hair Ritual restock is here. Bhringraj & Saffron — small batch, cold-pressed. Shop before it sells out → mveda.co/hairritual",
+  };
+
+  const imagePrompts = {
+    instagram: "Amber glass dropper bottle, saffron threads and dried bhringraj leaves on warm ivory linen, soft morning window light, flat lay, editorial, minimal",
+    tiktok:    "Close-up of hands warming hair oil between palms, golden light, slow-motion aesthetic",
+    linkedin:  "Overhead of cold-press extraction process, glass vessels, botanicals, clean lab setting, editorial photography",
+    facebook:  "Lifestyle flat lay: hair oil bottle, comb, dried flowers, warm neutral background",
+    x:         "Minimal product shot: amber bottle on white stone, single saffron thread",
+    youtube:   "Split-frame: raw bhringraj plant on left, finished cold-pressed oil in glass on right, golden tones",
+    pinterest: "Vertical flat lay: hair oil, copper comb, dried petals, ivory and gold palette, styled for Pinterest",
+    reddit:    "Clean infographic comparing cold-press vs standard extraction, brand colours",
+    snapchat:  "Vibrant close-up product shot, playful angle, amber bottle on colourful surface",
+    threads:   "Moody close-up of oil in glass bowl with petals, ambient light",
+    bluesky:   "Minimal top-down: dropper bottle and single saffron strand on pale marble",
+  };
+
+  return {
+    type:        "draft_created",
+    platform,
+    contentType,
+    copy:        copies[platform] || copies.instagram,
+    imagePrompt: (platform !== "email" && platform !== "sms") ? (imagePrompts[platform] || imagePrompts.instagram) : null,
+  };
+}
+
 function inferResponse(userText) {
   const t = userText.toLowerCase();
+
+  // ── Creation-intent check — must come before workspace-routing patterns ──────
+  const hasCreateVerb   = /\b(write|draft|create|generate|make me|give me)\b/.test(t);
+  const hasContentNoun  = /\b(post|caption|reel|story|carousel|tweet|thread|email|sms|pin|article|blog|copy|content|video|short)\b/.test(t);
+  if (hasCreateVerb && hasContentNoun) {
+    const a = makeDraftArtifact(t);
+    const platformLabel = a.platform.charAt(0).toUpperCase() + a.platform.slice(1);
+    return [
+      { delay: 400,  agent: "Drafter", text: `On it. Pulling brand voice and your last high-performing ${a.platform} posts for tone match.` },
+      { delay: 1800, agent: "Drafter", text: `Here's your ${platformLabel} ${a.contentType.toLowerCase()}.`, artifact: a },
+    ];
+  }
+
   if (/strateg|channel mix|allocation|where should i|spend|ratio|budget split/.test(t)) {
     return [
       { delay: 500, agent: "Supervisor", text: "Pulling brand memory, your connector state, and industry benchmarks for ayurvedic skincare. Let me synthesize a channel mix." },
@@ -95,15 +176,13 @@ function inferResponse(userText) {
         artifact: { type: "campaign-plan", title: "Apr 27 → May 3 · Mixed", summary: "9 items · IG, TikTok, Email, Pmax, Advantage+", itemCount: 9 } },
     ];
   }
-  if (/draft|caption|post|email|write/.test(t)) {
+  if (/\bdraft\b|\bcaption\b/.test(t) && !hasCreateVerb) {
+    // Catch plain "draft something" or "caption for X" without a create verb
+    const a = makeDraftArtifact(t);
+    const platformLabel = a.platform.charAt(0).toUpperCase() + a.platform.slice(1);
     return [
-      { delay: 500, agent: "Drafter", text: "On it. Pulling brand voice and your last 3 high-performing posts for tone match." },
-      { delay: 1200, agent: "Drafter", text: "3 drafts ready.",
-        artifact: { type: "drafts", items: [
-          { title: "Three drops. Palms warmed. Drawn through the lengths." },
-          { title: "A mist for the morning. A ritual for the week." },
-          { title: "Hair, but the way our grandmothers knew it." },
-        ] } },
+      { delay: 400,  agent: "Drafter", text: "On it. Pulling brand voice and your last high-performing posts for tone match." },
+      { delay: 1600, agent: "Drafter", text: `Here's your ${platformLabel} ${a.contentType.toLowerCase()}.`, artifact: a },
     ];
   }
   if (/roas|metric|why|down|dip|performance/.test(t)) {
@@ -730,6 +809,20 @@ function ChatOSAuthed({ auth, onLogout }) {
     });
   };
 
+  // ── Artifact action handler — intercepts queue_draft and open_queue ──────────
+  const handleArtifactAction = (args) => {
+    if (args.kind === "queue_draft") {
+      const d = args.data;
+      actions.addDraft(d.platform, d.contentType, d.copy, d.imagePrompt);
+      return;
+    }
+    if (args.kind === "open_queue") {
+      openWorkspace("publish");
+      return;
+    }
+    openCanvas(args);
+  };
+
   const onSend = ({ text, files }) => {
     const now = new Date();
     const t = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
@@ -819,7 +912,7 @@ function ChatOSAuthed({ auth, onLogout }) {
           <Thread
             messages={messages}
             channel={channel}
-            onOpenArtifact={openCanvas}
+            onOpenArtifact={handleArtifactAction}
             onConfirm={onConfirm}
             onAction={onBriefingAction}
             typingAgent={chat.typingAgent}

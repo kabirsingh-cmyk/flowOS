@@ -38,6 +38,109 @@ function UserAvatar({ name, src, size = 28 }) {
 }
 
 // ────────────────────────────── ARTIFACT CARDS (in-thread) ─────────────────────
+// ────────────────────────────── DRAFT CREATED CARD ──────────────────────────────
+const PLATFORM_ACCENT = {
+  instagram: "oklch(56% 0.18 325)",
+  tiktok:    "var(--ink)",
+  linkedin:  "oklch(48% 0.14 235)",
+  facebook:  "oklch(50% 0.18 265)",
+  x:         "var(--ink)",
+  twitter:   "var(--ink)",
+  pinterest: "oklch(56% 0.18 25)",
+  youtube:   "oklch(54% 0.22 25)",
+  email:     "oklch(52% 0.16 240)",
+  sms:       "oklch(54% 0.15 145)",
+  reddit:    "oklch(58% 0.22 30)",
+  snapchat:  "oklch(88% 0.18 100)",
+  snap:      "oklch(88% 0.18 100)",
+  threads:   "var(--ink)",
+  bluesky:   "oklch(56% 0.18 240)",
+};
+
+function DraftCreatedCard({ artifact, onOpen }) {
+  const [queued, setQueued] = useStateChat(false);
+  const accent = PLATFORM_ACCENT[(artifact.platform || "").toLowerCase()] || "var(--accent)";
+  const platformLabel = (artifact.platform || "").charAt(0).toUpperCase() + (artifact.platform || "").slice(1);
+
+  const handleSendToQueue = () => {
+    onOpen({ kind: "queue_draft", data: artifact });
+    setQueued(true);
+  };
+
+  return (
+    <div style={{
+      marginTop: 10,
+      border: "1px solid var(--rule-strong)",
+      borderRadius: 6,
+      background: "var(--paper)",
+      overflow: "hidden",
+    }}>
+      {/* Header strip */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "9px 12px",
+        borderBottom: "1px solid var(--rule)",
+        background: "var(--paper-2)",
+      }}>
+        <Icon name="edit" size={12}/>
+        <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", flex: 1 }}>
+          {platformLabel} · {artifact.contentType || "Post"}
+        </span>
+        <Chip tone="accent">draft</Chip>
+      </div>
+
+      {/* Copy body */}
+      <div style={{
+        padding: "12px 14px 12px 17px",
+        borderLeft: `3px solid ${accent}`,
+        fontSize: 13, lineHeight: 1.65,
+        color: "var(--ink)",
+        whiteSpace: "pre-wrap",
+      }}>
+        {artifact.copy}
+      </div>
+
+      {/* Image prompt (if present) */}
+      {artifact.imagePrompt && (
+        <div style={{
+          margin: "0 12px 10px",
+          padding: "7px 10px",
+          background: "var(--paper-3)",
+          borderRadius: 4,
+          fontSize: 11.5,
+          color: "var(--muted)",
+          lineHeight: 1.5,
+        }}>
+          <span style={{ fontWeight: 600, color: "var(--ink-2)" }}>Image · </span>
+          {artifact.imagePrompt}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div style={{
+        padding: "10px 12px",
+        borderTop: "1px solid var(--rule)",
+        display: "flex", gap: 8, alignItems: "center",
+      }}>
+        {!queued ? (
+          <Btn size="sm" variant="primary" onClick={handleSendToQueue}>
+            <Icon name="check" size={11}/> Send to queue
+          </Btn>
+        ) : (
+          <>
+            <span style={{ fontSize: 11.5, color: "var(--success)", fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}>
+              <Icon name="check" size={11}/> Added to queue
+            </span>
+            <Btn size="sm" variant="ghost" onClick={() => onOpen({ kind: "open_queue" })}>
+              View queue →
+            </Btn>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ArtifactCard({ artifact, onOpen }) {
   if (!artifact) return null;
   const t = artifact.type;
@@ -164,6 +267,10 @@ function ArtifactCard({ artifact, onOpen }) {
         <div style={{ fontSize: 11, color: "var(--accent-ink)", marginTop: 10, fontWeight: 500 }}>Open strategy in canvas →</div>
       </button>
     );
+  }
+
+  if (t === "draft_created") {
+    return <DraftCreatedCard artifact={artifact} onOpen={onOpen}/>;
   }
 
   if (t === "metric") {

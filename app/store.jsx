@@ -270,6 +270,28 @@ function mveda_reducer(s, a) {
         notifications: [notify("ok", `Channel strategy v${next.version} approved · routed to Planning`), ...s.notifications],
       };
     }
+    case "QUEUE_ADD_DRAFT": {
+      const item = {
+        id:          "d_" + Math.random().toString(36).slice(2,8),
+        platform:    a.platform,
+        kind:        a.contentType,
+        title:       (a.copy || "").slice(0, 80),
+        body:        a.copy,
+        imagePrompt: a.imagePrompt || null,
+        status:      "draft",
+        scheduledAt: null,
+        fromChat:    true,
+        day:         null,
+        channel:     a.platform,
+        tone:        "Chat draft",
+        createdAt:   new Date().toISOString(),
+      };
+      return { ...s,
+        calendar: [item, ...s.calendar],
+        activity: [log("Drafter", `chat draft created · ${a.platform} ${a.contentType}`), ...s.activity],
+        notifications: [notify("ok", `Draft added to queue · ${a.platform}`), ...s.notifications],
+      };
+    }
     default: return s;
   }
 }
@@ -319,6 +341,8 @@ function useMvedaStore() {
     updateGuest:      (id, patch) => dispatch({ type: "GUEST_UPDATE", id, patch }),
     updateDiscount:   (id, patch) => dispatch({ type: "DISCOUNT_UPDATE", id, patch }),
     toggleSeasonal:   (id) => dispatch({ type: "SEASONAL_TOGGLE", id }),
+    addDraft: (platform, contentType, copy, imagePrompt) =>
+      dispatch({ type: "QUEUE_ADD_DRAFT", platform, contentType, copy, imagePrompt }),
   };
   return [state, actions];
 }

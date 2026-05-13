@@ -149,15 +149,26 @@ async function sendAIMessage({
       brand,
     });
 
+    // Detect create_draft tool call — attach as inline artifact
+    const draftTool = spec.tools.find(t => t.name === "create_draft");
+    const draftArtifact = draftTool ? {
+      type:        "draft_created",
+      platform:    draftTool.input.platform,
+      contentType: draftTool.input.contentType,
+      copy:        draftTool.input.copy,
+      imagePrompt: draftTool.input.imagePrompt || null,
+    } : undefined;
+
     if (spec.text) {
       dispatch({ type: "STREAM_TOKEN", channel: channelId, token: spec.text });
     }
-    dispatch({ type: "STREAM_DONE", channel: channelId });
+    dispatch({ type: "STREAM_DONE", channel: channelId, artifact: draftArtifact });
 
     for (const tool of spec.tools) {
       if (tool.name === "open_workspace") openWorkspace(tool.input.target);
       if (tool.name === "show_drafts")    openCanvas({ kind: "drafts", data: tool.input });
       if (tool.name === "show_metric")    openCanvas({ kind: "metric", data: tool.input });
+      // create_draft is handled via draftArtifact above — no canvas action needed
     }
   }
 

@@ -157,15 +157,19 @@ BEHAVIOUR
     drafter: `You are Drafter — the content AI for FlowOS.
 ${brandBlock}
 
-Write in the tenant's brand voice. Output clean copy only — no preamble.
+Write in the tenant's brand voice. Output clean copy only — no preamble, no meta-commentary.
+
+ALWAYS call create_draft when producing content. Never output copy as plain text.
+One create_draft call per piece of content. If the user asks for 3 variants, make 3 calls.
 
 Formats:
-- Social: 3 variants, each under 150 chars, different angles.
-- Email: subject + preview text + body.
-- Ad copy: headline + 2 lines body.
-- SMS: under 160 chars.
+- Social post: caption + relevant hashtags. Under 300 chars unless the platform supports long-form.
+- Email: subject line, preview text, and full body in the copy field.
+- Ad copy: headline + body in the copy field.
+- SMS: under 160 chars, link at end.
+- Reel/video: script as copy, shot direction in imagePrompt field.
 
-Use show_drafts to display output for review.`,
+Always include an imagePrompt for visual formats (post, reel, story, carousel, pin). Leave it empty for email and SMS.`,
 
     analyst: (() => {
       let analyticsBlock = "";
@@ -284,7 +288,24 @@ const INTERNAL_TOOLS = [
       required: ["label", "value"],
     },
   },
+  {
+    name: "create_draft",
+    description: "Create a publishable content draft and surface it inline in the chat thread with a 'Send to queue' action. Call this whenever the user asks you to write, draft, or create content for a specific platform or format.",
+    input_schema: {
+      type: "object",
+      properties: {
+        platform:    { type: "string", description: "Target platform slug: instagram, tiktok, linkedin, facebook, x, youtube, pinterest, email, sms, reddit, snapchat, threads, bluesky" },
+        contentType: { type: "string", description: "Content format: Post, Reel, Carousel, Story, Email, SMS, Video, Short, Pin, Thread, Article, Ad" },
+        copy:        { type: "string", description: "The full draft copy — body text, caption, email body, or script. Write in the brand voice. No preamble." },
+        imagePrompt: { type: "string", description: "Optional Runware image-generation prompt if a visual is needed for this format. Describe the scene, not the brand." },
+      },
+      required: ["platform", "contentType", "copy"],
+    },
+  },
 ];
+
+// Tools available to the Drafter specialist
+const DRAFTER_TOOLS = [INTERNAL_TOOLS.find(t => t.name === "create_draft")];
 
 // ─── Tool execution loop ──────────────────────────────────────────────────────
 
@@ -398,9 +419,11 @@ export default async function handler(req) {
     // Prefer full Supabase profile; fall back to lightweight client-side brand
     const brand = brandProfile || brandFromClient || null;
 
-    // Supervisor gets internal + Composio tools; specialists get neither
+    // Supervisor gets all tools; Drafter gets create_draft; others get none
     const tools = specialist === "supervisor"
       ? [...INTERNAL_TOOLS, ...composioTools]
+      : specialist === "drafter"
+      ? DRAFTER_TOOLS
       : [];
 
     // Build system prompt — agent override replaces the specialist-specific section
