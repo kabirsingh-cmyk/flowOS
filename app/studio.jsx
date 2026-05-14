@@ -235,6 +235,278 @@ function StudioHub({ state, actions, go }) {
 }
 
 // ───────────────────────────── EMAIL STUDIO ─────────────────────────────────
+
+// Flavor #1 — Proactive email drafts. Produced by the proactive-emails cron when
+// analytics_insights surface an email-actionable signal (lapsed cohort, replenish,
+// rescue, cart aging, VIP quiet). Drafts land here pre-reviewed by Claude but
+// NOT pushed — user clicks "Approve & push" to send to Klaviyo via /api/klaviyo.
+function ProactiveEmailDrafts({ drafts, tenantId, actions }) {
+  const [expanded, setExpanded] = useStateS({}); // { [id]: bool }
+  const pending = (drafts || []).filter(d => d.status === "proactive_draft" || d.status === "pushing" || d.status === "failed" || d.status === "klaviyo_draft");
+  if (pending.length === 0) return null;
+
+  const ruleTone = {
+    R1_winback:    { color: "oklch(60% 0.18 30)",  label: "Win-back" },
+    R2_replenish:  { color: "oklch(62% 0.15 180)", label: "Replenish" },
+    R3_rescue:     { color: "oklch(65% 0.16 80)",  label: "Rescue" },
+    R4_cart_aging: { color: "oklch(58% 0.16 320)", label: "Cart aging" },
+    R5_vip_quiet:  { color: "oklch(55% 0.14 280)", label: "VIP" },
+  };
+
+  const persistPatch = (id, patch) => {
+    fetch("/api/proactive-emails", {
+      method:  "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ id, patch }),
+    }).catch(() => null);
+  };
+
+  const handleApprove = (d) => {
+    if (d.status === "pushing" || d.status === "klaviyo_draft") return;
+    actions.updateProactiveEmail(d.id, { status: "pushing", error: null });
+
+    fetch("/api/klaviyo", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({
+        action:       "create_draft_campaign",
+        tenantId,
+        subject:      d.subject,
+        preheader:    d.preheader,
+        bodyText:     d.body,
+        audienceHint: d.audienceHint,
+      }),
+    })
+      .then(r => r.json())
+      .then(res => {
+        if (res?.ok) {
+          const patch = {
+            status:            "klaviyo_draft",
+            klaviyoTemplateId: res.templateId,
+            klaviyoCampaignId: res.campaignId,
+            klaviyoMessageId:  res.messageId,
+            klaviyoUrl:        res.klaviyoUrl,
+            audience:          res.audience,
+          };
+          actions.updateProactiveEmail(d.id, patch,
+            { notify: { tone: "ok", text: `Email pushed to Klaviyo · ${res.audience?.name || "draft"}` } });
+          persistPatch(d.id, {
+            status:              "pushed",
+            klaviyo_template_id: res.templateId,
+            klaviyo_campaign_id: res.campaignId,
+            klaviyo_message_id:  res.messageId,
+            klaviyo_url:         res.klaviyoUrl,
+            audience:            res.audience,
+          });
+        } else {
+          const err = res?.error || "unknown error";
+          actions.updateProactiveEmail(d.id, { status: "failed", error: err },
+            { notify: { tone: "warn", text: `Klaviyo push failed: ${err}` } });
+        }
+      })
+      .catch(e => {
+        actions.updateProactiveEmail(d.id, { status: "failed", error: e.message },
+          { notify: { tone: "warn", text: `Klaviyo push failed: ${e.message}` } });
+      });
+  };
+
+  const handleDismiss = (d) => {
+    actions.removeProactiveEmail(d.id, { notify: { tone: "neutral", text: "Proactive draft dismissed" } });
+    persistPatch(d.id, { status: "dismissed" });
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+        <span style={{ fontSize: 13, fontWeight: 700 }}>✦</span>
+        <span className="mono" style={{ fontSize: 10.5, color: "var(--accent)", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600 }}>
+          Proactive drafts · awaiting review
+        </span>
+        <span className="mono" style={{ fontSize: 10.5, color: "var(--muted)" }}>{pending.length}</span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {pending.map(d => {
+          const tone = ruleTone[d.rule] || { color: "var(--accent)", label: d.ruleLabel || d.rule };
+          const isOpen = !!expanded[d.id];
+          const pushed = d.status === "klaviyo_draft";
+          const failed = d.status === "failed";
+          const pushing = d.status === "pushing";
+          return (
+            <div key={d.id} style={{
+              border:       "1px solid var(--rule-strong)",
+              borderRadius: 7,
+              background:   "var(--paper)",
+              overflow:     "hidden",
+            }}>
+              {/* Header strip */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "10px 14px",
+                background: "var(--paper-2)",
+                borderBottom: "1px solid var(--rule)",
+              }}>
+                <span className="mono" style={{
+                  fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase",
+                  color: tone.color,
+                  padding: "3px 8px",
+                  borderRadius: 3,
+                  background: "var(--paper-3)",
+                  border: `1px solid ${tone.color}`,
+                }}>{tone.label}</span>
+                {d.audienceHint && (
+                  <span style={{ fontSize: 11.5, color: "var(--muted)" }}>· {d.audienceHint}</span>
+                )}
+                {d.source === "fallback" && (
+                  <span className="mono" style={{ fontSize: 9.5, color: "var(--muted-2)", letterSpacing: "0.06em", textTransform: "uppercase" }}>demo</span>
+                )}
+                <span style={{ flex: 1 }}/>
+                <Chip tone="accent">klaviyo</Chip>
+              </div>
+
+              {/* Subject + preheader */}
+              <div style={{ padding: "14px 14px 6px", borderLeft: `3px solid ${tone.color}` }}>
+                <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.35 }}>{d.subject}</div>
+                {d.preheader && (
+                  <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 3 }}>{d.preheader}</div>
+                )}
+              </div>
+
+              {/* Body — collapsed by default */}
+              <div style={{
+                padding: "6px 14px 12px",
+                borderLeft: `3px solid ${tone.color}`,
+                fontSize: 12.5, lineHeight: 1.65,
+                color: "var(--ink-2)",
+                whiteSpace: "pre-wrap",
+                maxHeight: isOpen ? "none" : 96,
+                overflow: "hidden",
+                position: "relative",
+              }}>
+                {d.body}
+                {!isOpen && d.body && d.body.length > 200 && (
+                  <div style={{
+                    position: "absolute", inset: "auto 0 0 0", height: 36,
+                    background: "linear-gradient(to bottom, transparent, var(--paper))",
+                  }}/>
+                )}
+              </div>
+
+              {/* Reason line */}
+              {d.reason && (
+                <div style={{
+                  margin: "0 14px 12px",
+                  padding: "8px 10px",
+                  background: "var(--paper-3)",
+                  borderRadius: 4,
+                  fontSize: 11, color: "var(--muted)", lineHeight: 1.5,
+                }}>
+                  <span style={{ fontWeight: 600, color: "var(--ink-2)" }}>Why · </span>
+                  {d.reason}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div style={{
+                padding: "10px 14px",
+                borderTop: "1px solid var(--rule)",
+                display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap",
+              }}>
+                {!pushed && !pushing && (
+                  <>
+                    <Btn size="sm" variant="primary" onClick={() => handleApprove(d)}>
+                      <Icon name="send" size={11}/> Approve &amp; push
+                    </Btn>
+                    <Btn size="sm" variant="ghost" onClick={() => setExpanded(prev => ({ ...prev, [d.id]: !prev[d.id] }))}>
+                      {isOpen ? "Collapse" : "Read more"}
+                    </Btn>
+                    <Btn size="sm" variant="ghost" onClick={() => handleDismiss(d)}>Dismiss</Btn>
+                  </>
+                )}
+                {pushing && (
+                  <span style={{ fontSize: 11.5, color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>
+                    <Dot status="warn"/> Creating template + campaign in Klaviyo…
+                  </span>
+                )}
+                {pushed && (
+                  <>
+                    <span style={{ fontSize: 11.5, color: "var(--success)", fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}>
+                      <Icon name="check" size={11}/> Pushed to Klaviyo
+                      {d.audience?.name && (
+                        <span style={{ color: "var(--muted)", fontWeight: 400 }}>
+                          · {d.audience.name}{d.audience.fallback ? " (fallback)" : ""}
+                        </span>
+                      )}
+                    </span>
+                    {d.klaviyoUrl && (
+                      <a href={d.klaviyoUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: "var(--accent-ink)", textDecoration: "underline" }}>
+                        Open in Klaviyo →
+                      </a>
+                    )}
+                  </>
+                )}
+                {failed && (
+                  <>
+                    <span style={{ fontSize: 11.5, color: "oklch(58% 0.18 25)", display: "flex", alignItems: "center", gap: 5 }}>
+                      <Dot status="bad"/> Push failed{d.error ? ` · ${d.error}` : ""}
+                    </span>
+                    <Btn size="sm" variant="primary" onClick={() => handleApprove(d)}>Retry</Btn>
+                    <Btn size="sm" variant="ghost" onClick={() => handleDismiss(d)}>Dismiss</Btn>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ChatDraftsToKlaviyo({ emails }) {
+  if (!emails || emails.length === 0) return null;
+  const statusMeta = {
+    pushing:       { label: "Pushing…", tone: "warn" },
+    klaviyo_draft: { label: "In Klaviyo", tone: "ok" },
+    failed:        { label: "Failed",    tone: "bad" },
+  };
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+        <span style={{ fontSize: 13, fontWeight: 700 }}>✉︎</span>
+        <span className="mono" style={{ fontSize: 10.5, color: "var(--accent)", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600 }}>Chat drafts → Klaviyo</span>
+        <span className="mono" style={{ fontSize: 10.5, color: "var(--muted)" }}>{emails.length}</span>
+      </div>
+      <Card>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 110px 90px", gap: 10, padding: "6px 0 10px", borderBottom: "1px solid var(--rule)", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          <span>Subject</span><span>Audience</span><span>Status</span><span>Link</span>
+        </div>
+        {emails.map((e, i) => {
+          const meta = statusMeta[e.status] || { label: e.status, tone: "neutral" };
+          const dotColor = meta.tone === "ok" ? "var(--success)" : meta.tone === "warn" ? "oklch(72% 0.12 70)" : meta.tone === "bad" ? "oklch(58% 0.18 25)" : "var(--muted)";
+          return (
+            <div key={e.id} style={{ display: "grid", gridTemplateColumns: "1fr 160px 110px 90px", gap: 10, padding: "12px 0", borderBottom: i < emails.length - 1 ? "1px solid var(--rule)" : "none", alignItems: "center", fontSize: 13 }}>
+              <span style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.subject}</span>
+              <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                {e.audience?.name || e.audienceHint || "—"}
+                {e.audience?.fallback && <span style={{ fontSize: 10.5, opacity: 0.7 }}> (fallback)</span>}
+              </span>
+              <span style={{ fontSize: 11.5, display: "flex", alignItems: "center", gap: 6 }} title={e.error || ""}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: dotColor, display: "inline-block" }}/>
+                {meta.label}
+              </span>
+              <span>
+                {e.klaviyoUrl
+                  ? <a href={e.klaviyoUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: "var(--accent-ink)", textDecoration: "underline" }}>Open ↗</a>
+                  : <span style={{ fontSize: 11.5, color: "var(--muted)" }}>—</span>}
+              </span>
+            </div>
+          );
+        })}
+      </Card>
+    </div>
+  );
+}
+
 function EmailStudio({ state, actions }) {
   const isErickson = state?.activeBrandId === "erickson";
 
@@ -322,6 +594,16 @@ function EmailStudio({ state, actions }) {
                   <Kpi label="Subscribers" value="24,118" delta={412} unit="" sparkline={[0.5,0.55,0.6,0.58,0.62,0.65,0.68,0.7,0.72,0.75,0.8]}/>
                 </>}
               </div>
+
+              {/* Proactive email drafts — analytics-triggered, awaiting human review */}
+              <ProactiveEmailDrafts
+                drafts={state?.outbound?.proactiveEmails || []}
+                tenantId={state?.auth?.id}
+                actions={actions}
+              />
+
+              {/* Chat drafts pushed to Klaviyo */}
+              <ChatDraftsToKlaviyo emails={state?.outbound?.emails || []}/>
 
               {/* Flow recommendations */}
               <div>
