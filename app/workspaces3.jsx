@@ -14,6 +14,93 @@ function PublishingQueue({ state, actions }) {
   const [scheduling, setScheduling] = useState3(false);
   const [redditTitle, setRedditTitle] = useState3("");      // Reddit-specific title field
 
+  // Hydrate scheduled_posts rows into the calendar on mount. The cron writes
+  // status transitions to that table — clients reconcile here. Per-platform
+  // postId/postUrl mapping mirrors PLATFORM_PUBLISHERS.resultFields but is
+  // duplicated as a static map because this effect runs before the publisher
+  // map is in scope (PLATFORM_PUBLISHERS lives inside the drawer closure).
+  useEffect3(() => {
+    const tenantId = state.auth?.id;
+    if (!tenantId) return;
+    let cancelled = false;
+
+    const RESULT_BY_PLATFORM = {
+      linkedin: (result, payload) => ({
+        linkedinPostId:    result?.postId || null,
+        linkedinUrl:       result?.postUrl || null,
+        linkedinAuthorUrn: payload?.authorUrn || null,
+      }),
+      facebook: (result, payload) => ({
+        facebookPostId: result?.postId || null,
+        facebookUrl:    result?.postUrl || null,
+        facebookPageId: payload?.pageId || null,
+      }),
+      x: (result) => ({
+        xPostId: result?.postId || null,
+        xUrl:    result?.postUrl || null,
+      }),
+      instagram: (result, payload) => ({
+        instagramPostId:     result?.postId || null,
+        instagramUrl:        result?.postUrl || null,
+        instagramCreationId: result?.creationId || null,
+        instagramAccountId:  payload?.igUserId || null,
+      }),
+      reddit: (result, payload) => ({
+        redditPostId:    result?.postId || null,
+        redditUrl:       result?.postUrl || null,
+        redditSubreddit: payload?.subreddit || null,
+        ...(result?.imageAsLink ? { redditImageAsLink: true } : {}),
+      }),
+    };
+
+    (async () => {
+      try {
+        const res = await fetch("/api/scheduled-posts", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ action: "list", tenantId }),
+        }).then(r => r.json());
+        if (cancelled || !res?.ok) return;
+        for (const row of res.rows || []) {
+          const map = RESULT_BY_PLATFORM[row.platform] || (() => ({}));
+          if (row.status === "pending") {
+            actions.updateItem(row.item_id, {
+              status:          "scheduled",
+              scheduledPostId: row.id,
+              fireAtUtc:       row.fire_at,
+            });
+          } else if (row.status === "publishing") {
+            actions.updateItem(row.item_id, {
+              status:          "scheduled",
+              scheduledPostId: row.id,
+              fireAtUtc:       row.fire_at,
+              publishStatus:   "publishing",
+            });
+          } else if (row.status === "failed") {
+            actions.updateItem(row.item_id, {
+              scheduledPostId: row.id,
+              fireAtUtc:       row.fire_at,
+              publishStatus:   "failed",
+              publishError:    row.last_error || "Scheduled fire failed",
+            });
+          } else if (row.status === "published") {
+            actions.updateItem(row.item_id, {
+              status:          "sent",
+              publishStatus:   "published",
+              scheduledPostId: row.id,
+              ...map(row.result, row.payload),
+            });
+          }
+        }
+      } catch (e) {
+        // Silent on hydrate failure — calendar still works from local state.
+        console.warn("[PublishingQueue] scheduled-posts hydrate failed:", e.message);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [state.auth?.id]);
+
   const handleGenerateDrafts = async () => {
     setGenerating(true);
     try {

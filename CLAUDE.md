@@ -126,7 +126,9 @@ state.notifications   // toast array
 state.activity        // audit log
 state.calendar items shape:
   { id, platform, kind, title, body, imagePrompt, imageUrl, imageStatus,
-    status, scheduledAt, day, channel, tone, campaign, fromChat, createdAt,
+    status, scheduledAt, scheduledDate, day, channel, tone, campaign, fromChat, createdAt,
+    // After Schedule (publishable platform — row queued in scheduled_posts):
+    scheduledPostId, fireAtUtc,
     // After publish (per platform — only the matching set is populated):
     publishStatus, publishError,
     linkedinPostId,  linkedinUrl,  linkedinAuthorUrn,
@@ -288,8 +290,10 @@ All in `/api/`. All use `export const config = { runtime: "edge" }`.
 | `POST /api/reddit` | Reddit posting via Composio. Actions: `search_subreddits` (`REDDIT_GET_SUBREDDITS_SEARCH` — typeahead, since Composio exposes no `mine/*` listing), `publish_now` (subreddit + title ≤300 + text ≤40000 + optional imageUrl). **Image gap**: `REDDIT_CREATE_REDDIT_POST` doesn't support `kind:image` — when imageUrl is supplied we fall back to `kind:link` with the hosted image URL and surface `imageAsLink:true` so the drawer toasts a warn. The drawer renders subreddit as a free-text input, not a dropdown. |
 | `POST /api/klaviyo` | Klaviyo push via Composio. Actions: `create_draft_campaign` (email — template + campaign + assign), `create_draft_sms` (SMS — single campaign with inline message body, ≤160 chars, no template), `list_audiences`. Audience resolution shared (fuzzy name match → fallback to largest list). Writes land in `state.outbound.{emails,sms}` and surface in EmailStudio / SmsCenter `ChatDraftsToKlaviyo*` strips. |
 | `GET/POST/PATCH /api/proactive-emails` | Flavor #1 (Proactive) for email. POST reads latest `analytics_insights` for tenant, classifies `recommended_actions` into 5 rules (R1 win-back · R2 replenish · R3 rescue · R4 cart aging · R5 VIP quiet, max 2/run), Claude-generates subject/preheader/body using brand voice, persists to `proactive_emails`. Idempotent by `(tenant, rule, source_insight_id)`. Demo fallback emits 1 seeded draft if no insights row exists. GET hydrates `state.outbound.proactiveEmails`. PATCH updates status/Klaviyo IDs after client push. |
+| `POST /api/scheduled-posts` | Platform-agnostic schedule queue. Actions: `create` (writes a `scheduled_posts` row with snapshot payload + UTC fire_at), `list` (returns tenant's open rows + last-7-day published for `PublishingQueue` hydration), `cancel` (flips `pending` → `cancelled`). Frontend writes here from `handleSchedule` in `workspaces3.jsx`. |
 | `GET  /api/cron/daily-analytics` | Vercel Cron (06:00 UTC) — calls analytics-ingest for all tenants. |
 | `GET  /api/cron/proactive-emails` | Vercel Cron (07:30 UTC) — iterates tenants and POSTs to /api/proactive-emails. |
+| `GET  /api/cron/fire-scheduled` | Vercel Cron (`* * * * *` — **requires Pro** for guaranteed 1-min execution; Hobby cron schedules will be rejected at deploy). Calls Supabase RPC `claim_due_scheduled_posts(20)` which atomically picks due `pending` rows via `FOR UPDATE SKIP LOCKED`, transitions them to `publishing`, then POSTs `${origin}/api/<platform>` with the row's snapshot payload. PATCHes the row to `published`/`failed`. Idempotent by construction — same row can never be claimed twice concurrently. |
 | `POST /api/google-ads` | Google Ads API v18. Actions: `list_campaigns`, `create_campaign`, `update_budget`, `enable_campaign`, `pause_campaign`, `keyword_ideas`, `campaign_detail`, `generate_copy`. |
 | `GET  /api/google-ads-auth?action=connect&tenantId=...` | Returns Google OAuth2 consent URL. |
 | `GET  /api/google-ads-auth?code=...&state=tenantId` | OAuth callback — exchanges code, stores tokens in Supabase `google_ads_tokens`. |
@@ -309,6 +313,7 @@ if (cronSecret && req.headers.get("authorization") !== `Bearer ${cronSecret}`) {
 - `analytics_insights` — Claude-generated summaries. Keys: `tenant_id`, `period`.
 - `agent_overrides` — custom system prompts per agent per tenant.
 - `google_ads_tokens` — OAuth refresh tokens for Google Ads. Keys: `tenant_id`. Columns: `refresh_token`, `customer_id`, `all_customer_ids` (array).
+- `scheduled_posts` — queued posts awaiting cron firing. Columns: `tenant_id` (text), `item_id` (calendar row id), `platform`, `fire_at` (timestamptz UTC), `payload` (jsonb — snapshot of `/api/<platform>` publish_now body, minus `action` and `tenantId`), `status` (`pending`|`publishing`|`published`|`failed`|`cancelled`), `attempts`, `last_error`, `fire_attempted_at`, `published_at`, `result` (jsonb response). Unique partial index on `item_id` where `status in (pending,publishing)` prevents double-queueing. `payload` is a snapshot, not a reference — editing the calendar row after Schedule does NOT change what fires; an explicit reschedule (cancel + new Schedule) is required.
 - `proactive_drafts` — weekly social calendar drafts (status `pending`/`archived`). Keys: `tenant_id`, `status`.
 - `proactive_emails` — analytics-triggered email drafts. Keys: `tenant_id`, `rule`, `source_insight_id`. Unique index enforces idempotency. Status: `proactive_draft` → `pushed` (via /api/klaviyo) | `dismissed`.
 
