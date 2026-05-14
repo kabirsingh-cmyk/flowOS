@@ -297,3 +297,6 @@ export default async function handler(req) {
     return finalize(FALLBACK_DRAFTS.slice(0, count), "fallback", { warn: e.message });
   }
 }
+
+// Named exports for unit tests
+export { buildPrompt, FALLBACK_DRAFTS };

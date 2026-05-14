@@ -166,7 +166,7 @@ function PublishingQueue({ state, actions }) {
                 cursor: "pointer", fontFamily: "var(--font-sans)", textTransform: "capitalize",
               }}>{v}</button>
             ))}
-            <Btn size="sm" variant="primary" onClick={handleGenerateDrafts} disabled={generating}
+            <Btn size="sm" variant="primary" data-testid="generate-drafts-btn" onClick={handleGenerateDrafts} disabled={generating}
               style={{ minWidth: 130 }}>
               {generating
                 ? <><span className="dot-pulse" style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "currentColor", marginRight: 6 }}/> Generating…</>
@@ -198,7 +198,7 @@ function PublishingQueue({ state, actions }) {
                 const color = CH_COLOR[platformKey] || "var(--accent)";
                 const abbr  = CH_ABBR[platformKey]  || platformKey.slice(0, 2).toUpperCase();
                 return (
-                  <div key={item.id} onClick={() => setEditItem(item)} className="cell-btn"
+                  <div key={item.id} data-testid="draft-item" onClick={() => setEditItem(item)} className="cell-btn"
                     style={{
                       display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
                       border: "1px dashed var(--rule-strong)", borderRadius: 6,
@@ -492,6 +492,37 @@ function PublishingQueue({ state, actions }) {
                     rows={2}
                     placeholder="Describe the visual — subject, mood, lighting, style…"
                   />
+                </FormRow>
+              )}
+
+              {/* Generated image preview */}
+              {platformKey !== "email" && platformKey !== "sms" && editItem.imageStatus && editItem.imageStatus !== "none" && (
+                <FormRow label="Generated image">
+                  {editItem.imageStatus === "completed" && editItem.imageUrl ? (
+                    <img
+                      src={editItem.imageUrl}
+                      alt="Generated"
+                      style={{
+                        width: "100%", maxHeight: 320, objectFit: "cover",
+                        borderRadius: 4, border: "1px solid var(--rule)",
+                      }}
+                    />
+                  ) : editItem.imageStatus === "pending" ? (
+                    <div style={{
+                      padding: "20px 14px", textAlign: "center", fontSize: 12,
+                      color: "var(--muted)", border: "1px dashed var(--rule)",
+                      borderRadius: 4, background: "var(--paper-2)",
+                    }}>
+                      Generating image…
+                    </div>
+                  ) : (
+                    <div style={{
+                      padding: "12px 14px", fontSize: 12, color: "oklch(48% 0.16 25)",
+                      border: "1px solid var(--rule)", borderRadius: 4, background: "var(--paper-2)",
+                    }}>
+                      Image generation {editItem.imageStatus === "failed_content_policy" ? "blocked by content policy" : "failed"}
+                    </div>
+                  )}
                 </FormRow>
               )}
 

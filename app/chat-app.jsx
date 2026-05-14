@@ -257,6 +257,11 @@ function inferResponse(userText) {
       { delay: 1300, agent: "Analyst", text: "Opening.", artifact: { type: "workspace", target: "discounts" } },
     ];
   }
+  if (/publishing queue|show.*queue|open.*queue|go to.*queue|view.*drafts|draft.*list/.test(t)) {
+    return [
+      { delay: 500, agent: "Supervisor", text: "Opening Publishing Queue.", artifact: { type: "workspace", target: "publish" } },
+    ];
+  }
   if (/organic|social studio|instagram|tiktok|pinterest|youtube|reel|short|pin|schedule.*post|post.*schedule|posting.*time|best time/.test(t)) {
     return [
       { delay: 500, agent: "Supervisor", text: "Routing to Social Studio. I'll pull your connected accounts, the content queue, and any upcoming scheduling gaps." },
@@ -436,7 +441,7 @@ function NavRail({ active, onOpen, state, actions }) {
         {items.map(({ icon, label, t }) => {
           const on = active === t;
           return (
-            <button key={t} title={label} onClick={() => onOpen(t)} style={{
+            <button key={t} title={label} data-testid={`nav-${t}`} onClick={() => onOpen(t)} style={{
               display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
               padding: "8px 4px", border: "none",
               background: on ? "var(--paper-2)" : "transparent",
@@ -697,6 +702,16 @@ function ChatOS() {
   };
 
   useEffectApp(() => {
+    // ── Dev seed bypass ─────────────────────────────────────────────────────
+    // ?seed=mveda or ?seed=erickson skips Supabase auth entirely — used by
+    // automated tests and local dev. Never reaches production (no query param).
+    const seedParam = new URLSearchParams(window.location.search).get("seed");
+    if (seedParam === "mveda" || seedParam === "erickson") {
+      setAuth({ id: `dev-${seedParam}`, name: seedParam === "mveda" ? "Kabir" : "Greg", email: `${seedParam}@dev.local` });
+      setOnboarded(true);
+      return;
+    }
+
     const initializedRef = { current: false };
 
     // Check for existing session on mount — just set auth state.
@@ -816,7 +831,13 @@ function ChatOSAuthed({ auth, onLogout }) {
       cumulative += r.delay;
       setTimeout(() => {
         if (i === 0) dispatch({ type: "SET_TYPING", agent: r.agent });
-        post(channel.id, { kind: "agent", author: r.agent, time: t, text: r.text, artifact: r.artifact });
+        // Workspace artifacts open the canvas directly (same as ai.jsx streaming path)
+        if (r.artifact?.type === "workspace") {
+          openWorkspace(r.artifact.target);
+          post(channel.id, { kind: "agent", author: r.agent, time: t, text: r.text });
+        } else {
+          post(channel.id, { kind: "agent", author: r.agent, time: t, text: r.text, artifact: r.artifact });
+        }
         if (i === responses.length - 1) dispatch({ type: "SET_TYPING", agent: null });
       }, cumulative);
     });
@@ -826,7 +847,70 @@ function ChatOSAuthed({ auth, onLogout }) {
   const handleArtifactAction = (args) => {
     if (args.kind === "queue_draft") {
       const d = args.data;
-      actions.addDraft(d.platform, d.contentType, d.copy, d.imagePrompt);
+      const draftId = "d_" + Math.random().toString(36).slice(2, 8);
+      actions.addDraft(d.platform, d.contentType, d.copy, d.imagePrompt, draftId);
+
+      // Fire image generation async — Runware returns the URL inline, so the
+      // typical happy path is a single fetch with status === "completed".
+      if (d.imagePrompt) {
+        const aspectRatio =
+          /story|reel|tiktok|short/i.test(d.contentType || "") ? "9:16" :
+          /carousel|pin/i.test(d.contentType || "")            ? "4:5"  :
+          "1:1";
+
+        fetch("/api/generate", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({
+            action:   "generate_image",
+            tenantId: auth?.id,
+            provider: "runware",
+            model:    "runware:101@1",
+            aspectRatio,
+            resolution: "1k",
+            promptIntent: {
+              kind:  "feed_hero",
+              extra: { scene: d.imagePrompt },
+            },
+          }),
+        })
+          .then(r => r.json())
+          .then(res => {
+            if (res?.ok && res.rawUrl) {
+              actions.updateItem(draftId, { imageUrl: res.rawUrl, imageStatus: "completed" });
+            } else if (res?.code === "UNWORKABLE_MODEL") {
+              actions.updateItem(draftId, { imageStatus: "failed" });
+              actions.notify("warn", `Image gen failed: ${res.error || "unworkable model"}`);
+            } else if (res?.status === "pending" && res.jobId) {
+              // Provider went async — start polling. Runware video can do this;
+              // images normally return inline but handle either shape.
+              const poll = async () => {
+                for (let i = 0; i < 20; i++) {
+                  await new Promise(r => setTimeout(r, 3000));
+                  const pr = await fetch("/api/generate", {
+                    method:  "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body:    JSON.stringify({ action: "job_status", provider: "runware", jobIds: [res.jobId] }),
+                  }).then(r => r.json()).catch(() => null);
+                  const row = pr?.results?.[0];
+                  if (row?.status === "completed" && row.rawUrl) {
+                    actions.updateItem(draftId, { imageUrl: row.rawUrl, imageStatus: "completed" });
+                    return;
+                  }
+                  if (row?.status === "failed" || row?.status === "failed_content_policy") {
+                    actions.updateItem(draftId, { imageStatus: row.status });
+                    return;
+                  }
+                }
+                actions.updateItem(draftId, { imageStatus: "failed" });
+              };
+              poll();
+            } else {
+              actions.updateItem(draftId, { imageStatus: "failed" });
+            }
+          })
+          .catch(() => actions.updateItem(draftId, { imageStatus: "failed" }));
+      }
       return;
     }
     if (args.kind === "open_queue") {

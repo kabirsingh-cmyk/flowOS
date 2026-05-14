@@ -68,7 +68,7 @@ function DraftCreatedCard({ artifact, onOpen }) {
   };
 
   return (
-    <div style={{
+    <div data-testid="draft-card" style={{
       marginTop: 10,
       border: "1px solid var(--rule-strong)",
       borderRadius: 6,
@@ -123,7 +123,7 @@ function DraftCreatedCard({ artifact, onOpen }) {
         display: "flex", gap: 8, alignItems: "center",
       }}>
         {!queued ? (
-          <Btn size="sm" variant="primary" onClick={handleSendToQueue}>
+          <Btn size="sm" variant="primary" data-testid="send-to-queue" onClick={handleSendToQueue}>
             <Icon name="check" size={11}/> Send to queue
           </Btn>
         ) : (
@@ -441,6 +441,7 @@ function Composer({ onSend, channelName }) {
         padding: "8px 10px", background: "var(--paper)",
       }}>
         <textarea ref={taRef}
+          data-testid="composer-input"
           value={val}
           onChange={e => setVal(e.target.value)}
           onPaste={onPaste}

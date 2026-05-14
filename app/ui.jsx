@@ -110,7 +110,7 @@ function Kpi({ label, value, unit, delta, sparkline }) {
   );
 }
 
-function Btn({ children, onClick, variant = "default", size = "md", style, disabled, type }) {
+function Btn({ children, onClick, variant = "default", size = "md", style, disabled, type, ...rest }) {
   const sizes = {
     sm: { padding: "5px 10px", fontSize: 12 },
     md: { padding: "7px 13px", fontSize: 13 },
@@ -124,7 +124,7 @@ function Btn({ children, onClick, variant = "default", size = "md", style, disab
     danger:   { background: "var(--paper)", color: "var(--danger)",border: "1px solid var(--danger)" },
   };
   return (
-    <button type={type || "button"} onClick={disabled ? undefined : onClick} disabled={disabled}
+    <button type={type || "button"} onClick={disabled ? undefined : onClick} disabled={disabled} {...rest}
       style={{
         ...variants[variant], ...sizes[size],
         borderRadius: 5, cursor: disabled ? "not-allowed" : "pointer",
