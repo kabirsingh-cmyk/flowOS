@@ -149,9 +149,25 @@ async function sendAIMessage({
       brand,
     });
 
-    // Detect create_draft tool call — attach as inline artifact
+    // Detect create_draft / create_email_draft / create_sms_draft tool calls — attach as inline artifact.
+    // Channel-specific tools win over the generic create_draft when both are present.
+    const emailTool = spec.tools.find(t => t.name === "create_email_draft");
+    const smsTool   = spec.tools.find(t => t.name === "create_sms_draft");
     const draftTool = spec.tools.find(t => t.name === "create_draft");
-    const draftArtifact = draftTool ? {
+    const draftArtifact = emailTool ? {
+      type:         "email_draft",
+      subject:      emailTool.input.subject,
+      preheader:    emailTool.input.preheader || "",
+      body:         emailTool.input.body,
+      audienceHint: emailTool.input.audienceHint || "",
+      campaignName: emailTool.input.campaignName || emailTool.input.subject,
+    } : smsTool ? {
+      type:              "sms_draft",
+      body:              smsTool.input.body,
+      audienceHint:      smsTool.input.audienceHint || "",
+      campaignName:      smsTool.input.campaignName || smsTool.input.body.slice(0, 40),
+      includeStopFooter: !!smsTool.input.includeStopFooter,
+    } : draftTool ? {
       type:        "draft_created",
       platform:    draftTool.input.platform,
       contentType: draftTool.input.contentType,
