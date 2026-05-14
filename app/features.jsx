@@ -48,13 +48,63 @@ function SectionHead({ children, action }) {
 }
 
 // ─────────────────────────── 1 · SMS Center ───────────────────────────
+function ChatDraftsToKlaviyoSms({ sms }) {
+  if (!sms || sms.length === 0) return null;
+  const statusMeta = {
+    pushing:       { label: "Pushing…", tone: "warn" },
+    klaviyo_draft: { label: "In Klaviyo", tone: "ok" },
+    failed:        { label: "Failed",    tone: "bad" },
+  };
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <span style={{ fontSize: 13, fontWeight: 700 }}>✱</span>
+        <span className="mono" style={{ fontSize: 10.5, color: "var(--accent)", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600 }}>Chat drafts → Klaviyo SMS</span>
+        <span className="mono" style={{ fontSize: 10.5, color: "var(--muted)" }}>{sms.length}</span>
+      </div>
+      <Card>
+        <div style={{ display: "grid", gridTemplateColumns: "1.6fr 160px 80px 110px 90px", gap: 10, padding: "6px 0 10px", borderBottom: "1px solid var(--rule)", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          <span>Body</span><span>Audience</span><span>Chars</span><span>Status</span><span>Link</span>
+        </div>
+        {sms.map((s, i) => {
+          const meta = statusMeta[s.status] || { label: s.status, tone: "neutral" };
+          const dotColor = meta.tone === "ok" ? "var(--success)" : meta.tone === "warn" ? "oklch(72% 0.12 70)" : meta.tone === "bad" ? "oklch(58% 0.18 25)" : "var(--muted)";
+          const len = (s.body || "").length;
+          return (
+            <div key={s.id} style={{ display: "grid", gridTemplateColumns: "1.6fr 160px 80px 110px 90px", gap: 10, padding: "12px 0", borderBottom: i < sms.length - 1 ? "1px solid var(--rule)" : "none", alignItems: "center", fontSize: 13 }}>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--ink-2)", fontStyle: "italic" }}>"{s.body}"</span>
+              <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                {s.audience?.name || s.audienceHint || "—"}
+                {s.audience?.fallback && <span style={{ fontSize: 10.5, opacity: 0.7 }}> (fallback)</span>}
+              </span>
+              <span className="mono" style={{ fontSize: 11.5, color: len > 160 ? "oklch(48% 0.16 25)" : "var(--muted)" }}>{len}/160</span>
+              <span style={{ fontSize: 11.5, display: "flex", alignItems: "center", gap: 6 }} title={s.error || ""}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: dotColor, display: "inline-block" }}/>
+                {meta.label}
+              </span>
+              <span>
+                {s.klaviyoUrl
+                  ? <a href={s.klaviyoUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: "var(--accent-ink)", textDecoration: "underline" }}>Open ↗</a>
+                  : <span style={{ fontSize: 11.5, color: "var(--muted)" }}>—</span>}
+              </span>
+            </div>
+          );
+        })}
+      </Card>
+    </div>
+  );
+}
+
 function SmsCenter({ state, actions }) {
   const camp = state.smsCampaigns;
   const auto = state.smsAutomations;
   const comp = state.smsCompliance;
+  const chatSms = state?.outbound?.sms || [];
   return (
     <FeaturePage kicker="Channel · SMS" title="SMS"
       right={<Btn size="sm" variant="primary"><Icon name="plus" size={11}/> New SMS campaign</Btn>}>
+
+      <ChatDraftsToKlaviyoSms sms={chatSms}/>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
         <StatTile label="TCPA opt-ins"  value={comp.tcpaConsent.toLocaleString()} hint="active subscribers"/>

@@ -66,6 +66,17 @@ function mveda_initialState() {
     discountHistory: SEED.discountHistory.map(d => ({ ...d })),
     marginFloors: { ...SEED.marginFloors },
     discountFatigue: { ...SEED.discountFatigue, alerts: [...SEED.discountFatigue.alerts] },
+
+    // Chat-authored outbound assets pushed to external platforms (Klaviyo, SMS providers, etc).
+    // Separate from `calendar` because the lifecycle is platform-driven, not internal.
+    outbound: {
+      emails: [], // { id, subject, preheader, bodyHtml, bodyText, audienceHint, status, klaviyoTemplateId, klaviyoCampaignId, klaviyoMessageId, klaviyoUrl, audience, error, createdAt }
+      sms:    [], // { id, body, audienceHint, status, klaviyoCampaignId, klaviyoMessageId, klaviyoUrl, audience, warnings, error, createdAt }
+      // Analytics-triggered email drafts (flavor #1 Proactive). Lifecycle is server → review → push.
+      // status: "proactive_draft" | "pushing" | "klaviyo_draft" | "failed" | "dismissed"
+      // shape: { id, rule, ruleLabel, subject, preheader, body, audienceHint, reason, source, status, klaviyoUrl, klaviyoCampaignId, audience, error, createdAt }
+      proactiveEmails: [],
+    },
   };
 }
 
@@ -304,12 +315,14 @@ function mveda_reducer(s, a) {
     }
     case "QUEUE_ADD_DRAFT": {
       const item = {
-        id:          "d_" + Math.random().toString(36).slice(2,8),
+        id:          a.id || ("d_" + Math.random().toString(36).slice(2,8)),
         platform:    a.platform,
         kind:        a.contentType,
         title:       (a.copy || "").slice(0, 80),
         body:        a.copy,
         imagePrompt: a.imagePrompt || null,
+        imageUrl:    null,
+        imageStatus: a.imagePrompt ? "pending" : "none",
         status:      "draft",
         scheduledAt: null,
         fromChat:    true,
@@ -323,6 +336,90 @@ function mveda_reducer(s, a) {
         activity: [log("Drafter", `chat draft created · ${a.platform} ${a.contentType}`), ...s.activity],
         notifications: [notify("ok", `Draft added to queue · ${a.platform}`), ...s.notifications],
       };
+    }
+    case "OUTBOUND_EMAIL_ADD": {
+      const email = {
+        id:                a.id || ("oe_" + Math.random().toString(36).slice(2, 8)),
+        subject:           a.subject || "",
+        preheader:         a.preheader || "",
+        bodyHtml:          a.bodyHtml || "",
+        bodyText:          a.bodyText || "",
+        audienceHint:      a.audienceHint || "",
+        status:            a.status || "pushing",
+        klaviyoTemplateId: null,
+        klaviyoCampaignId: null,
+        klaviyoMessageId:  null,
+        klaviyoUrl:        null,
+        audience:          null,
+        error:             null,
+        createdAt:         new Date().toISOString(),
+        fromChat:          a.fromChat !== false,
+      };
+      return { ...s,
+        outbound: { ...s.outbound, emails: [email, ...s.outbound.emails] },
+        activity: [log("Drafter", `email push started · ${email.subject.slice(0, 60)}`), ...s.activity],
+      };
+    }
+    case "OUTBOUND_EMAIL_UPDATE": {
+      const emails = s.outbound.emails.map(e =>
+        e.id === a.id ? { ...e, ...a.patch } : e
+      );
+      const next = { ...s, outbound: { ...s.outbound, emails } };
+      if (a.notify) next.notifications = [notify(a.notify.tone, a.notify.text), ...s.notifications];
+      return next;
+    }
+    case "PROACTIVE_EMAILS_LOAD": {
+      // Bulk-hydrate from /api/proactive-emails GET. Dedupe by id so refreshes are idempotent.
+      const existingIds = new Set(s.outbound.proactiveEmails.map(e => e.id));
+      const incoming = (a.items || []).filter(e => !existingIds.has(e.id));
+      if (incoming.length === 0) return s;
+      const merged = [...incoming, ...s.outbound.proactiveEmails];
+      return { ...s,
+        outbound: { ...s.outbound, proactiveEmails: merged },
+        notifications: [notify("accent", `${incoming.length} proactive email draft${incoming.length !== 1 ? "s" : ""} ready in Email Studio`), ...s.notifications],
+      };
+    }
+    case "PROACTIVE_EMAIL_UPDATE": {
+      const proactiveEmails = s.outbound.proactiveEmails.map(e =>
+        e.id === a.id ? { ...e, ...a.patch } : e
+      );
+      const next = { ...s, outbound: { ...s.outbound, proactiveEmails } };
+      if (a.notify) next.notifications = [notify(a.notify.tone, a.notify.text), ...s.notifications];
+      return next;
+    }
+    case "PROACTIVE_EMAIL_REMOVE": {
+      const proactiveEmails = s.outbound.proactiveEmails.filter(e => e.id !== a.id);
+      const next = { ...s, outbound: { ...s.outbound, proactiveEmails } };
+      if (a.notify) next.notifications = [notify(a.notify.tone, a.notify.text), ...s.notifications];
+      return next;
+    }
+    case "OUTBOUND_SMS_ADD": {
+      const sms = {
+        id:                a.id || ("os_" + Math.random().toString(36).slice(2, 8)),
+        body:              a.body || "",
+        audienceHint:      a.audienceHint || "",
+        status:            a.status || "pushing",
+        klaviyoCampaignId: null,
+        klaviyoMessageId:  null,
+        klaviyoUrl:        null,
+        audience:          null,
+        warnings:          a.warnings || {},
+        error:             null,
+        createdAt:         new Date().toISOString(),
+        fromChat:          a.fromChat !== false,
+      };
+      return { ...s,
+        outbound: { ...s.outbound, sms: [sms, ...s.outbound.sms] },
+        activity: [log("Drafter", `sms push started · ${sms.body.slice(0, 60)}`), ...s.activity],
+      };
+    }
+    case "OUTBOUND_SMS_UPDATE": {
+      const sms = s.outbound.sms.map(x =>
+        x.id === a.id ? { ...x, ...a.patch } : x
+      );
+      const next = { ...s, outbound: { ...s.outbound, sms } };
+      if (a.notify) next.notifications = [notify(a.notify.tone, a.notify.text), ...s.notifications];
+      return next;
     }
     default: return s;
   }
@@ -373,10 +470,24 @@ function useMvedaStore() {
     updateGuest:      (id, patch) => dispatch({ type: "GUEST_UPDATE", id, patch }),
     updateDiscount:   (id, patch) => dispatch({ type: "DISCOUNT_UPDATE", id, patch }),
     toggleSeasonal:   (id) => dispatch({ type: "SEASONAL_TOGGLE", id }),
-    addDraft: (platform, contentType, copy, imagePrompt) =>
-      dispatch({ type: "QUEUE_ADD_DRAFT", platform, contentType, copy, imagePrompt }),
+    addDraft: (platform, contentType, copy, imagePrompt, id) =>
+      dispatch({ type: "QUEUE_ADD_DRAFT", platform, contentType, copy, imagePrompt, id }),
     loadProactiveDrafts: (items) =>
       dispatch({ type: "QUEUE_LOAD_PROACTIVE", items }),
+    addOutboundEmail: (payload) =>
+      dispatch({ type: "OUTBOUND_EMAIL_ADD", ...payload }),
+    updateOutboundEmail: (id, patch, opts = {}) =>
+      dispatch({ type: "OUTBOUND_EMAIL_UPDATE", id, patch, notify: opts.notify }),
+    addOutboundSms: (payload) =>
+      dispatch({ type: "OUTBOUND_SMS_ADD", ...payload }),
+    updateOutboundSms: (id, patch, opts = {}) =>
+      dispatch({ type: "OUTBOUND_SMS_UPDATE", id, patch, notify: opts.notify }),
+    loadProactiveEmails: (items) =>
+      dispatch({ type: "PROACTIVE_EMAILS_LOAD", items }),
+    updateProactiveEmail: (id, patch, opts = {}) =>
+      dispatch({ type: "PROACTIVE_EMAIL_UPDATE", id, patch, notify: opts.notify }),
+    removeProactiveEmail: (id, opts = {}) =>
+      dispatch({ type: "PROACTIVE_EMAIL_REMOVE", id, notify: opts.notify }),
   };
   return [state, actions];
 }

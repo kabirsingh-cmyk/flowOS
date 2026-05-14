@@ -159,17 +159,27 @@ ${brandBlock}
 
 Write in the tenant's brand voice. Output clean copy only — no preamble, no meta-commentary.
 
-ALWAYS call create_draft when producing content. Never output copy as plain text.
-One create_draft call per piece of content. If the user asks for 3 variants, make 3 calls.
+TOOL CHOICE
+- For email (Klaviyo campaigns, flows, newsletters): call create_email_draft.
+  This produces a structured email artifact with first-class subject, preheader,
+  and body, plus a "Push to Klaviyo" action that creates the draft template +
+  campaign in Klaviyo automatically.
+- For SMS (Klaviyo SMS, transactional text, win-back text, cart-abandon nudge):
+  call create_sms_draft. This produces a structured SMS artifact with a "Push
+  to Klaviyo SMS" action that creates a draft SMS campaign in Klaviyo.
+- For everything else: call create_draft.
+- One tool call per piece of content. If the user asks for 3 variants, make 3 calls.
+- Never output draft copy as plain text — always go through a tool.
 
 Formats:
 - Social post: caption + relevant hashtags. Under 300 chars unless the platform supports long-form.
-- Email: subject line, preview text, and full body in the copy field.
 - Ad copy: headline + body in the copy field.
-- SMS: under 160 chars, link at end.
+- SMS: under 160 chars, link at end. Use create_sms_draft, not create_draft.
 - Reel/video: script as copy, shot direction in imagePrompt field.
 
-Always include an imagePrompt for visual formats (post, reel, story, carousel, pin). Leave it empty for email and SMS.`,
+For create_draft: always include an imagePrompt for visual formats (post, reel, story, carousel, pin). Leave it empty for SMS.
+For create_email_draft: write a concrete subject line (≤ 60 chars), a preheader (≤ 110 chars) that complements (not repeats) the subject, and a full body in plain text with paragraph breaks. Infer the audienceHint from the user's request ("new subscribers", "VIPs", "lapsed 90d+", etc.) — leave blank if no audience was implied.
+For create_sms_draft: body must be ≤ 160 chars (hard cap — count carefully, GSM-7). Be concrete and on-brand. Do NOT auto-append "Reply STOP to opt out" unless the user explicitly asks — the brand/legal team decides whether the STOP footer is added at send. Infer audienceHint same as email. Avoid emoji unless the user asks (emoji silently halves the SMS char budget to 70).`,
 
     analyst: (() => {
       let analyticsBlock = "";
@@ -304,8 +314,39 @@ const INTERNAL_TOOLS = [
   },
 ];
 
+INTERNAL_TOOLS.push({
+  name: "create_email_draft",
+  description: "Produce an email artifact (subject, preheader, body) and surface it inline in the chat with a 'Push to Klaviyo' action. Call this for any email content — campaigns, flows, newsletters, win-backs, welcome series. Do not use create_draft for emails.",
+  input_schema: {
+    type: "object",
+    properties: {
+      subject:      { type: "string", description: "Subject line. Concrete, ≤ 60 chars, in brand voice." },
+      preheader:    { type: "string", description: "Preheader / preview text. ≤ 110 chars. Complements the subject — does not repeat it." },
+      body:         { type: "string", description: "Full email body in plain text with paragraph breaks. No HTML." },
+      audienceHint: { type: "string", description: "Free-text audience hint inferred from the user's request (e.g. 'new subscribers', 'VIP buyers', 'lapsed 90d+'). Leave blank if not implied." },
+      campaignName: { type: "string", description: "Optional short internal name for this campaign. Defaults to subject if omitted." },
+    },
+    required: ["subject", "body"],
+  },
+});
+
+INTERNAL_TOOLS.push({
+  name: "create_sms_draft",
+  description: "Produce an SMS artifact (body, audience hint) and surface it inline in the chat with a 'Push to Klaviyo SMS' action. Call this for any SMS content — promotional, transactional, win-back, cart-abandon. Do not use create_draft for SMS.",
+  input_schema: {
+    type: "object",
+    properties: {
+      body:         { type: "string", description: "SMS body, plain text, hard cap 160 chars (GSM-7). No emoji unless the user asked." },
+      audienceHint: { type: "string", description: "Free-text audience hint inferred from the user's request (e.g. 'cart abandoners', 'VIPs', 'lapsed 90d+'). Leave blank if not implied." },
+      campaignName: { type: "string", description: "Optional short internal name for this campaign. Defaults to a truncated body if omitted." },
+      includeStopFooter: { type: "boolean", description: "Whether the user explicitly asked for a 'Reply STOP to opt out' footer. Default false — the brand decides at send time." },
+    },
+    required: ["body"],
+  },
+});
+
 // Tools available to the Drafter specialist
-const DRAFTER_TOOLS = [INTERNAL_TOOLS.find(t => t.name === "create_draft")];
+const DRAFTER_TOOLS = INTERNAL_TOOLS.filter(t => t.name === "create_draft" || t.name === "create_email_draft" || t.name === "create_sms_draft");
 
 // ─── Tool execution loop ──────────────────────────────────────────────────────
 
