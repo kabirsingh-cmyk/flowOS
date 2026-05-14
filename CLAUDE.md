@@ -263,6 +263,10 @@ All in `/api/`. All use `export const config = { runtime: "edge" }`.
 | `POST /api/generate` | Image/video generation via Runware, HeyGen, Runway, etc. |
 | `POST /api/social` | Post to social platforms via Composio. |
 | `GET  /api/cron/daily-analytics` | Vercel Cron (06:00 UTC) — calls analytics-ingest for all tenants. |
+| `POST /api/google-ads` | Google Ads API v18. Actions: `list_campaigns`, `create_campaign`, `update_budget`, `enable_campaign`, `pause_campaign`, `keyword_ideas`, `campaign_detail`, `generate_copy`. |
+| `GET  /api/google-ads-auth?action=connect&tenantId=...` | Returns Google OAuth2 consent URL. |
+| `GET  /api/google-ads-auth?code=...&state=tenantId` | OAuth callback — exchanges code, stores tokens in Supabase `google_ads_tokens`. |
+| `POST /api/google-ads-auth` | Set active customer ID when user has multiple Google Ads accounts. |
 
 ### Auth pattern for cron:
 ```js
@@ -277,6 +281,7 @@ if (cronSecret && req.headers.get("authorization") !== `Bearer ${cronSecret}`) {
 - `analytics_snapshots` — raw per-channel metrics. Keys: `tenant_id`, `channel`, `period`.
 - `analytics_insights` — Claude-generated summaries. Keys: `tenant_id`, `period`.
 - `agent_overrides` — custom system prompts per agent per tenant.
+- `google_ads_tokens` — OAuth refresh tokens for Google Ads. Keys: `tenant_id`. Columns: `refresh_token`, `customer_id`, `all_customer_ids` (array).
 
 ---
 
@@ -351,6 +356,9 @@ SUPABASE_URL             Supabase project URL
 SUPABASE_SERVICE_KEY     Supabase service role key (server-side only)
 COMPOSIO_API_KEY2        Composio tool execution
 CRON_SECRET              Vercel cron auth (optional on Hobby plan)
+GOOGLE_ADS_DEVELOPER_TOKEN  Google Ads API Developer Token (from API Center in manager account)
+GOOGLE_ADS_CLIENT_ID        Google OAuth2 Client ID (same as existing Google Cloud OAuth app)
+GOOGLE_ADS_CLIENT_SECRET    Google OAuth2 Client Secret (same as above)
 ```
 
 Frontend uses the Supabase anon key baked into `supabase.jsx` (public — safe).

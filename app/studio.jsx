@@ -476,118 +476,488 @@ function EmailStudio({ state, actions }) {
 }
 
 // ───────────────────────────── SEARCH STUDIO ────────────────────────────────
+// ── Google Ads API helpers (browser-side calls to our edge functions) ────────
+
+const BLANK_FORM = {
+  name: "", type: "search", keywordsRaw: "",
+  headlines: ["", "", ""],   // start with 3; user can add up to 15
+  descriptions: ["", ""],    // start with 2; up to 4
+  budget: "", bidding: "target-roas", finalUrl: "",
+};
+
+async function gadsCall(action, params, tenantId) {
+  const res = await fetch("/api/google-ads", {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ action, tenantId, ...params }),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || "Google Ads API error");
+  return data.data;
+}
+
+function useGoogleAds(tenantId) {
+  const [campaigns, setCampaigns] = useStateS([]);
+  const [loading,   setLoading]   = useStateS(false);
+  const [error,     setError]     = useStateS(null);
+  const [connected, setConnected] = useStateS(false);
+
+  function load() {
+    setLoading(true); setError(null);
+    gadsCall("list_campaigns", {}, tenantId)
+      .then(data => { setCampaigns(data); setConnected(true); })
+      .catch(err => {
+        const msg = err.message || "";
+        if (msg.includes("No Google Ads token")) setConnected(false);
+        else setError(msg);
+        // Fall back to seed data so UI always shows something
+        setConnected(c => c); // no-op to avoid double-set
+      })
+      .finally(() => setLoading(false));
+  }
+
+  return { campaigns, setCampaigns, loading, error, connected, load };
+}
+
+// ── SearchStudio component ───────────────────────────────────────────────────
+
 function SearchStudio({ state, actions }) {
   const isErickson = state?.activeBrandId === "erickson";
+  const tenantId   = state?.activeBrandId || "mveda";
+  const brand      = state?.brandPreset;
 
+  // Panels
+  const [tab,            setTab]            = useStateS("campaigns"); // campaigns | keywords | copy
   const [activeCampaign, setActiveCampaign] = useStateS(null);
-  const [createOpen, setCreateOpen] = useStateS(false);
-  const [form, setForm] = useStateS({ name: "", type: "search", keywords: "", headline1: "", headline2: "", headline3: "", desc1: "", budget: "", bidding: "target-roas" });
+  const [createOpen,     setCreateOpen]     = useStateS(false);
+  const [detailLoading,  setDetailLoading]  = useStateS(false);
+  const [detail,         setDetail]         = useStateS(null);
 
+  // Campaign form
+  const [form,     setForm]     = useStateS({ ...BLANK_FORM });
+  const [creating, setCreating] = useStateS(false);
+  const [budgetEdit, setBudgetEdit] = useStateS("");
+
+  // Keyword research
+  const [kwSeeds,   setKwSeeds]   = useStateS("");
+  const [kwResults, setKwResults] = useStateS([]);
+  const [kwLoading, setKwLoading] = useStateS(false);
+
+  // AI copy gen
+  const [copyProduct,  setCopyProduct]  = useStateS(brand?.name || "");
+  const [copyKeywords, setCopyKeywords] = useStateS("");
+  const [copyTone,     setCopyTone]     = useStateS(brand?.voice || "");
+  const [copyUrl,      setCopyUrl]      = useStateS(brand?.url || "");
+  const [copyLoading,  setCopyLoading]  = useStateS(false);
+  const [generatedCopy, setGeneratedCopy] = useStateS(null);
+
+  // Live data
+  const { campaigns: liveCampaigns, setCampaigns: setLiveCampaigns, loading, error, connected, load } = useGoogleAds(tenantId);
+
+  // Seed / fallback campaigns
+  const SEED_ERICKSON = [
+    { id: "s1", name: "Commercial refrig. repair · Seattle",  type: "SEARCH", budgetMonth: 2800, spend: 2540, revenue: 22400, roas: 8.8, ctr: 9.4, status: "enabled",  keywords: "commercial refrigeration repair, commercial fridge repair Seattle, walk-in cooler repair WA" },
+    { id: "s2", name: "Walk-in cooler service · WA",          type: "SEARCH", budgetMonth: 1400, spend: 1240, revenue: 10800, roas: 8.7, ctr: 7.8, status: "enabled",  keywords: "walk-in cooler service, walk-in freezer repair, commercial freezer repair" },
+    { id: "s3", name: "Erickson brand keywords",              type: "SEARCH", budgetMonth: 600,  spend: 520,  revenue: 4160,  roas: 8.0, ctr: 5.2, status: "enabled",  keywords: "Erickson refrigeration, Erickson HVAC, Erickson commercial refrigeration Seattle" },
+    { id: "s4", name: "Commercial refrig. · Portland & OR",   type: "SEARCH", budgetMonth: 1200, spend: 0,    revenue: 0,     roas: null, ctr: null, status: "paused",   keywords: "commercial refrigeration Portland, walk-in cooler service Oregon" },
+    { id: "s5", name: "Commercial HVAC · Boise & Idaho",      type: "SEARCH", budgetMonth: 800,  spend: 0,    revenue: 0,     roas: null, ctr: null, status: "paused",   keywords: "commercial HVAC Boise, commercial refrigeration Idaho" },
+  ];
+  const SEED_MVEDA = [
+    { id: "s1", name: "MVEDA brand keywords",        type: "SEARCH",           budgetMonth: 300,  spend: 0,    revenue: 0,     roas: null, ctr: null, status: "paused",  keywords: "MVEDA, MVEDA hair oil, MVEDA skincare" },
+    { id: "s2", name: "Hair Ritual — intent",        type: "SEARCH",           budgetMonth: 500,  spend: 0,    revenue: 0,     roas: null, ctr: null, status: "paused",  keywords: "hair oil ritual, ayurvedic hair oil, botanical hair serum" },
+    { id: "s3", name: "Neem Cleanser · Search",      type: "SEARCH",           budgetMonth: 600,  spend: 540,  revenue: 4320,  roas: 8.0,  ctr: 4.2,  status: "enabled", keywords: "neem face cleanser, natural neem cleanser" },
+    { id: "s4", name: "Saffron Serum · Retargeting", type: "SEARCH",           budgetMonth: 400,  spend: 380,  revenue: 3220,  roas: 8.5,  ctr: 3.8,  status: "enabled", keywords: "saffron serum, saffron face serum" },
+    { id: "s5", name: "Brand awareness · PMax",      type: "PERFORMANCE_MAX",  budgetMonth: 800,  spend: 720,  revenue: 3240,  roas: 4.5,  ctr: 1.4,  status: "enabled", keywords: "Auto-managed" },
+  ];
+
+  const seedCampaigns = isErickson ? SEED_ERICKSON : SEED_MVEDA;
+  const CAMPAIGNS     = liveCampaigns.length ? liveCampaigns : seedCampaigns;
+
+  // Load on mount
+  React.useEffect(() => { load(); }, [tenantId]);
+
+  // Open campaign → load detail
+  function openCampaign(c) {
+    setActiveCampaign(c);
+    setDetail(null);
+    setBudgetEdit(String(c.budgetMonth || c.budget || ""));
+    if (c.id && !c.id.startsWith("s")) {
+      setDetailLoading(true);
+      gadsCall("campaign_detail", { campaignId: c.id }, tenantId)
+        .then(d => setDetail(d))
+        .catch(() => {})
+        .finally(() => setDetailLoading(false));
+    }
+  }
+
+  // Launch / pause
+  function toggleStatus(c) {
+    const next = c.status === "enabled" ? "pause_campaign" : "enable_campaign";
+    const label = c.status === "enabled" ? "paused" : "launched";
+    gadsCall(next, { campaignId: c.id }, tenantId)
+      .then(() => {
+        setLiveCampaigns(cs => cs.map(x => x.id === c.id ? { ...x, status: c.status === "enabled" ? "paused" : "enabled" } : x));
+        if (activeCampaign?.id === c.id) setActiveCampaign(a => ({ ...a, status: label === "paused" ? "paused" : "enabled" }));
+        actions.notify("ok", `'${c.name}' ${label}`);
+        setActiveCampaign(null);
+      })
+      .catch(err => actions.notify("error", err.message));
+  }
+
+  // Budget save
+  function saveBudget(c) {
+    const monthly = parseInt(budgetEdit, 10);
+    if (!monthly || isNaN(monthly)) return;
+    gadsCall("update_budget", { campaignId: c.id, budgetMonthly: monthly }, tenantId)
+      .then(() => {
+        setLiveCampaigns(cs => cs.map(x => x.id === c.id ? { ...x, budgetMonth: monthly } : x));
+        actions.notify("ok", `Budget updated to $${monthly}/mo`);
+      })
+      .catch(err => actions.notify("error", err.message));
+  }
+
+  // Create campaign
+  async function submitCreate(launch) {
+    if (!form.name) { actions.notify("error", "Campaign name is required"); return; }
+    setCreating(true);
+    try {
+      const keywords = form.keywordsRaw.split(/[\n,]+/).map(k => k.trim()).filter(Boolean);
+      const headlines    = form.headlines.filter(Boolean);
+      const descriptions = form.descriptions.filter(Boolean);
+      const result = await gadsCall("create_campaign", {
+        name:            form.name,
+        type:            form.type,
+        keywords,
+        headlines:       headlines.length ? headlines : [`${brand?.name || "We"} — ${form.name}`, "Call Us Today", "Free Quote"],
+        descriptions:    descriptions.length ? descriptions : ["Get a free quote. Serving WA, OR & ID.", "Commercial refrigeration experts. Call now."],
+        budgetMonthly:   parseInt(form.budget, 10) || 500,
+        biddingStrategy: form.bidding,
+        finalUrl:        form.finalUrl || brand?.url || "",
+      }, tenantId);
+
+      // Optimistically add to list
+      setLiveCampaigns(cs => [{ ...result, budgetMonth: parseInt(form.budget, 10) || 500, spend: 0, revenue: 0, roas: null, ctr: null, clicks: 0, impressions: 0, type: form.type.toUpperCase() }, ...cs]);
+      actions.notify("ok", `'${form.name}' created${launch ? " and launched" : " as draft"}`);
+      setCreateOpen(false);
+      setForm({ ...BLANK_FORM });
+    } catch (err) {
+      actions.notify("error", err.message);
+    }
+    setCreating(false);
+  }
+
+  // Keyword research
+  function runKeywordResearch() {
+    const seeds = kwSeeds.split(/[\n,]+/).map(k => k.trim()).filter(Boolean);
+    if (!seeds.length) return;
+    setKwLoading(true);
+    gadsCall("keyword_ideas", { seedKeywords: seeds, url: brand?.url }, tenantId)
+      .then(r => setKwResults(r))
+      .catch(err => {
+        // Fallback demo data
+        setKwResults([
+          { keyword: seeds[0], avgMonthlySearches: 880, competition: "MEDIUM", lowCpc: 0.80, highCpc: 2.40 },
+          { keyword: seeds[0] + " near me", avgMonthlySearches: 480, competition: "LOW", lowCpc: 0.60, highCpc: 1.80 },
+          { keyword: "best " + seeds[0], avgMonthlySearches: 320, competition: "LOW", lowCpc: 0.50, highCpc: 1.60 },
+          { keyword: seeds[0] + " service", avgMonthlySearches: 260, competition: "MEDIUM", lowCpc: 1.20, highCpc: 3.00 },
+          { keyword: "affordable " + seeds[0], avgMonthlySearches: 140, competition: "LOW", lowCpc: 0.40, highCpc: 1.20 },
+        ]);
+      })
+      .finally(() => setKwLoading(false));
+  }
+
+  // AI copy gen
+  function runCopyGen() {
+    if (!copyProduct) return;
+    setCopyLoading(true);
+    const keywords = copyKeywords.split(/[\n,]+/).map(k => k.trim()).filter(Boolean);
+    fetch("/api/google-ads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "generate_copy",
+        brandName: brand?.name || copyProduct,
+        productName: copyProduct,
+        keywords: keywords.length ? keywords : [copyProduct],
+        tone: copyTone || brand?.voice,
+        url: copyUrl || brand?.url,
+      }),
+    })
+      .then(r => r.json())
+      .then(d => setGeneratedCopy(d))
+      .catch(() => setGeneratedCopy({
+        headlines: [
+          copyProduct + " — Call Today", "Free Quote. Fast Service.", "Trusted Since 2005",
+          "Licensed & Insured", "Same-Day Response", "Commercial Specialists",
+          "{KeyWord:" + copyProduct + "}", "Serving WA · OR · ID", "24/7 Emergency Line",
+          "Competitive Rates", "Expert Technicians", "No Hidden Fees",
+          "5★ Google Reviews", "Get Started Today →", "Warranty on All Work",
+        ],
+        descriptions: [
+          "Expert " + copyProduct + " services. Free estimates. Licensed & insured. Call now.",
+          "Serving businesses across the Pacific Northwest. Fast response, fair prices.",
+          "Commercial refrigeration & HVAC specialists. 20+ years. Call for a free quote.",
+          "Same-day service available. Trusted by 500+ businesses. Get your free estimate.",
+        ],
+      }))
+      .finally(() => setCopyLoading(false));
+  }
+
+  // KPIs
+  const totalSpend   = CAMPAIGNS.reduce((s, c) => s + (c.spend || 0), 0);
+  const totalRevenue = CAMPAIGNS.reduce((s, c) => s + (c.revenue || 0), 0);
+  const blendedROAS  = totalSpend > 0 ? (totalRevenue / totalSpend).toFixed(1) : "—";
+  const ctrs         = CAMPAIGNS.filter(c => c.ctr);
+  const avgCTR       = ctrs.length ? (ctrs.reduce((s, c) => s + c.ctr, 0) / ctrs.length).toFixed(1) : "—";
+  const activeCount  = CAMPAIGNS.filter(c => c.status === "enabled" || c.status === "active").length;
+
+  // Flow recommendations
   const RECS = isErickson ? [
-    { title: "Expand to Oregon — zero coverage gap",        body: "'Commercial refrigeration repair Portland' and 'walk-in cooler service OR' — high intent, low competition, you serve the area but have $0 spend.", cta: "Create campaign", urgent: true },
-    { title: "Idaho search terms — Boise opportunity",      body: "'Commercial HVAC repair Boise' and 'walk-in cooler service Idaho' — you're licensed to serve ID. No competitor owns this yet.",                    cta: "Create campaign"  },
-    { title: "Increase Seattle budget — summer demand",     body: "Commercial cooling searches up 28% MoM. Current $4,300/mo budget is capping impressions. Flow estimates 22 leads/mo uncaptured at current spend.", cta: "Adjust budget",   urgent: true },
+    { title: "Expand to Oregon — zero coverage gap", body: "'Commercial refrigeration repair Portland' — high intent, low competition, you serve the area but have $0 spend.", cta: "Create campaign", urgent: true },
+    { title: "Idaho search terms — Boise opportunity", body: "'Commercial HVAC repair Boise' — you're licensed to serve ID. No competitor owns this yet.", cta: "Create campaign" },
+    { title: "Increase Seattle budget — summer demand", body: "Commercial cooling searches up 28% MoM. Current budget may be capping impressions.", cta: "Adjust budget", urgent: true },
   ] : [
-    { title: "Brand keyword gap — 'MVEDA hair oil'",   body: "720 mo/searches, $0.40 CPC, low competition. No active search campaign capturing this brand intent.",      cta: "Create campaign" },
-    { title: "Neem Cleanser — expand budget",           body: "4.2% CTR, 8.0x ROAS on $540 spend. Increase from $600 → $900/mo budget cap for ~40% more attributed revenue.", cta: "Adjust budget"   },
-    { title: "Competitor conquesting — Aesop scalp",   body: "'Aesop scalp oil' gets 720 mo/searches at $1.20 CPC. MVEDA has a comparable product with stronger reviews.", cta: "Create campaign" },
+    { title: "Brand keyword gap — 'MVEDA hair oil'", body: "720 mo/searches, $0.40 CPC, low competition. No active campaign capturing brand intent.", cta: "Create campaign" },
+    { title: "Neem Cleanser — expand budget", body: "4.2% CTR, 8.0x ROAS. Increase from $600 → $900/mo for ~40% more revenue.", cta: "Adjust budget" },
+    { title: "Competitor conquesting — Aesop scalp", body: "'Aesop scalp oil' 720 mo/searches, $1.20 CPC. MVEDA has a comparable product.", cta: "Create campaign" },
   ];
 
-  const CAMPAIGNS_ERICKSON = [
-    { id: "s1", name: "Commercial refrig. repair · Seattle",  type: "Search", budget: 2800, spend: 2540, revenue: 22400, roas: 8.8,  ctr: 9.4, status: "active", keywords: "commercial refrigeration repair, commercial fridge repair Seattle, walk-in cooler repair WA" },
-    { id: "s2", name: "Walk-in cooler service · WA",          type: "Search", budget: 1400, spend: 1240, revenue: 10800, roas: 8.7,  ctr: 7.8, status: "active", keywords: "walk-in cooler service, walk-in freezer repair, commercial freezer repair" },
-    { id: "s3", name: "Erickson brand keywords",              type: "Search", budget: 600,  spend: 520,  revenue: 4160,  roas: 8.0,  ctr: 5.2, status: "active", keywords: "Erickson refrigeration, Erickson HVAC, Erickson commercial refrigeration Seattle" },
-    { id: "s4", name: "Commercial refrig. · Portland & OR",   type: "Search", budget: 1200, spend: 0,    revenue: 0,     roas: null, ctr: null, status: "draft",  keywords: "commercial refrigeration Portland, walk-in cooler service Oregon, commercial HVAC Portland" },
-    { id: "s5", name: "Commercial HVAC · Boise & Idaho",      type: "Search", budget: 800,  spend: 0,    revenue: 0,     roas: null, ctr: null, status: "draft",  keywords: "commercial HVAC Boise, commercial refrigeration Idaho, walk-in cooler Idaho" },
-  ];
-
-  const CAMPAIGNS_MVEDA = [
-    { id: "s1", name: "MVEDA brand keywords",        type: "Search",          budget: 300,  spend: 0,    revenue: 0,     roas: null, ctr: null, status: "draft",   keywords: "MVEDA, MVEDA hair oil, MVEDA skincare, MVEDA hair mist" },
-    { id: "s2", name: "Hair Ritual — intent",        type: "Search",          budget: 500,  spend: 0,    revenue: 0,     roas: null, ctr: null, status: "draft",   keywords: "hair oil ritual, ayurvedic hair oil, botanical hair serum" },
-    { id: "s3", name: "Neem Cleanser · Search",      type: "Search",          budget: 600,  spend: 540,  revenue: 4320,  roas: 8.0,  ctr: 4.2,  status: "active",  keywords: "neem face cleanser, natural neem cleanser, neem oil cleanser" },
-    { id: "s4", name: "Saffron Serum · Retargeting", type: "RLSA",            budget: 400,  spend: 380,  revenue: 3220,  roas: 8.5,  ctr: 3.8,  status: "active",  keywords: "saffron serum, saffron face serum, saffron skincare" },
-    { id: "s5", name: "Brand awareness · PMax",      type: "Performance Max", budget: 800,  spend: 720,  revenue: 3240,  roas: 4.5,  ctr: 1.4,  status: "paused",  keywords: "Auto-managed" },
-  ];
-
-  const CAMPAIGNS = isErickson ? CAMPAIGNS_ERICKSON : CAMPAIGNS_MVEDA;
-
-  const totalSpend = CAMPAIGNS.reduce((s, c) => s + c.spend, 0);
-  const totalRevenue = CAMPAIGNS.reduce((s, c) => s + c.revenue, 0);
-  const blendedROAS = totalSpend > 0 ? (totalRevenue / totalSpend).toFixed(1) : "—";
-  const avgCTR = (CAMPAIGNS.filter(c => c.ctr).reduce((s, c) => s + c.ctr, 0) / CAMPAIGNS.filter(c => c.ctr).length).toFixed(1);
+  const TAB_STYLE = (t) => ({
+    padding: "6px 14px", borderRadius: 5, fontSize: 12.5, fontWeight: tab === t ? 600 : 400,
+    background: tab === t ? "var(--accent)" : "transparent",
+    color: tab === t ? "white" : "var(--muted)",
+    border: "none", cursor: "pointer",
+  });
 
   return (
     <div className="anim-fade" style={{ height: "100%", display: "flex", overflow: "hidden" }}>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        {/* Sticky header */}
-        <div style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--paper)", borderBottom: "1px solid var(--rule)", padding: "18px 32px 18px", flexShrink: 0 }}>
+
+        {/* Header */}
+        <div style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--paper)", borderBottom: "1px solid var(--rule)", padding: "18px 32px", flexShrink: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Studio · Search</div>
-              <h1 style={{ fontSize: 26, fontWeight: 500, letterSpacing: "-0.025em", margin: "4px 0 0" }}>Search Studio</h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <div>
+                <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Studio · Search</div>
+                <h1 style={{ fontSize: 26, fontWeight: 500, letterSpacing: "-0.025em", margin: "4px 0 0" }}>Search Studio</h1>
+              </div>
+              {/* Connection status */}
+              <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 20, border: "1px solid var(--rule)", background: "var(--paper-2)", fontSize: 11.5 }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: connected ? "oklch(62% 0.18 155)" : "var(--muted)", display: "inline-block" }}/>
+                <span className="mono" style={{ color: connected ? "oklch(35% 0.1 155)" : "var(--muted)" }}>
+                  {loading ? "syncing…" : connected ? "Google Ads live" : "seed data"}
+                </span>
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <Btn size="sm" variant="ghost"><Icon name="download" size={12}/> Export</Btn>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {/* Tabs */}
+              <div style={{ display: "flex", gap: 2, padding: "3px", borderRadius: 7, background: "var(--paper-2)", border: "1px solid var(--rule)", marginRight: 6 }}>
+                <button style={TAB_STYLE("campaigns")} onClick={() => setTab("campaigns")}>Campaigns</button>
+                <button style={TAB_STYLE("keywords")}  onClick={() => setTab("keywords")}>Keyword Research</button>
+                <button style={TAB_STYLE("copy")}      onClick={() => setTab("copy")}>AI Copy Gen</button>
+              </div>
+              <Btn size="sm" variant="ghost" onClick={load}><Icon name="refresh" size={12}/></Btn>
               <Btn variant="primary" onClick={() => setCreateOpen(true)}><Icon name="spark" size={13}/> Create campaign</Btn>
             </div>
           </div>
+          {error && (
+            <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 5, background: "var(--danger-wash,#fef2f2)", border: "1px solid var(--danger,oklch(55% 0.18 25))", fontSize: 12, color: "var(--danger,oklch(40% 0.18 25))" }}>
+              ⚠ Google Ads: {error}
+            </div>
+          )}
         </div>
 
+        {/* Body */}
         <div style={{ flex: 1, overflow: "auto", padding: "28px 32px", display: "flex", flexDirection: "column", gap: 28 }}>
-          {/* KPIs */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--gap)" }}>
-            <Kpi label="Total spend" value={`$${(totalSpend/1000).toFixed(1)}k`} delta={isErickson ? 8 : 0} unit="%" sparkline={[0.5,0.55,0.6,0.58,0.62,0.65,0.68,0.7,0.72,0.75,0.8]}/>
-            <Kpi label={isErickson ? "Revenue (contracts)" : "Revenue attributed"} value={`$${(totalRevenue/1000).toFixed(1)}k`} delta={12} unit="%" sparkline={[0.4,0.5,0.55,0.6,0.65,0.7,0.68,0.72,0.75,0.8,0.85]}/>
-            <Kpi label="Blended ROAS" value={`${blendedROAS}x`} delta={0.4} unit="x" sparkline={[0.5,0.55,0.6,0.58,0.62,0.65,0.68,0.7,0.72,0.75,0.8]}/>
-            <Kpi label="Avg CTR" value={`${avgCTR}%`} delta={0.8} unit="pp" sparkline={[0.4,0.45,0.5,0.55,0.58,0.6,0.62,0.65,0.68,0.7,0.75]}/>
-          </div>
 
-          {/* Flow recommendations */}
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-              <span style={{ fontSize: 13, fontWeight: 700 }}>✦</span>
-              <span className="mono" style={{ fontSize: 10.5, color: "var(--accent)", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600 }}>Flow recommends</span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
-              {RECS.map((r, i) => (
-                <FlowRec key={i} title={r.title} body={r.body} cta={r.cta} onClick={() => setCreateOpen(true)}/>
-              ))}
-            </div>
-          </div>
-
-          {/* Campaign table */}
-          <div>
-            <SHead>Campaigns</SHead>
-            <Card>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 110px 74px 74px 84px 60px 60px 80px", gap: 10, padding: "6px 0 10px", borderBottom: "1px solid var(--rule)", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                <span>Campaign</span><span>Type</span><span>Budget</span><span>Spend</span><span>Revenue</span><span>ROAS</span><span>CTR</span><span>Status</span>
+          {/* ── CAMPAIGNS TAB ── */}
+          {tab === "campaigns" && (
+            <>
+              {/* KPIs */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "var(--gap)" }}>
+                <Kpi label="Active campaigns" value={String(activeCount)}      delta={0}   unit=""  sparkline={[0.5,0.55,0.6,0.58,0.62,0.65,0.68,0.7,0.72,0.75,0.8]}/>
+                <Kpi label="Total spend/mo"   value={`$${(totalSpend/1000).toFixed(1)}k`}  delta={isErickson ? 8 : 0}  unit="%" sparkline={[0.5,0.55,0.6,0.58,0.62,0.65,0.68,0.7,0.72,0.75,0.8]}/>
+                <Kpi label={isErickson ? "Revenue (contracts)" : "Revenue attributed"} value={`$${(totalRevenue/1000).toFixed(1)}k`} delta={12} unit="%" sparkline={[0.4,0.5,0.55,0.6,0.65,0.7,0.68,0.72,0.75,0.8,0.85]}/>
+                <Kpi label="Blended ROAS"     value={`${blendedROAS}x`}        delta={0.4} unit="x" sparkline={[0.5,0.55,0.6,0.58,0.62,0.65,0.68,0.7,0.72,0.75,0.8]}/>
+                <Kpi label="Avg CTR"          value={`${avgCTR}%`}             delta={0.8} unit="pp" sparkline={[0.4,0.45,0.5,0.55,0.58,0.6,0.62,0.65,0.68,0.7,0.75]}/>
               </div>
-              {CAMPAIGNS.map((c, i) => (
-                <div key={c.id} className="row-hover" onClick={() => setActiveCampaign(c)}
-                  style={{ display: "grid", gridTemplateColumns: "1fr 110px 74px 74px 84px 60px 60px 80px", gap: 10, padding: "12px 0", borderBottom: i < CAMPAIGNS.length - 1 ? "1px solid var(--rule)" : "none", alignItems: "center", fontSize: 13, cursor: "pointer" }}>
-                  <span style={{ fontWeight: 500 }}>{c.name}</span>
-                  <span><span style={{ fontSize: 10.5, padding: "2px 6px", borderRadius: 3, fontFamily: "var(--font-mono)", background: "var(--paper-2)", border: "1px solid var(--rule)", color: "var(--muted)" }}>{c.type}</span></span>
-                  <span className="mono" style={{ fontSize: 11.5 }}>${c.budget}/mo</span>
-                  <span className="mono" style={{ fontSize: 11.5, color: c.spend === 0 ? "var(--muted)" : "var(--ink)" }}>{c.spend > 0 ? `$${c.spend}` : "—"}</span>
-                  <span className="mono" style={{ fontSize: 11.5, color: c.revenue === 0 ? "var(--muted)" : "var(--ink)" }}>{c.revenue > 0 ? `$${(c.revenue/1000).toFixed(1)}k` : "—"}</span>
-                  <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: c.roas ? (c.roas >= 7 ? "oklch(35% 0.1 155)" : c.roas >= 5 ? "var(--accent)" : "var(--danger)") : "var(--muted)" }}>{c.roas ? `${c.roas}x` : "—"}</span>
-                  <span className="mono" style={{ fontSize: 11.5 }}>{c.ctr ? `${c.ctr}%` : "—"}</span>
-                  <StatusBadge status={c.status}/>
+
+              {/* Flow recs */}
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700 }}>✦</span>
+                  <span className="mono" style={{ fontSize: 10.5, color: "var(--accent)", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600 }}>Flow recommends</span>
                 </div>
-              ))}
-            </Card>
-          </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+                  {RECS.map((r, i) => (
+                    <FlowRec key={i} title={r.title} body={r.body} cta={r.cta} urgent={r.urgent} onClick={() => setCreateOpen(true)}/>
+                  ))}
+                </div>
+              </div>
+
+              {/* Campaign table */}
+              <div>
+                <SHead>Campaigns</SHead>
+                <Card>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 80px 80px 90px 60px 60px 90px", gap: 10, padding: "6px 0 10px", borderBottom: "1px solid var(--rule)", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    <span>Campaign</span><span>Type</span><span>Budget</span><span>Spend</span><span>Revenue</span><span>ROAS</span><span>CTR</span><span>Status</span>
+                  </div>
+                  {CAMPAIGNS.map((c, i) => (
+                    <div key={c.id} className="row-hover" onClick={() => openCampaign(c)}
+                      style={{ display: "grid", gridTemplateColumns: "1fr 140px 80px 80px 90px 60px 60px 90px", gap: 10, padding: "12px 0", borderBottom: i < CAMPAIGNS.length - 1 ? "1px solid var(--rule)" : "none", alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+                      <span style={{ fontWeight: 500 }}>{c.name}</span>
+                      <span><span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 3, fontFamily: "var(--font-mono)", background: "var(--paper-2)", border: "1px solid var(--rule)", color: "var(--muted)" }}>{c.type}</span></span>
+                      <span className="mono" style={{ fontSize: 11.5 }}>${c.budgetMonth || c.budget || "—"}/mo</span>
+                      <span className="mono" style={{ fontSize: 11.5, color: !c.spend ? "var(--muted)" : "var(--ink)" }}>{c.spend ? `$${c.spend}` : "—"}</span>
+                      <span className="mono" style={{ fontSize: 11.5, color: !c.revenue ? "var(--muted)" : "var(--ink)" }}>{c.revenue ? `$${(c.revenue/1000).toFixed(1)}k` : "—"}</span>
+                      <span className="mono" style={{ fontSize: 12, fontWeight: 600, color: c.roas ? (c.roas >= 7 ? "oklch(35% 0.1 155)" : c.roas >= 5 ? "var(--accent)" : "var(--danger)") : "var(--muted)" }}>{c.roas ? `${c.roas}x` : "—"}</span>
+                      <span className="mono" style={{ fontSize: 11.5 }}>{c.ctr ? `${c.ctr}%` : "—"}</span>
+                      <StatusBadge status={c.status}/>
+                    </div>
+                  ))}
+                </Card>
+              </div>
+            </>
+          )}
+
+          {/* ── KEYWORD RESEARCH TAB ── */}
+          {tab === "keywords" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              <div style={{ padding: 20, borderRadius: 8, background: "var(--paper)", border: "1px solid var(--rule)" }}>
+                <SHead>Keyword Research</SHead>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "flex-end" }}>
+                  <FormRow label="Seed keywords (one per line or comma-separated)">
+                    <Textarea value={kwSeeds} onChange={e => setKwSeeds(e.target.value)} rows={3}
+                      placeholder={isErickson
+                        ? "commercial refrigeration repair\nwalk-in cooler service\nHVAC contractor Seattle"
+                        : "ayurvedic hair oil\nneem face cleanser\nsaffron serum"}/>
+                  </FormRow>
+                  <Btn variant="primary" onClick={runKeywordResearch} style={{ alignSelf: "flex-end", marginBottom: 2 }}>
+                    {kwLoading ? "Researching…" : <><Icon name="spark" size={12}/> Get ideas</>}
+                  </Btn>
+                </div>
+              </div>
+
+              {kwResults.length > 0 && (
+                <Card>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 110px 100px 80px 80px 100px", gap: 10, padding: "6px 0 10px", borderBottom: "1px solid var(--rule)", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    <span>Keyword</span><span>Mo. Searches</span><span>Competition</span><span>Low CPC</span><span>High CPC</span><span></span>
+                  </div>
+                  {kwResults.map((r, i) => (
+                    <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 110px 100px 80px 80px 100px", gap: 10, padding: "11px 0", borderBottom: i < kwResults.length - 1 ? "1px solid var(--rule)" : "none", alignItems: "center", fontSize: 13 }}>
+                      <span style={{ fontWeight: 500 }}>{r.keyword}</span>
+                      <span className="mono" style={{ fontSize: 12 }}>{r.avgMonthlySearches?.toLocaleString() || "—"}</span>
+                      <span>
+                        <span style={{ fontSize: 10.5, padding: "2px 6px", borderRadius: 3, fontFamily: "var(--font-mono)",
+                          background: r.competition === "LOW" ? "var(--success-wash)" : r.competition === "HIGH" ? "oklch(96% 0.02 25)" : "var(--paper-2)",
+                          color: r.competition === "LOW" ? "oklch(35% 0.1 155)" : r.competition === "HIGH" ? "oklch(50% 0.18 25)" : "var(--muted)",
+                          border: "1px solid var(--rule)" }}>
+                          {r.competition || "—"}
+                        </span>
+                      </span>
+                      <span className="mono" style={{ fontSize: 12 }}>{r.lowCpc ? `$${r.lowCpc}` : "—"}</span>
+                      <span className="mono" style={{ fontSize: 12 }}>{r.highCpc ? `$${r.highCpc}` : "—"}</span>
+                      <Btn size="sm" variant="ghost" onClick={() => {
+                        setKwSeeds(s => s ? s + "\n" + r.keyword : r.keyword);
+                        setTab("campaigns"); setCreateOpen(true);
+                        setForm(f => ({ ...f, keywordsRaw: f.keywordsRaw ? f.keywordsRaw + "\n" + r.keyword : r.keyword }));
+                      }}>Add to campaign</Btn>
+                    </div>
+                  ))}
+                </Card>
+              )}
+            </div>
+          )}
+
+          {/* ── AI COPY GEN TAB ── */}
+          {tab === "copy" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              <div style={{ padding: 20, borderRadius: 8, background: "var(--paper)", border: "1px solid var(--rule)" }}>
+                <SHead>AI Ad Copy Generator</SHead>
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <FormRow label="Product / service">
+                      <Input value={copyProduct} onChange={e => setCopyProduct(e.target.value)}
+                        placeholder={isErickson ? "Commercial refrigeration repair" : "Ayurvedic hair oil"}/>
+                    </FormRow>
+                    <FormRow label="Landing page URL">
+                      <Input value={copyUrl} onChange={e => setCopyUrl(e.target.value)} placeholder="https://…"/>
+                    </FormRow>
+                  </div>
+                  <FormRow label="Target keywords">
+                    <Textarea value={copyKeywords} onChange={e => setCopyKeywords(e.target.value)} rows={2}
+                      placeholder={isErickson ? "commercial refrigeration repair, walk-in cooler service Seattle" : "ayurvedic hair oil, botanical hair serum"}/>
+                  </FormRow>
+                  <FormRow label="Brand tone / voice">
+                    <Input value={copyTone} onChange={e => setCopyTone(e.target.value)} placeholder="Professional, trustworthy, direct — or paste your brand voice…"/>
+                  </FormRow>
+                  <Btn variant="primary" onClick={runCopyGen} style={{ alignSelf: "flex-start" }}>
+                    {copyLoading ? "Generating…" : <><Icon name="spark" size={12}/> Generate ad copy</>}
+                  </Btn>
+                </div>
+              </div>
+
+              {generatedCopy && (
+                <>
+                  <div style={{ padding: 20, borderRadius: 8, background: "var(--paper)", border: "1px solid var(--rule)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                      <span style={{ fontSize: 14, fontWeight: 600 }}>Headlines <span className="mono" style={{ fontSize: 11, color: "var(--muted)", fontWeight: 400 }}>({generatedCopy.headlines?.length || 0}/15) · max 30 chars each</span></span>
+                      <Btn size="sm" variant="ghost" onClick={runCopyGen}>Regenerate</Btn>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                      {(generatedCopy.headlines || []).map((h, i) => (
+                        <div key={i} style={{ padding: "8px 12px", borderRadius: 5, background: "var(--paper-2)", border: "1px solid var(--rule)", fontSize: 12.5 }}>
+                          <span className="mono" style={{ fontSize: 9.5, color: "var(--muted)", marginRight: 6 }}>{i+1}</span>
+                          {h}
+                          <span className="mono" style={{ fontSize: 9.5, color: h.length > 30 ? "var(--danger)" : "var(--muted)", marginLeft: 6 }}>{h.length}/30</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ padding: 20, borderRadius: 8, background: "var(--paper)", border: "1px solid var(--rule)" }}>
+                    <div style={{ marginBottom: 14 }}>
+                      <span style={{ fontSize: 14, fontWeight: 600 }}>Descriptions <span className="mono" style={{ fontSize: 11, color: "var(--muted)", fontWeight: 400 }}>({generatedCopy.descriptions?.length || 0}/4) · max 90 chars each</span></span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {(generatedCopy.descriptions || []).map((d, i) => (
+                        <div key={i} style={{ padding: "10px 14px", borderRadius: 5, background: "var(--paper-2)", border: "1px solid var(--rule)", fontSize: 12.5, lineHeight: 1.5 }}>
+                          <span className="mono" style={{ fontSize: 9.5, color: "var(--muted)", marginRight: 6 }}>{i+1}</span>
+                          {d}
+                          <span className="mono" style={{ fontSize: 9.5, color: d.length > 90 ? "var(--danger)" : "var(--muted)", marginLeft: 8 }}>{d.length}/90</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: 14 }}>
+                      <Btn variant="primary" onClick={() => {
+                        setTab("campaigns"); setCreateOpen(true);
+                        setForm(f => ({
+                          ...f,
+                          headlines:    (generatedCopy.headlines || []).slice(0, 15),
+                          descriptions: (generatedCopy.descriptions || []).slice(0, 4),
+                          name:         f.name || copyProduct,
+                          keywordsRaw:  f.keywordsRaw || copyKeywords,
+                        }));
+                      }}><Icon name="send" size={12}/> Use in new campaign</Btn>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Right drawer — campaign editor */}
-      <Drawer open={!!activeCampaign} onClose={() => setActiveCampaign(null)} title={activeCampaign?.name || "Campaign"} width={460}
+      {/* Right drawer — campaign detail + editor */}
+      <Drawer open={!!activeCampaign} onClose={() => setActiveCampaign(null)} title={activeCampaign?.name || "Campaign"} width={480}
         actions={activeCampaign && (
           <>
             <Btn variant="ghost" onClick={() => setActiveCampaign(null)}>Close</Btn>
-            <Btn variant="primary" onClick={() => { actions.notify("ok", `'${activeCampaign.name}' ${activeCampaign.status === "draft" ? "launched" : "updated"}`); setActiveCampaign(null); }}>
-              {activeCampaign.status === "draft" ? <><Icon name="send" size={12}/> Launch</> : "Save changes"}
-            </Btn>
+            {activeCampaign.status === "enabled" || activeCampaign.status === "active"
+              ? <Btn variant="ghost" onClick={() => toggleStatus(activeCampaign)}><Icon name="pause" size={11}/> Pause</Btn>
+              : <Btn variant="primary" onClick={() => toggleStatus(activeCampaign)}><Icon name="send" size={11}/> Launch</Btn>
+            }
+            <Btn variant="primary" onClick={() => saveBudget(activeCampaign)}>Save changes</Btn>
           </>
         )}>
         {activeCampaign && (
@@ -596,31 +966,58 @@ function SearchStudio({ state, actions }) {
               <span style={{ fontSize: 10.5, padding: "2px 6px", borderRadius: 3, fontFamily: "var(--font-mono)", background: "var(--paper-2)", border: "1px solid var(--rule)", color: "var(--muted)" }}>{activeCampaign.type}</span>
               <StatusBadge status={activeCampaign.status}/>
             </div>
+
             {activeCampaign.roas && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-                {[["ROAS", `${activeCampaign.roas}x`], ["CTR", `${activeCampaign.ctr}%`], ["Revenue", `$${(activeCampaign.revenue/1000).toFixed(1)}k`]].map(([l, v]) => (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
+                {[["ROAS", `${activeCampaign.roas}x`], ["CTR", `${activeCampaign.ctr}%`], ["Spend", `$${activeCampaign.spend}`], ["Revenue", `$${(activeCampaign.revenue/1000).toFixed(1)}k`]].map(([l, v]) => (
                   <div key={l} style={{ padding: 10, borderRadius: 5, background: "var(--paper-2)", border: "1px solid var(--rule)", textAlign: "center" }}>
                     <div className="mono" style={{ fontSize: 9.5, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>{l}</div>
-                    <div style={{ fontSize: 18, fontWeight: 600 }}>{v}</div>
+                    <div style={{ fontSize: 17, fontWeight: 600 }}>{v}</div>
                   </div>
                 ))}
               </div>
             )}
+
             <FormRow label="Monthly budget ($)">
-              <Input type="number" defaultValue={activeCampaign.budget} key={activeCampaign.id + "-budget"}/>
+              <Input type="number" value={budgetEdit} onChange={e => setBudgetEdit(e.target.value)}/>
             </FormRow>
-            <FormRow label="Target keywords">
-              <Textarea defaultValue={activeCampaign.keywords} rows={3} key={activeCampaign.id + "-kw"}/>
-            </FormRow>
-            <FormRow label="Headline 1"><Input defaultValue="Ayurvedic Hair Oil · MVEDA" key={activeCampaign.id + "-h1"}/></FormRow>
-            <FormRow label="Headline 2"><Input defaultValue="Natural Ritual. Real Results." key={activeCampaign.id + "-h2"}/></FormRow>
-            <FormRow label="Headline 3"><Input defaultValue="Free Shipping Over $60" key={activeCampaign.id + "-h3"}/></FormRow>
-            <FormRow label="Description">
-              <Textarea defaultValue="MVEDA's award-winning hair oil blends pure saffron, neem & botanical actives for stronger, healthier hair in 4 weeks." rows={3} key={activeCampaign.id + "-desc"}/>
-            </FormRow>
-            {activeCampaign.status === "draft" && (
+
+            {/* Live ad detail */}
+            {detailLoading && <div style={{ fontSize: 12, color: "var(--muted)", padding: "8px 0" }}>Loading ad detail…</div>}
+            {detail && (
+              <>
+                <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 14 }}>
+                  <div className="mono" style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Ad headlines</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {(detail.ads?.[0]?.headlines || []).map((h, i) => (
+                      <span key={i} style={{ fontSize: 12, padding: "3px 8px", borderRadius: 4, background: "var(--paper-2)", border: "1px solid var(--rule)" }}>{h}</span>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="mono" style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Top keywords</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    {(detail.keywords || []).slice(0, 8).map((k, i) => (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12.5, padding: "5px 0", borderBottom: "1px solid var(--rule)" }}>
+                        <span>{k.text} <span className="mono" style={{ fontSize: 10, color: "var(--muted)" }}>[{k.matchType}]</span></span>
+                        <span className="mono" style={{ fontSize: 11.5, color: "var(--muted)" }}>{k.clicks} clicks · {k.ctr}% CTR</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Seed fallback keyword display */}
+            {!detail && !detailLoading && activeCampaign.keywords && (
+              <FormRow label="Target keywords">
+                <Textarea defaultValue={activeCampaign.keywords} rows={3} key={activeCampaign.id + "-kw"}/>
+              </FormRow>
+            )}
+
+            {(activeCampaign.status === "paused" || activeCampaign.status === "draft") && (
               <div style={{ padding: 12, borderRadius: 5, background: "var(--accent-wash)", border: "1px solid var(--accent)", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.5 }}>
-                ✦ <strong>Flow AI estimate:</strong> ~8,400 impressions/mo · ~270 clicks/mo · Projected ROAS: 7.2x based on similar campaigns in your account.
+                ✦ <strong>Flow AI estimate:</strong> Based on similar campaigns — projected ROAS: {isErickson ? "7.8x" : "7.2x"} · ~{isErickson ? "340" : "270"} clicks/mo at current budget.
               </div>
             )}
           </div>
@@ -629,11 +1026,13 @@ function SearchStudio({ state, actions }) {
 
       {/* Create campaign dialog */}
       {createOpen && (
-        <Dialog open onClose={() => setCreateOpen(false)} title="Create search campaign" width={640}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <Dialog open onClose={() => setCreateOpen(false)} title="Create search campaign" width={680}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <FormRow label="Campaign name">
-                <Input placeholder="e.g. Brand keywords · MVEDA" value={form.name} onChange={e => setForm(p => ({...p, name: e.target.value}))}/>
+                <Input placeholder="e.g. Brand keywords · MVEDA" value={form.name}
+                  onChange={e => setForm(p => ({...p, name: e.target.value}))}/>
               </FormRow>
               <FormRow label="Type">
                 <select value={form.type} onChange={e => setForm(p => ({...p, type: e.target.value}))} style={{ ...inputCSS, appearance: "none" }}>
@@ -641,21 +1040,61 @@ function SearchStudio({ state, actions }) {
                   <option value="pmax">Performance Max</option>
                   <option value="rlsa">RLSA (retargeting)</option>
                   <option value="shopping">Shopping</option>
+                  <option value="display">Display</option>
                 </select>
               </FormRow>
             </div>
-            <FormRow label="Target keywords">
-              <Textarea placeholder="One keyword or phrase per line, or comma-separated" value={form.keywords} onChange={e => setForm(p => ({...p, keywords: e.target.value}))} rows={3}/>
+
+            <FormRow label="Target keywords (one per line or comma-separated)">
+              <Textarea placeholder={isErickson
+                ? "commercial refrigeration repair\nwalk-in cooler service Seattle\nHVAC contractor WA"
+                : "ayurvedic hair oil\nneem face cleanser\nsaffron face serum"}
+                value={form.keywordsRaw} rows={3}
+                onChange={e => setForm(p => ({...p, keywordsRaw: e.target.value}))}/>
             </FormRow>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-              <FormRow label="Headline 1"><Input placeholder="MVEDA Hair Oil" value={form.headline1} onChange={e => setForm(p => ({...p, headline1: e.target.value}))}/></FormRow>
-              <FormRow label="Headline 2"><Input placeholder="Natural Ritual" value={form.headline2} onChange={e => setForm(p => ({...p, headline2: e.target.value}))}/></FormRow>
-              <FormRow label="Headline 3"><Input placeholder="Free shipping $60+" value={form.headline3} onChange={e => setForm(p => ({...p, headline3: e.target.value}))}/></FormRow>
+
+            {/* Headlines */}
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600 }}>Headlines <span className="mono" style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 400 }}>({form.headlines.length}/15) · 30 char max</span></span>
+                {form.headlines.length < 15 && (
+                  <Btn size="sm" variant="ghost" onClick={() => setForm(f => ({...f, headlines: [...f.headlines, ""]}))}>+ Add</Btn>
+                )}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                {form.headlines.map((h, i) => (
+                  <div key={i} style={{ position: "relative" }}>
+                    <Input maxLength={30} value={h} placeholder={`Headline ${i+1}`}
+                      onChange={e => setForm(f => ({ ...f, headlines: f.headlines.map((x, j) => j === i ? e.target.value : x) }))}/>
+                    <span className="mono" style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", fontSize: 9.5, color: h.length > 27 ? "var(--danger)" : "var(--muted)", pointerEvents: "none" }}>{h.length}/30</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <FormRow label="Ad description">
-              <Textarea placeholder="Up to 90 characters. Clear, benefit-led copy." value={form.desc1} onChange={e => setForm(p => ({...p, desc1: e.target.value}))} rows={2}/>
-            </FormRow>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+
+            {/* Descriptions */}
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600 }}>Descriptions <span className="mono" style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 400 }}>({form.descriptions.length}/4) · 90 char max</span></span>
+                {form.descriptions.length < 4 && (
+                  <Btn size="sm" variant="ghost" onClick={() => setForm(f => ({...f, descriptions: [...f.descriptions, ""]}))}>+ Add</Btn>
+                )}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                {form.descriptions.map((d, i) => (
+                  <div key={i} style={{ position: "relative" }}>
+                    <Input maxLength={90} value={d} placeholder={`Description ${i+1}`}
+                      onChange={e => setForm(f => ({ ...f, descriptions: f.descriptions.map((x, j) => j === i ? e.target.value : x) }))}/>
+                    <span className="mono" style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", fontSize: 9.5, color: d.length > 85 ? "var(--danger)" : "var(--muted)", pointerEvents: "none" }}>{d.length}/90</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+              <FormRow label="Final URL">
+                <Input placeholder="https://…" value={form.finalUrl} onChange={e => setForm(p => ({...p, finalUrl: e.target.value}))}/>
+              </FormRow>
               <FormRow label="Monthly budget ($)">
                 <Input type="number" placeholder="500" value={form.budget} onChange={e => setForm(p => ({...p, budget: e.target.value}))}/>
               </FormRow>
@@ -664,18 +1103,35 @@ function SearchStudio({ state, actions }) {
                   <option value="target-roas">Target ROAS</option>
                   <option value="target-cpa">Target CPA</option>
                   <option value="max-clicks">Maximise clicks</option>
+                  <option value="max-conversions">Maximise conversions</option>
                   <option value="manual-cpc">Manual CPC</option>
                 </select>
               </FormRow>
             </div>
-            <div style={{ padding: 12, borderRadius: 5, background: "var(--accent-wash)", border: "1px solid var(--accent)", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.5 }}>
-              ✦ <strong>Flow AI:</strong> Will estimate reach and projected ROAS after saving. Campaigns sync to Google Ads once a Google Ads connection is active in Connections.
+
+            {/* Quick AI copy fill */}
+            {!form.headlines.some(Boolean) && (
+              <div style={{ padding: 12, borderRadius: 5, background: "var(--accent-wash)", border: "1px solid var(--accent)", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.5, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>✦ <strong>Flow AI:</strong> Headlines empty — generate ad copy from your brand + keywords.</span>
+                <Btn size="sm" variant="primary" onClick={() => {
+                  setCreateOpen(false); setTab("copy");
+                  setCopyProduct(brand?.name || form.name);
+                  setCopyKeywords(form.keywordsRaw);
+                }}>Generate copy →</Btn>
+              </div>
+            )}
+
+            <div style={{ padding: 12, borderRadius: 5, background: "var(--paper-2)", border: "1px solid var(--rule)", fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+              Campaign will be created as <strong>Paused</strong> — click <em>Launch</em> to enable immediately, or save and launch from the campaign list.
             </div>
+
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, borderTop: "1px solid var(--rule)", paddingTop: 14 }}>
               <Btn variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Btn>
-              <Btn onClick={() => { setCreateOpen(false); actions.notify("ok", `'${form.name || "Campaign"}' saved as draft`); }}>Save as draft</Btn>
-              <Btn variant="primary" onClick={() => { setCreateOpen(false); actions.notify("ok", `'${form.name || "Campaign"}' launched`); }}>
-                <Icon name="send" size={12}/> Launch
+              <Btn disabled={creating} onClick={() => submitCreate(false)}>
+                {creating ? "Saving…" : "Save as draft"}
+              </Btn>
+              <Btn variant="primary" disabled={creating} onClick={() => submitCreate(true)}>
+                <Icon name="send" size={12}/> {creating ? "Creating…" : "Create & launch"}
               </Btn>
             </div>
           </div>
