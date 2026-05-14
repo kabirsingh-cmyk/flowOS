@@ -141,11 +141,300 @@ function DraftCreatedCard({ artifact, onOpen }) {
   );
 }
 
+function EmailDraftCard({ artifact, onOpen }) {
+  // Local push state mirrors what's in store, but the card renders standalone
+  // (artifact lives on a thread message — store row is created on push click).
+  const [pushState, setPushState] = useStateChat({ status: "idle", url: null, audience: null, error: null });
+  const accent = PLATFORM_ACCENT.email;
+
+  const handlePush = () => {
+    if (pushState.status === "pushing" || pushState.status === "ok") return;
+    setPushState({ status: "pushing", url: null, audience: null, error: null });
+    onOpen({
+      kind: "push_klaviyo",
+      data: artifact,
+      onResult: (res) => {
+        if (res?.ok) {
+          setPushState({ status: "ok", url: res.klaviyoUrl, audience: res.audience, error: null });
+        } else {
+          setPushState({ status: "failed", url: null, audience: null, error: res?.error || "push failed" });
+        }
+      },
+    });
+  };
+
+  return (
+    <div data-testid="email-draft-card" style={{
+      marginTop: 10,
+      border: "1px solid var(--rule-strong)",
+      borderRadius: 6,
+      background: "var(--paper)",
+      overflow: "hidden",
+    }}>
+      {/* Header */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "9px 12px",
+        borderBottom: "1px solid var(--rule)",
+        background: "var(--paper-2)",
+      }}>
+        <Icon name="mail" size={12}/>
+        <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", flex: 1 }}>
+          Email · draft
+        </span>
+        <Chip tone="accent">klaviyo</Chip>
+      </div>
+
+      {/* Subject + preheader */}
+      <div style={{
+        padding: "12px 14px 4px 17px",
+        borderLeft: `3px solid ${accent}`,
+      }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", lineHeight: 1.35 }}>{artifact.subject}</div>
+        {artifact.preheader && (
+          <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 3, lineHeight: 1.5 }}>{artifact.preheader}</div>
+        )}
+      </div>
+
+      {/* Body preview */}
+      <div style={{
+        padding: "8px 14px 12px 17px",
+        borderLeft: `3px solid ${accent}`,
+        fontSize: 12.5, lineHeight: 1.65,
+        color: "var(--ink-2)",
+        whiteSpace: "pre-wrap",
+        maxHeight: 180, overflow: "hidden",
+        position: "relative",
+      }}>
+        {artifact.body}
+      </div>
+
+      {/* Audience hint (if present) */}
+      {artifact.audienceHint && (
+        <div style={{
+          margin: "0 12px 10px",
+          padding: "7px 10px",
+          background: "var(--paper-3)",
+          borderRadius: 4,
+          fontSize: 11.5,
+          color: "var(--muted)",
+          lineHeight: 1.5,
+        }}>
+          <span style={{ fontWeight: 600, color: "var(--ink-2)" }}>Audience · </span>
+          {artifact.audienceHint}
+        </div>
+      )}
+
+      {/* Actions / status */}
+      <div style={{
+        padding: "10px 12px",
+        borderTop: "1px solid var(--rule)",
+        display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap",
+      }}>
+        {pushState.status === "idle" && (
+          <Btn size="sm" variant="primary" data-testid="push-klaviyo" onClick={handlePush}>
+            <Icon name="send" size={11}/> Push to Klaviyo
+          </Btn>
+        )}
+        {pushState.status === "pushing" && (
+          <span style={{ fontSize: 11.5, color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>
+            <Dot status="warn"/> Creating template + campaign in Klaviyo…
+          </span>
+        )}
+        {pushState.status === "ok" && (
+          <>
+            <span style={{ fontSize: 11.5, color: "var(--success)", fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}>
+              <Icon name="check" size={11}/> Draft created in Klaviyo
+              {pushState.audience?.name && (
+                <span style={{ color: "var(--muted)", fontWeight: 400 }}>
+                  · {pushState.audience.name}{pushState.audience.fallback ? " (fallback)" : ""}
+                </span>
+              )}
+            </span>
+            {pushState.url && (
+              <a href={pushState.url} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: "var(--accent-ink)", textDecoration: "underline" }}>
+                Open in Klaviyo →
+              </a>
+            )}
+            <Btn size="sm" variant="ghost" onClick={() => onOpen({ kind: "open_emailstudio" })}>
+              View in Email Studio
+            </Btn>
+          </>
+        )}
+        {pushState.status === "failed" && (
+          <>
+            <span style={{ fontSize: 11.5, color: "oklch(48% 0.16 25)", display: "flex", alignItems: "center", gap: 5 }}>
+              <Icon name="x" size={11}/> Push failed
+              {pushState.error && <span style={{ color: "var(--muted)" }}>· {pushState.error}</span>}
+            </span>
+            <Btn size="sm" onClick={handlePush}>Retry</Btn>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SmsDraftCard({ artifact, onOpen }) {
+  const [pushState, setPushState] = useStateChat({ status: "idle", url: null, audience: null, warnings: null, error: null });
+  const accent = PLATFORM_ACCENT.sms;
+
+  const length = (artifact.body || "").length;
+  const overLimit = length > 160;
+  const hasStop = /stop/i.test(artifact.body || "");
+  const hasEmoji = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(artifact.body || "");
+
+  const handlePush = () => {
+    if (pushState.status === "pushing" || pushState.status === "ok") return;
+    setPushState({ status: "pushing", url: null, audience: null, warnings: null, error: null });
+    onOpen({
+      kind: "push_klaviyo_sms",
+      data: artifact,
+      onResult: (res) => {
+        if (res?.ok) {
+          setPushState({ status: "ok", url: res.klaviyoUrl, audience: res.audience, warnings: res.warnings || null, error: null });
+        } else {
+          setPushState({ status: "failed", url: null, audience: null, warnings: null, error: res?.error || "push failed" });
+        }
+      },
+    });
+  };
+
+  return (
+    <div data-testid="sms-draft-card" style={{
+      marginTop: 10,
+      border: "1px solid var(--rule-strong)",
+      borderRadius: 6,
+      background: "var(--paper)",
+      overflow: "hidden",
+    }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "9px 12px",
+        borderBottom: "1px solid var(--rule)",
+        background: "var(--paper-2)",
+      }}>
+        <Icon name="flash" size={12}/>
+        <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", flex: 1 }}>
+          SMS · draft
+        </span>
+        <Chip tone="accent">klaviyo sms</Chip>
+      </div>
+
+      {/* Body */}
+      <div style={{
+        padding: "12px 14px 6px 17px",
+        borderLeft: `3px solid ${accent}`,
+        fontSize: 13.5, lineHeight: 1.55,
+        color: "var(--ink)",
+        whiteSpace: "pre-wrap",
+      }}>
+        {artifact.body}
+      </div>
+
+      {/* Char counter + warnings */}
+      <div style={{
+        padding: "4px 14px 10px 17px",
+        borderLeft: `3px solid ${accent}`,
+        display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
+      }}>
+        <span className="mono" style={{
+          fontSize: 10.5,
+          color: overLimit ? "oklch(48% 0.16 25)" : length > 140 ? "oklch(58% 0.14 70)" : "var(--muted)",
+          fontWeight: overLimit ? 600 : 400,
+        }}>
+          {length} / 160
+        </span>
+        {!hasStop && (
+          <span style={{ fontSize: 10.5, color: "oklch(58% 0.14 70)" }}>
+            ⚠ No STOP — verify with brand
+          </span>
+        )}
+        {hasEmoji && (
+          <span style={{ fontSize: 10.5, color: "oklch(58% 0.14 70)" }}>
+            ⚠ Emoji halves char budget (70 cap)
+          </span>
+        )}
+      </div>
+
+      {artifact.audienceHint && (
+        <div style={{
+          margin: "0 12px 10px",
+          padding: "7px 10px",
+          background: "var(--paper-3)",
+          borderRadius: 4,
+          fontSize: 11.5,
+          color: "var(--muted)",
+          lineHeight: 1.5,
+        }}>
+          <span style={{ fontWeight: 600, color: "var(--ink-2)" }}>Audience · </span>
+          {artifact.audienceHint}
+        </div>
+      )}
+
+      <div style={{
+        padding: "10px 12px",
+        borderTop: "1px solid var(--rule)",
+        display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap",
+      }}>
+        {pushState.status === "idle" && (
+          <Btn size="sm" variant="primary" data-testid="push-klaviyo-sms" onClick={handlePush} disabled={overLimit}>
+            <Icon name="send" size={11}/> Push to Klaviyo SMS
+          </Btn>
+        )}
+        {pushState.status === "pushing" && (
+          <span style={{ fontSize: 11.5, color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>
+            <Dot status="warn"/> Creating draft SMS campaign in Klaviyo…
+          </span>
+        )}
+        {pushState.status === "ok" && (
+          <>
+            <span style={{ fontSize: 11.5, color: "var(--success)", fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}>
+              <Icon name="check" size={11}/> Draft SMS created in Klaviyo
+              {pushState.audience?.name && (
+                <span style={{ color: "var(--muted)", fontWeight: 400 }}>
+                  · {pushState.audience.name}{pushState.audience.fallback ? " (fallback)" : ""}
+                </span>
+              )}
+            </span>
+            {pushState.url && (
+              <a href={pushState.url} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: "var(--accent-ink)", textDecoration: "underline" }}>
+                Open in Klaviyo →
+              </a>
+            )}
+            <Btn size="sm" variant="ghost" onClick={() => onOpen({ kind: "open_smscenter" })}>
+              View in SMS Center
+            </Btn>
+          </>
+        )}
+        {pushState.status === "failed" && (
+          <>
+            <span style={{ fontSize: 11.5, color: "oklch(48% 0.16 25)", display: "flex", alignItems: "center", gap: 5 }}>
+              <Icon name="x" size={11}/> Push failed
+              {pushState.error && <span style={{ color: "var(--muted)" }}>· {pushState.error}</span>}
+            </span>
+            <Btn size="sm" onClick={handlePush}>Retry</Btn>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ArtifactCard({ artifact, onOpen }) {
   if (!artifact) return null;
   const t = artifact.type;
 
+  if (t === "email_draft") {
+    return <EmailDraftCard artifact={artifact} onOpen={onOpen}/>;
+  }
+
+  if (t === "sms_draft") {
+    return <SmsDraftCard artifact={artifact} onOpen={onOpen}/>;
+  }
+
   if (t === "email") {
+    // Legacy seeded artifact shape — passive preview, opens in canvas.
     return (
       <button onClick={() => onOpen({ kind: "email", data: artifact })}
         style={{

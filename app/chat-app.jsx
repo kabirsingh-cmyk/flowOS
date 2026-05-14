@@ -816,6 +816,19 @@ function ChatOSAuthed({ auth, onLogout }) {
       });
   }, [auth?.id]);
 
+  // ── Load persisted proactive email drafts (flavor #1) on auth ────────────────
+  useEffectApp(() => {
+    if (!auth?.id) return;
+    fetch(`/api/proactive-emails?tenantId=${encodeURIComponent(auth.id)}`)
+      .then(r => r.ok ? r.json() : null)
+      .catch(() => null)
+      .then(data => {
+        if (data?.ok && Array.isArray(data.drafts) && data.drafts.length > 0) {
+          actions.loadProactiveEmails(data.drafts);
+        }
+      });
+  }, [auth?.id]);
+
   const channel = CHANNELS.find(c => c.id === chat.activeChannel) || CHANNELS[0];
   const messages = chat.threads[channel.id] || [];
 
@@ -915,6 +928,113 @@ function ChatOSAuthed({ auth, onLogout }) {
     }
     if (args.kind === "open_queue") {
       openWorkspace("publish");
+      return;
+    }
+    if (args.kind === "open_emailstudio") {
+      openWorkspace("emailstudio");
+      return;
+    }
+    if (args.kind === "open_smscenter") {
+      openWorkspace("sms");
+      return;
+    }
+    if (args.kind === "push_klaviyo_sms") {
+      const d = args.data;
+      const smsId = "os_" + Math.random().toString(36).slice(2, 8);
+      actions.addOutboundSms({
+        id:           smsId,
+        body:         d.body,
+        audienceHint: d.audienceHint,
+        status:       "pushing",
+      });
+
+      fetch("/api/klaviyo", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          action:            "create_draft_sms",
+          tenantId:          auth?.id,
+          body:              d.body,
+          audienceHint:      d.audienceHint,
+          campaignName:      d.campaignName,
+          includeStopFooter: !!d.includeStopFooter,
+        }),
+      })
+        .then(r => r.json())
+        .then(res => {
+          if (res?.ok) {
+            actions.updateOutboundSms(smsId, {
+              status:            "klaviyo_draft",
+              body:              res.body || d.body,
+              klaviyoCampaignId: res.campaignId,
+              klaviyoMessageId:  res.messageId,
+              klaviyoUrl:        res.klaviyoUrl,
+              audience:          res.audience,
+              warnings:          res.warnings || {},
+            }, { notify: { tone: "ok", text: `SMS pushed to Klaviyo · ${res.audience?.name || "draft"}` } });
+            args.onResult?.(res);
+          } else {
+            const err = res?.error || "unknown error";
+            actions.updateOutboundSms(smsId, { status: "failed", error: err },
+              { notify: { tone: "warn", text: `Klaviyo SMS push failed: ${err}` } });
+            args.onResult?.({ ok: false, error: err });
+          }
+        })
+        .catch(e => {
+          actions.updateOutboundSms(smsId, { status: "failed", error: e.message },
+            { notify: { tone: "warn", text: `Klaviyo SMS push failed: ${e.message}` } });
+          args.onResult?.({ ok: false, error: e.message });
+        });
+      return;
+    }
+    if (args.kind === "push_klaviyo") {
+      const d = args.data;
+      const emailId = "oe_" + Math.random().toString(36).slice(2, 8);
+      actions.addOutboundEmail({
+        id:           emailId,
+        subject:      d.subject,
+        preheader:    d.preheader,
+        bodyText:     d.body,
+        audienceHint: d.audienceHint,
+        status:       "pushing",
+      });
+
+      fetch("/api/klaviyo", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          action:       "create_draft_campaign",
+          tenantId:     auth?.id,
+          subject:      d.subject,
+          preheader:    d.preheader,
+          bodyText:     d.body,
+          audienceHint: d.audienceHint,
+        }),
+      })
+        .then(r => r.json())
+        .then(res => {
+          if (res?.ok) {
+            actions.updateOutboundEmail(emailId, {
+              status:            "klaviyo_draft",
+              klaviyoTemplateId: res.templateId,
+              klaviyoCampaignId: res.campaignId,
+              klaviyoMessageId:  res.messageId,
+              klaviyoUrl:        res.klaviyoUrl,
+              audience:          res.audience,
+            }, { notify: { tone: "ok", text: `Email pushed to Klaviyo · ${res.audience?.name || "draft"}` } });
+            args.onResult?.(res);
+          } else {
+            const err = res?.error || "unknown error";
+            actions.updateOutboundEmail(emailId, { status: "failed", error: err },
+              { notify: { tone: "warn", text: `Klaviyo push failed: ${err}` } });
+            args.onResult?.({ ok: false, error: err });
+          }
+        })
+        .catch(e => {
+          actions.updateOutboundEmail(emailId, { status: "failed", error: e.message },
+            { notify: { tone: "warn", text: `Klaviyo push failed: ${e.message}` } });
+          args.onResult?.({ ok: false, error: e.message });
+        });
       return;
     }
     openCanvas(args);
