@@ -4,18 +4,23 @@ Items here are scoped, parked for future development, and not yet prioritised in
 
 ---
 
-## LinkedIn — scheduled posting (Composio doesn't schedule)
+## Scheduled posting — DONE (2026-05-14)
 
-**Status:** Deferred · added 2026-05-14
-**Priority:** Medium — UI is wired, just no scheduler firing
+**Status:** Shipped — platform-agnostic queue, fires for linkedin/facebook/x/instagram/reddit
+**Approach taken:** Option 1 — Vercel Cron + Supabase queue
 
-### What's broken
-Composio's `LINKEDIN_CREATE_LINKED_IN_POST` only supports `lifecycleState: "PUBLISHED"` (publish-now). Real scheduling needs our own job system. Today, clicking **Schedule** on a LinkedIn draft just flips the row to `status: "scheduled"` in local state and toasts a warning — nothing fires later.
+### What was built
+- `scheduled_posts` table (`db/migrations/005_scheduled_posts.sql`) with snapshot `payload` jsonb, status lifecycle `pending → publishing → published|failed|cancelled`, and a unique partial index that prevents double-queueing the same calendar item.
+- `claim_due_scheduled_posts(limit_n)` plpgsql RPC — atomic claim with `FOR UPDATE SKIP LOCKED`. Same row cannot be picked twice across concurrent cron runs.
+- `/api/scheduled-posts` — `create` / `list` / `cancel`.
+- `/api/cron/fire-scheduled` at `* * * * *` — claims, POSTs `${origin}/api/<platform>` with `{ ...payload, action: "publish_now", tenantId }`, PATCHes the row terminal.
+- `handleSchedule` in `app/workspaces3.jsx` now writes to `scheduled_posts` via `PLATFORM_PUBLISHERS[platform].buildPayload(...)`. Drawer takes absolute date + time (not day-of-week).
+- `PublishingQueue` hydrates from the table on mount — pending → calendar status `scheduled`, published → `sent` with platform-specific postId/postUrl applied.
 
-### Options to revisit
-1. **Vercel Cron + Supabase queue** (recommended) — write `scheduled_posts` table with `tenant_id, item_id, platform, fire_at, payload`. A 1-min cron polls `fire_at <= now()`, fires the matching `/api/<platform>` publish_now, patches the calendar row. Same shape will serve every other platform once wired.
-2. **LinkedIn native scheduling** — LinkedIn Marketing Platform supports scheduled posts on company pages via the Posts API directly (not personal). Composio doesn't currently expose this; we'd hit LinkedIn REST ourselves with the OAuth token Composio holds (or run our own OAuth).
-3. **Hand off to a scheduler vendor** — Buffer/Hootsuite/etc. have proper queues. Costs a connector + an account; trades control for time-to-ship.
+### Known constraints
+- 1-min cron requires Vercel **Pro**. Hobby rejects sub-daily crons at deploy. Confirm tier before deploying — if Hobby, swap to an external trigger (GitHub Actions calling the endpoint with `Bearer ${CRON_SECRET}`).
+- `payload` is a snapshot at Schedule time. Editing the calendar row body/image after scheduling does NOT change what fires — reschedule is `cancel` + new Schedule. No UI surface for this yet; users will be surprised. **Next**: add an "Unschedule" button in the drawer and a "this was edited after scheduling — re-Schedule?" warn when `body !== payload.text`.
+- v1 is fail-loud — no retries. Failed rows surface as `publishStatus: "failed"` on the calendar row with `last_error`. Add backoff if it bites.
 
 ---
 
