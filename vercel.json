@@ -8,6 +8,10 @@
     {
       "path":     "/api/cron/proactive-drafts",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path":     "/api/cron/fire-scheduled",
+      "schedule": "* * * * *"
     }
   ]
 }
