@@ -243,10 +243,275 @@ async function higgsfieldModelsExplore({ subAction, query, modelId }) {
   return res.json();
 }
 
+// ─── Runware adapter ──────────────────────────────────────────────────────────
+//
+// Runware is a synchronous task API. A single POST to /v1 with an array of
+// task objects returns the result inline — no polling. We map this onto the
+// router's job model by treating each taskUUID as the providerJobId and
+// returning the imageURL alongside, so the caller can persist it as
+// "completed" immediately.
+//
+// Auth: Bearer RUNWARE_API_KEY.
+// Models are AIR identifiers (e.g. "runware:101@1", "civitai:101055@128078").
+
+const RUNWARE_BASE = 'https://api.runware.ai/v1';
+
+function runwareHeaders() {
+  const key = process.env.RUNWARE_API_KEY;
+  if (!key) throw new Error('RUNWARE_API_KEY env var is not set');
+  return {
+    'Authorization': `Bearer ${key}`,
+    'Content-Type':  'application/json',
+  };
+}
+
+function uuidv4() {
+  // RFC4122 v4, edge-runtime friendly (no node:crypto import)
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+// Map aspect ratio + resolution token → { width, height }
+// Runware requires explicit pixel dims, multiples of 64, 512–2048.
+function dimsFor(aspectRatio = '1:1', resolution = '1k') {
+  const long = resolution === '2k' ? 1536 : resolution === '0.5k' ? 768 : 1024;
+  const ratios = {
+    '1:1':  [long, long],
+    '4:5':  [Math.round(long * 4 / 5), long],
+    '9:16': [Math.round(long * 9 / 16), long],
+    '16:9': [long, Math.round(long * 9 / 16)],
+    '3:4':  [Math.round(long * 3 / 4), long],
+    '4:3':  [long, Math.round(long * 3 / 4)],
+    '2:3':  [Math.round(long * 2 / 3), long],
+    '3:2':  [long, Math.round(long * 2 / 3)],
+  };
+  const [w, h] = ratios[aspectRatio] || ratios['1:1'];
+  const snap = n => Math.max(512, Math.min(2048, Math.round(n / 64) * 64));
+  return { width: snap(w), height: snap(h) };
+}
+
+async function runwarePost(tasks) {
+  const res = await fetch(RUNWARE_BASE, {
+    method:  'POST',
+    headers: runwareHeaders(),
+    body:    JSON.stringify(tasks),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Runware request failed (${res.status}): ${text}`);
+  }
+  const data = await res.json();
+  // Runware returns { data: [...], errors?: [...] }
+  if (data.errors && data.errors.length) {
+    const first = data.errors[0];
+    throw new Error(`Runware error: ${first.message || JSON.stringify(first)}`);
+  }
+  return data.data || [];
+}
+
+/**
+ * Upload a reference image to Runware. Returns the imageUUID, which can be
+ * passed as `referenceMediaId` to generate_image (used as seedImage / reference).
+ */
+async function runwareUploadReference({ bytes, contentType }) {
+  // Runware imageUpload accepts a data URI in the `image` field.
+  // Convert bytes → base64 → data URI.
+  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  let binary = '';
+  for (let i = 0; i < u8.length; i++) binary += String.fromCharCode(u8[i]);
+  const b64 = btoa(binary);
+  const dataUri = `data:${contentType || 'image/jpeg'};base64,${b64}`;
+
+  const task = {
+    taskType: 'imageUpload',
+    taskUUID: uuidv4(),
+    image:    dataUri,
+  };
+  const results = await runwarePost([task]);
+  const r = results[0];
+  if (!r?.imageUUID) throw new Error('Runware imageUpload returned no imageUUID');
+  return { mediaId: r.imageUUID, expiresAt: null };
+}
+
+/**
+ * Submit a Runware image generation job. Synchronous — returns URL inline.
+ *
+ * @returns {{ providerJobId, status, rawUrl, thumbnailUrl }}
+ */
+async function runwareGenerateImage({ model, prompt, negative, aspectRatio, resolution, referenceMediaId }) {
+  const { width, height } = dimsFor(aspectRatio, resolution);
+  const taskUUID = uuidv4();
+
+  const task = {
+    taskType:        'imageInference',
+    taskUUID,
+    positivePrompt:  prompt,
+    negativePrompt:  negative || '',
+    model:           model || 'runware:101@1',
+    width,
+    height,
+    numberResults:   1,
+    outputFormat:    'JPEG',
+    outputType:      'URL',
+    includeCost:     false,
+    checkNSFW:       true,
+  };
+  if (referenceMediaId) {
+    task.seedImage = referenceMediaId;
+    // When seeding from an upload, strength controls how closely the output
+    // adheres to the reference. 0.7 keeps strong product fidelity while
+    // letting the scene prompt drive the surroundings.
+    task.strength = 0.7;
+  }
+
+  const results = await runwarePost([task]);
+  const r = results[0];
+  if (!r) throw new Error('Runware returned no result');
+
+  // Treat NSFW flag as a terminal content-policy failure to mirror Higgsfield.
+  if (r.NSFWContent === true) {
+    return {
+      providerJobId: r.taskUUID || taskUUID,
+      status:        'failed_content_policy',
+      rawUrl:        null,
+      thumbnailUrl:  null,
+    };
+  }
+
+  return {
+    providerJobId: r.taskUUID || taskUUID,
+    status:        'completed',
+    rawUrl:        r.imageURL || null,
+    thumbnailUrl:  r.imageURL || null,
+  };
+}
+
+/**
+ * Submit a Runware video generation job.
+ *
+ * Video on Runware is async for most models (Kling, Veo, Seedance, Wan, …) —
+ * the initial POST returns a taskUUID and we poll via getResponse. Some short
+ * jobs may come back terminal in the first response; we honour either shape.
+ *
+ * For image-to-video, pass a prior imageUUID (from upload_reference or a
+ * completed image generation) as `startImageJobId` — we forward it in
+ * `frameImages` so the model uses it as the start frame.
+ *
+ * @returns {{ providerJobId, status, rawUrl?, thumbnailUrl? }}
+ */
+async function runwareGenerateVideo({ model, prompt, negative, aspectRatio, duration, startImageJobId }) {
+  // Video models often have stricter resolution rules; default to a sensible
+  // base and let the model clamp. 1024 long side works across Kling / Veo.
+  const { width, height } = dimsFor(aspectRatio || '9:16', '1k');
+  const taskUUID = uuidv4();
+
+  const task = {
+    taskType:        'videoInference',
+    taskUUID,
+    positivePrompt:  prompt,
+    negativePrompt:  negative || '',
+    model:           model,
+    width,
+    height,
+    duration:        duration || 5,
+    numberResults:   1,
+    outputFormat:    'MP4',
+    outputType:      'URL',
+    checkNSFW:       true,
+  };
+  if (startImageJobId) {
+    // Runware accepts a previously-uploaded imageUUID or a public URL.
+    task.frameImages = [{ inputImage: startImageJobId }];
+  }
+
+  const results = await runwarePost([task]);
+  const r = results[0];
+  if (!r) throw new Error('Runware returned no result');
+
+  if (r.NSFWContent === true) {
+    return {
+      providerJobId: r.taskUUID || taskUUID,
+      status:        'failed_content_policy',
+      rawUrl:        null,
+      thumbnailUrl:  null,
+    };
+  }
+
+  // Terminal in the first response — short / sync model
+  const url = r.videoURL || r.videoUrl || null;
+  if (url) {
+    return {
+      providerJobId: r.taskUUID || taskUUID,
+      status:        'completed',
+      rawUrl:        url,
+      thumbnailUrl:  r.thumbnailURL || r.thumbnailUrl || null,
+    };
+  }
+
+  // Async — caller will poll via jobStatus('runware', [taskUUID])
+  return {
+    providerJobId: r.taskUUID || taskUUID,
+    status:        'pending',
+    rawUrl:        null,
+    thumbnailUrl:  null,
+  };
+}
+
+/**
+ * Poll Runware for one or many task UUIDs via the getResponse task.
+ *
+ * Returns one entry per jobId with status mapped onto the router vocabulary:
+ *   completed | pending | failed | failed_content_policy
+ */
+async function runwareJobStatus(jobIds) {
+  // getResponse takes a list of taskUUIDs and returns the latest state for each.
+  const task = {
+    taskType:  'getResponse',
+    taskUUID:  uuidv4(),
+    taskUUIDs: jobIds,
+  };
+  let rows;
+  try {
+    rows = await runwarePost([task]);
+  } catch (e) {
+    // Fall back to per-jobId unknown rather than failing the whole batch
+    return jobIds.map(jobId => ({ jobId, status: 'pending', rawUrl: null, thumbnailUrl: null, error: e.message }));
+  }
+
+  const byId = new Map();
+  for (const r of rows) {
+    const id = r.taskUUID;
+    if (!id) continue;
+    if (r.NSFWContent === true) {
+      byId.set(id, { jobId: id, status: 'failed_content_policy', rawUrl: null, thumbnailUrl: null });
+      continue;
+    }
+    const url = r.videoURL || r.videoUrl || r.imageURL || null;
+    if (url) {
+      byId.set(id, {
+        jobId:        id,
+        status:       'completed',
+        rawUrl:       url,
+        thumbnailUrl: r.thumbnailURL || r.thumbnailUrl || url,
+      });
+    } else if (r.error || r.errorMessage) {
+      byId.set(id, { jobId: id, status: 'failed', rawUrl: null, thumbnailUrl: null, error: r.errorMessage || r.error });
+    } else {
+      byId.set(id, { jobId: id, status: 'pending', rawUrl: null, thumbnailUrl: null });
+    }
+  }
+
+  return jobIds.map(id => byId.get(id) || { jobId: id, status: 'pending', rawUrl: null, thumbnailUrl: null });
+}
+
 // ─── Provider dispatch ────────────────────────────────────────────────────────
 
 function requireAdapter(provider) {
-  const supported = ['higgsfield']; // runware, falai, heygen — future adapters
+  const supported = ['higgsfield', 'runware']; // falai, heygen — future adapters
   if (!supported.includes(provider)) {
     throw new Error(`Unknown provider "${provider}". Supported: ${supported.join(', ')}`);
   }
@@ -262,6 +527,7 @@ function requireAdapter(provider) {
 export async function uploadReference(provider, params) {
   requireAdapter(provider);
   if (provider === 'higgsfield') return higgsfieldUploadReference(params);
+  if (provider === 'runware')    return runwareUploadReference(params);
 }
 
 /**
@@ -285,6 +551,7 @@ export async function generateImage(provider, params) {
   }
 
   if (provider === 'higgsfield') return higgsfieldGenerateImage(params);
+  if (provider === 'runware')    return runwareGenerateImage(params);
 }
 
 /**
@@ -314,6 +581,7 @@ export async function generateVideo(provider, params) {
   }
 
   if (provider === 'higgsfield') return higgsfieldGenerateVideo(params);
+  if (provider === 'runware')    return runwareGenerateVideo(params);
 }
 
 /**
@@ -326,6 +594,7 @@ export async function generateVideo(provider, params) {
 export async function jobStatus(provider, jobIds) {
   requireAdapter(provider);
   if (provider === 'higgsfield') return higgsfieldJobStatus(jobIds);
+  if (provider === 'runware')    return runwareJobStatus(jobIds);
 }
 
 /**
@@ -338,4 +607,13 @@ export async function jobStatus(provider, jobIds) {
 export async function modelsExplore(provider, params) {
   requireAdapter(provider);
   if (provider === 'higgsfield') return higgsfieldModelsExplore(params);
+  // Runware has no public model-list endpoint; AIR IDs are documented in
+  // their model gallery. Return an empty descriptor so callers don't crash.
+  if (provider === 'runware') {
+    return {
+      provider: 'runware',
+      note:     'Runware uses AIR model identifiers (e.g. "runware:101@1"). Browse https://my.runware.ai/models for the catalog.',
+      models:   [],
+    };
+  }
 }
