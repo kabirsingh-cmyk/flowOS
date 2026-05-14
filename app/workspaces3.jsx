@@ -8,6 +8,11 @@ function PublishingQueue({ state, actions }) {
   const [editItem, setEditItem]   = useState3(null);
   const [editDraft, setEditDraft] = useState3(null); // controlled form state
   const [generating, setGenerating] = useState3(false);
+  const [author, setAuthor]         = useState3("");        // selected author URN/ID (platform-native)
+  const [resolvingAuthor, setResolvingAuthor] = useState3(false);
+  const [publishing, setPublishing] = useState3(false);
+  const [scheduling, setScheduling] = useState3(false);
+  const [redditTitle, setRedditTitle] = useState3("");      // Reddit-specific title field
 
   const handleGenerateDrafts = async () => {
     setGenerating(true);
@@ -50,15 +55,171 @@ function PublishingQueue({ state, actions }) {
   useEffect3(() => {
     if (editItem) {
       setEditDraft({
-        body:        editItem.body        || editItem.title || "",
-        imagePrompt: editItem.imagePrompt || "",
-        scheduledAt: editItem.scheduledAt || "",
-        day:         editItem.day != null ? String(editItem.day) : "",
-        campaign:    editItem.campaign    || "",
+        body:          editItem.body        || editItem.title || "",
+        imagePrompt:   editItem.imagePrompt || "",
+        scheduledAt:   editItem.scheduledAt || "",
+        scheduledDate: editItem.scheduledDate || "",
+        day:           editItem.day != null ? String(editItem.day) : "",
+        campaign:      editItem.campaign    || "",
       });
     } else {
       setEditDraft(null);
     }
+  }, [editItem?.id]);
+
+  // ── Per-platform publishing dispatch ─────────────────────────────────────
+  // Each entry describes what the drawer needs to do for that platform:
+  //   needsAuthor      — show the "Post as" selector
+  //   authorLabel      — what to call the picker (e.g. "Post as", "Subreddit")
+  //   authorFreeText   — render a text input instead of a dropdown
+  //   connectorId      — seed.connectors key holding meta.authors
+  //   resolveAction    — action string to POST to /api/<platform> when meta empty
+  //   apiPath          — endpoint to POST to
+  //   needsImage       — image is required (IG)
+  //   needsTitle       — Reddit-specific title field
+  //   buildPayload     — produces the publish_now JSON body
+  //   resultFields     — maps server response → calendar row patch
+  //   logLabel         — for activity log
+  const PLATFORM_PUBLISHERS = {
+    linkedin: {
+      needsAuthor:  true,
+      authorLabel:  "Post as",
+      authorHint:   "LinkedIn requires an author URN — defaults to your first managed page",
+      connectorId:  "li",
+      apiPath:      "/api/linkedin",
+      resolveAction:"resolve_author",
+      buildPayload: ({ tenantId, authorUrn, text, imageUrl }) => ({
+        action: "publish_now", tenantId, authorUrn, text, imageUrl,
+      }),
+      resultFields: (res, authorUrn) => ({
+        linkedinPostId:    res.postId || null,
+        linkedinUrl:       res.postUrl || null,
+        linkedinAuthorUrn: authorUrn,
+      }),
+      logLabel: "LinkedIn",
+    },
+    facebook: {
+      needsAuthor:  true,
+      authorLabel:  "Post as",
+      authorHint:   "Choose the Page to post to",
+      connectorId:  "fb",
+      apiPath:      "/api/facebook",
+      resolveAction:"resolve_pages",
+      buildPayload: ({ tenantId, authorUrn, text, imageUrl }) => ({
+        action: "publish_now", tenantId, pageId: authorUrn, text, imageUrl,
+      }),
+      resultFields: (res, authorUrn) => ({
+        facebookPostId:  res.postId || null,
+        facebookUrl:     res.postUrl || null,
+        facebookPageId:  authorUrn,
+      }),
+      logLabel: "Facebook",
+    },
+    x: {
+      needsAuthor:  false,
+      apiPath:      "/api/x",
+      buildPayload: ({ tenantId, text, imageUrl }) => ({
+        action: "publish_now", tenantId, text, imageUrl,
+      }),
+      resultFields: (res) => ({
+        xPostId: res.postId || null,
+        xUrl:    res.postUrl || null,
+      }),
+      logLabel: "X",
+    },
+    instagram: {
+      needsAuthor:  true,
+      authorLabel:  "Post as",
+      authorHint:   "Requires a Business or Creator IG account linked to a managed FB Page",
+      connectorId:  "ig",
+      apiPath:      "/api/instagram",
+      resolveAction:"resolve_accounts",
+      needsImage:   true,
+      buildPayload: ({ tenantId, authorUrn, text, imageUrl }) => ({
+        action: "publish_now", tenantId, igUserId: authorUrn, caption: text, imageUrl,
+      }),
+      resultFields: (res, authorUrn) => ({
+        instagramPostId:       res.postId || null,
+        instagramUrl:          res.postUrl || null,
+        instagramCreationId:   res.creationId || null,
+        instagramAccountId:    authorUrn,
+      }),
+      logLabel: "Instagram",
+    },
+    reddit: {
+      needsAuthor:    true,
+      authorLabel:    "Subreddit",
+      authorHint:     "Subreddit name without r/ — e.g. \"ayurveda\"",
+      authorFreeText: true,
+      connectorId:    "reddit",
+      apiPath:        "/api/reddit",
+      needsTitle:     true,
+      buildPayload:   ({ tenantId, authorUrn, text, imageUrl, title }) => ({
+        action: "publish_now", tenantId, subreddit: authorUrn, title, text, imageUrl,
+      }),
+      resultFields: (res, authorUrn) => ({
+        redditPostId:    res.postId || null,
+        redditUrl:       res.postUrl || null,
+        redditSubreddit: authorUrn,
+        ...(res.imageAsLink ? { redditImageAsLink: true } : {}),
+      }),
+      logLabel: "Reddit",
+    },
+  };
+
+  // ── Resolve author list when a publishable platform's draft is opened ────
+  useEffect3(() => {
+    if (!editItem) { setAuthor(""); setRedditTitle(""); return; }
+    const pkey = (editItem.platform || editItem.channel || "").toLowerCase();
+    const pub  = PLATFORM_PUBLISHERS[pkey];
+
+    // Seed Reddit title from any prior value on the row
+    setRedditTitle(editItem.redditTitle || "");
+
+    if (!pub || !pub.needsAuthor) { setAuthor(""); return; }
+
+    // Free-text author (Reddit) — just seed from prior value if any
+    if (pub.authorFreeText) {
+      setAuthor(editItem.redditSubreddit || "");
+      return;
+    }
+
+    const meta    = state.connectors?.[pub.connectorId]?.meta || { authors: [] };
+    const authors = meta.authors || [];
+    const pickDefault = (list) => {
+      // Prefer organization/page over person, otherwise first
+      const org = list.find(a => a.kind === "organization" || a.kind === "page" || a.kind === "ig_business");
+      return (org || list[0])?.urn || "";
+    };
+
+    if (authors.length > 0) {
+      setAuthor(pickDefault(authors));
+      return;
+    }
+
+    if (!pub.resolveAction) return; // platform has no resolve flow
+
+    setResolvingAuthor(true);
+    fetch(pub.apiPath, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ action: pub.resolveAction, tenantId: state.auth?.id }),
+    })
+      .then(r => r.json())
+      .then(res => {
+        if (res?.ok) {
+          const list = res.authors || [];
+          actions.setConnector(pub.connectorId, { meta: { authors: list } });
+          setAuthor(pickDefault(list));
+          if (list.length === 0 && pkey === "instagram") {
+            actions.notify("warn", "Instagram posting requires a Business or Creator account linked to a managed Facebook Page");
+          }
+        } else {
+          actions.notify("warn", `${pub.logLabel} author lookup failed: ${res?.error || "unknown"}`);
+        }
+      })
+      .catch(e => actions.notify("warn", `${pub.logLabel} author lookup failed: ${e.message}`))
+      .finally(() => setResolvingAuthor(false));
   }, [editItem?.id]);
 
   const DAYS  = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -197,6 +358,9 @@ function PublishingQueue({ state, actions }) {
                 const platformKey = item.platform || item.channel || "";
                 const color = CH_COLOR[platformKey] || "var(--accent)";
                 const abbr  = CH_ABBR[platformKey]  || platformKey.slice(0, 2).toUpperCase();
+                const hasImage    = item.imageStatus === "completed" && item.imageUrl;
+                const imgPending  = item.imageStatus === "pending";
+                const imgFailed   = item.imageStatus === "failed" || item.imageStatus === "failed_content_policy";
                 return (
                   <div key={item.id} data-testid="draft-item" onClick={() => setEditItem(item)} className="cell-btn"
                     style={{
@@ -204,7 +368,26 @@ function PublishingQueue({ state, actions }) {
                       border: "1px dashed var(--rule-strong)", borderRadius: 6,
                       background: "var(--paper)", cursor: "pointer", maxWidth: 260,
                     }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }}/>
+                    {hasImage ? (
+                      <img src={item.imageUrl} alt=""
+                        style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 4, flexShrink: 0, border: `1px solid ${color}` }}/>
+                    ) : imgPending ? (
+                      <div title="Generating image…" style={{
+                        width: 36, height: 36, borderRadius: 4, flexShrink: 0,
+                        background: "var(--paper-3)", border: "1px dashed var(--rule-strong)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 9, color: "var(--muted)", letterSpacing: "0.04em",
+                      }}>···</div>
+                    ) : imgFailed ? (
+                      <div title="Image generation failed" style={{
+                        width: 36, height: 36, borderRadius: 4, flexShrink: 0,
+                        background: "var(--paper-2)", border: "1px solid var(--rule)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 11, color: "oklch(48% 0.16 25)",
+                      }}>!</div>
+                    ) : (
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }}/>
+                    )}
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ fontSize: 11, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {(item.body || item.title || "").slice(0, 50)}
@@ -373,12 +556,13 @@ function PublishingQueue({ state, actions }) {
 
         const handleSave = () => {
           actions.updateItem(editItem.id, {
-            body:        editDraft.body,
-            title:       editDraft.body.slice(0, 80),
-            imagePrompt: editDraft.imagePrompt || null,
-            scheduledAt: editDraft.scheduledAt || null,
-            day:         editDraft.day !== "" ? Number(editDraft.day) : null,
-            campaign:    editDraft.campaign || null,
+            body:          editDraft.body,
+            title:         editDraft.body.slice(0, 80),
+            imagePrompt:   editDraft.imagePrompt || null,
+            scheduledAt:   editDraft.scheduledAt || null,
+            scheduledDate: editDraft.scheduledDate || null,
+            day:           editDraft.day !== "" ? Number(editDraft.day) : null,
+            campaign:      editDraft.campaign || null,
           }, {
             logEvent: `edited · '${editDraft.body.slice(0, 40)}'`,
             notify:   { tone: "ok", text: "Draft saved" },
@@ -386,28 +570,144 @@ function PublishingQueue({ state, actions }) {
           setEditItem(null);
         };
 
-        const handleSchedule = () => {
-          actions.updateItem(editItem.id, {
-            body:        editDraft.body,
-            title:       editDraft.body.slice(0, 80),
-            imagePrompt: editDraft.imagePrompt || null,
-            scheduledAt: editDraft.scheduledAt || "09:00",
-            day:         editDraft.day !== "" ? Number(editDraft.day) : 0,
-            status:      "scheduled",
-            campaign:    editDraft.campaign || null,
-          }, {
-            logEvent: `scheduled · '${editDraft.body.slice(0, 40)}'`,
-            notify:   { tone: "ok", text: `Scheduled · ${platformLabel}` },
+        const pub = PLATFORM_PUBLISHERS[platformKey];
+
+        // Compose an ISO-UTC fire timestamp from the drawer's local date+time
+        // inputs. Returns null if either field is empty or unparseable.
+        const composeFireAt = () => {
+          const date = editDraft.scheduledDate;
+          const time = editDraft.scheduledAt;
+          if (!date || !time) return null;
+          // new Date("2026-05-20T14:30") parses as local time → toISOString() UTC.
+          const d = new Date(`${date}T${time}`);
+          if (Number.isNaN(d.getTime())) return null;
+          return d.toISOString();
+        };
+
+        const handleSchedule = async () => {
+          const fireAtIso = composeFireAt();
+          if (!fireAtIso) {
+            actions.notify("warn", "Pick a date and time first");
+            return;
+          }
+          if (Date.parse(fireAtIso) <= Date.now()) {
+            actions.notify("warn", "Scheduled time must be in the future");
+            return;
+          }
+          // Derive day-of-week (Mon=0…Sun=6) for the calendar grid.
+          const jsDay = new Date(fireAtIso).getDay(); // Sun=0…Sat=6
+          const calendarDay = (jsDay + 6) % 7;        // Mon=0…Sun=6
+
+          // Platforms without a Composio publisher (email/sms/tiktok/etc.)
+          // can't actually fire — keep the legacy local-only flip so the UI
+          // still reflects the user's intent on the calendar grid.
+          if (!pub) {
+            actions.updateItem(editItem.id, {
+              body:          editDraft.body,
+              title:         editDraft.body.slice(0, 80),
+              imagePrompt:   editDraft.imagePrompt || null,
+              scheduledAt:   editDraft.scheduledAt,
+              scheduledDate: editDraft.scheduledDate,
+              day:           calendarDay,
+              status:        "scheduled",
+              campaign:      editDraft.campaign || null,
+            }, {
+              logEvent: `scheduled · '${editDraft.body.slice(0, 40)}'`,
+              notify:   { tone: "ok", text: `Scheduled · ${platformLabel}` },
+            });
+            setEditItem(null);
+            return;
+          }
+
+          // Publishable platform — validate the same preconditions handleSendNow
+          // checks. If we let a row through without an author, the cron will
+          // just fail at fire_at; better to surface the error now.
+          if (pub.needsAuthor && !author) {
+            actions.notify("warn", `${pub.logLabel} author not selected — pick one or wait for resolve to finish`);
+            return;
+          }
+          if (overLimit) {
+            actions.notify("warn", `${pub.logLabel} limit ${charLimit} chars exceeded (${charCount})`);
+            return;
+          }
+          if (pub.needsTitle && !redditTitle.trim()) {
+            actions.notify("warn", "Reddit posts require a title");
+            return;
+          }
+          const hasImage = editItem.imageStatus === "completed" && editItem.imageUrl;
+          if (pub.needsImage && !hasImage) {
+            actions.notify("warn", "Instagram requires an image — generate one or pick another platform");
+            return;
+          }
+
+          // Snapshot the publish_now payload at schedule time. Later edits to
+          // the calendar row don't change what the cron posts — that's a
+          // deliberate "schedule = commit" contract.
+          const payload = pub.buildPayload({
+            tenantId:  state.auth?.id,
+            authorUrn: author,
+            text:      editDraft.body,
+            imageUrl:  hasImage ? editItem.imageUrl : null,
+            title:     pub.needsTitle ? redditTitle.trim() : undefined,
           });
-          setEditItem(null);
+          // tenantId travels on the scheduled_posts row itself, not inside
+          // payload — strip it so the snapshot stays pure platform-body shape.
+          delete payload.tenantId;
+          // action is re-attached by the cron when it fires.
+          delete payload.action;
+
+          setScheduling(true);
+          try {
+            const res = await fetch("/api/scheduled-posts", {
+              method:  "POST",
+              headers: { "Content-Type": "application/json" },
+              body:    JSON.stringify({
+                action:   "create",
+                tenantId: state.auth?.id,
+                itemId:   editItem.id,
+                platform: platformKey,
+                fireAt:   fireAtIso,
+                payload,
+              }),
+            }).then(r => r.json());
+
+            if (!res?.ok) {
+              actions.notify("warn", `Schedule failed: ${res?.error || "unknown"}`);
+              return;
+            }
+
+            actions.updateItem(editItem.id, {
+              body:             editDraft.body,
+              title:            editDraft.body.slice(0, 80),
+              imagePrompt:      editDraft.imagePrompt || null,
+              scheduledAt:      editDraft.scheduledAt,
+              scheduledDate:    editDraft.scheduledDate,
+              day:              calendarDay,
+              status:           "scheduled",
+              campaign:         editDraft.campaign || null,
+              scheduledPostId:  res.id,
+              fireAtUtc:        res.fireAt,
+              publishStatus:    null,
+              publishError:     null,
+              ...(pub.needsTitle ? { redditTitle: redditTitle.trim() } : {}),
+            }, {
+              logEvent: `scheduled to ${pub.logLabel} · '${editDraft.body.slice(0, 40)}' · ${new Date(fireAtIso).toLocaleString()}`,
+              notify:   { tone: "ok", text: `Scheduled · ${pub.logLabel} · fires ${new Date(fireAtIso).toLocaleString()}` },
+            });
+            setEditItem(null);
+          } catch (e) {
+            actions.notify("warn", `Schedule failed: ${e.message}`);
+          } finally {
+            setScheduling(false);
+          }
         };
 
         const PLATFORM_TO_RULE = {
           instagram: "Instagram", linkedin: "LinkedIn", tiktok: "TikTok",
           facebook: "Facebook",   youtube: "YouTube",   email: "Email",
-          x: "X", twitter: "X",  pinterest: "Pinterest",
+          x: "X", twitter: "X",  pinterest: "Pinterest", reddit: "Reddit",
         };
-        const handleSendNow = () => {
+        const handleSendNow = async () => {
           // Enforce channel publish rule from Autonomy Settings
           const ruleName = PLATFORM_TO_RULE[platformKey] || editItem.channel;
           const rule     = (state.channelRules || []).find(r => r.name === ruleName);
@@ -415,6 +715,75 @@ function PublishingQueue({ state, actions }) {
             actions.notify("warn", `${ruleName || platformLabel} requires manual approval — update in Autonomy Settings`);
             return;
           }
+
+          if (pub) {
+            if (pub.needsAuthor && !author) {
+              actions.notify("warn", `${pub.logLabel} author not selected — pick one or wait for resolve to finish`);
+              return;
+            }
+            if (overLimit) {
+              actions.notify("warn", `${pub.logLabel} limit ${charLimit} chars exceeded (${charCount})`);
+              return;
+            }
+            if (pub.needsTitle && !redditTitle.trim()) {
+              actions.notify("warn", "Reddit posts require a title");
+              return;
+            }
+            const hasImage = editItem.imageStatus === "completed" && editItem.imageUrl;
+            if (pub.needsImage && !hasImage) {
+              actions.notify("warn", "Instagram requires an image — generate one or pick another platform");
+              return;
+            }
+
+            setPublishing(true);
+            actions.updateItem(editItem.id, { publishStatus: "publishing", publishError: null });
+            try {
+              const payload = pub.buildPayload({
+                tenantId:  state.auth?.id,
+                authorUrn: author,
+                text:      editDraft.body,
+                imageUrl:  hasImage ? editItem.imageUrl : null,
+                title:     pub.needsTitle ? redditTitle.trim() : undefined,
+              });
+              const res = await fetch(pub.apiPath, {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body:    JSON.stringify(payload),
+              }).then(r => r.json());
+
+              if (res?.ok) {
+                actions.updateItem(editItem.id, {
+                  body:           editDraft.body,
+                  title:          editDraft.body.slice(0, 80),
+                  status:         "sent",
+                  publishStatus:  "published",
+                  ...(pub.needsTitle ? { redditTitle: redditTitle.trim() } : {}),
+                  ...pub.resultFields(res, author),
+                }, {
+                  logEvent: `published to ${pub.logLabel} · '${editDraft.body.slice(0, 40)}'`,
+                  notify:   {
+                    tone: res.imageAsLink ? "warn" : "ok",
+                    text: res.imageAsLink
+                      ? `Published to ${pub.logLabel} as link post (Reddit doesn't support image submissions via API)`
+                      : `Published to ${pub.logLabel}${res.postUrl ? " · " + res.postUrl : ""}`,
+                  },
+                });
+                setEditItem(null);
+              } else {
+                const err = res?.error || "publish failed";
+                actions.updateItem(editItem.id, { publishStatus: "failed", publishError: err },
+                  { notify: { tone: "warn", text: `${pub.logLabel} publish failed: ${err}` } });
+              }
+            } catch (e) {
+              actions.updateItem(editItem.id, { publishStatus: "failed", publishError: e.message },
+                { notify: { tone: "warn", text: `${pub.logLabel} publish failed: ${e.message}` } });
+            } finally {
+              setPublishing(false);
+            }
+            return;
+          }
+
+          // Platforms without a Composio publisher — local-only "sent" flip
           actions.updateItem(editItem.id, {
             body:   editDraft.body,
             title:  editDraft.body.slice(0, 80),
@@ -439,14 +808,27 @@ function PublishingQueue({ state, actions }) {
               <Btn variant="danger" onClick={() => { actions.removeItem(editItem.id); setEditItem(null); }}>
                 <Icon name="x" size={12}/> Remove
               </Btn>
-              {isDraft
-                ? <Btn variant="primary" onClick={handleSchedule} disabled={!editDraft.scheduledAt || !editDraft.day}>
-                    <Icon name="calendar" size={12}/> Schedule
+              {/* Schedule (drafts). For publishable platforms this writes a
+                  row to scheduled_posts; cron fires it at fire_at. */}
+              {isDraft && (
+                <Btn variant="ghost" onClick={handleSchedule}
+                  disabled={!editDraft.scheduledAt || !editDraft.scheduledDate || publishing || scheduling}>
+                  <Icon name="calendar" size={12}/> {scheduling ? "Scheduling…" : "Schedule"}
+                </Btn>
+              )}
+              {/* Publish now — any platform with a publisher, or any non-draft */}
+              {(pub || !isDraft) && (() => {
+                const disabled = publishing
+                  || (pub && (resolvingAuthor
+                      || (pub.needsAuthor && !author)
+                      || overLimit
+                      || (pub.needsTitle && !redditTitle.trim())));
+                return (
+                  <Btn variant="primary" onClick={handleSendNow} disabled={disabled}>
+                    <Icon name="send" size={12}/> {publishing ? "Publishing…" : (pub ? "Publish now" : "Send now")}
                   </Btn>
-                : <Btn variant="primary" onClick={handleSendNow}>
-                    <Icon name="send" size={12}/> Send now
-                  </Btn>
-              }
+                );
+              })()}
             </>}
           >
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -459,7 +841,87 @@ function PublishingQueue({ state, actions }) {
                   {editItem.status}
                 </Chip>
                 {editItem.fromChat && <Chip tone="accent">from chat</Chip>}
+                {editItem.publishStatus === "published" && <Chip tone="ok">published</Chip>}
+                {editItem.publishStatus === "failed" && <Chip tone="warn">publish failed</Chip>}
               </div>
+
+              {/* Per-platform author picker (dropdown or free-text) */}
+              {pub && pub.needsAuthor && (() => {
+                const KIND_LABEL = { organization: "Page", page: "Page", person: "Personal", ig_business: "IG Business", subreddit: "Subreddit" };
+                const authors = state.connectors?.[pub.connectorId]?.meta?.authors || [];
+                if (pub.authorFreeText) {
+                  return (
+                    <FormRow label={pub.authorLabel} hint={pub.authorHint}>
+                      <Input
+                        value={author}
+                        onChange={e => setAuthor(e.target.value.replace(/^\/?r\//, "").trim())}
+                        placeholder="ayurveda"
+                      />
+                    </FormRow>
+                  );
+                }
+                return (
+                  <FormRow label={pub.authorLabel} hint={pub.authorHint}>
+                    <select
+                      value={author}
+                      disabled={resolvingAuthor || authors.length === 0}
+                      onChange={e => setAuthor(e.target.value)}
+                      style={{
+                        width: "100%", padding: "6px 8px", fontSize: 12.5,
+                        border: "1px solid var(--rule)", borderRadius: 4,
+                        background: "var(--paper-2)", color: "var(--ink)",
+                        fontFamily: "var(--font-sans)",
+                      }}
+                    >
+                      {resolvingAuthor && <option value="">resolving author…</option>}
+                      {!resolvingAuthor && authors.length === 0 && (
+                        <option value="">
+                          {platformKey === "instagram"
+                            ? "no IG Business account — link one to a managed FB Page"
+                            : "no author available — check connector"}
+                        </option>
+                      )}
+                      {authors.map(a => (
+                        <option key={a.urn} value={a.urn}>
+                          {(KIND_LABEL[a.kind] || a.kind || "Author") + " · " + (a.name || a.urn)}
+                        </option>
+                      ))}
+                    </select>
+                  </FormRow>
+                );
+              })()}
+
+              {/* Reddit — required title (separate from body) */}
+              {pub && pub.needsTitle && (
+                <FormRow label="Title" hint="Subreddits reject submissions without a title (max 300 chars)">
+                  <Input
+                    value={redditTitle}
+                    onChange={e => setRedditTitle(e.target.value.slice(0, 300))}
+                    placeholder="Post title"
+                  />
+                </FormRow>
+              )}
+
+              {/* Posted-link / error display (any platform with publisher) */}
+              {pub && (editItem.linkedinUrl || editItem.facebookUrl || editItem.xUrl || editItem.instagramUrl || editItem.redditUrl || editItem.publishError) && (
+                <div style={{ fontSize: 11.5, display: "flex", flexDirection: "column", gap: 4 }}>
+                  {(() => {
+                    const url = editItem.linkedinUrl || editItem.facebookUrl || editItem.xUrl || editItem.instagramUrl || editItem.redditUrl;
+                    if (!url) return null;
+                    return (
+                      <a href={url} target="_blank" rel="noreferrer"
+                        style={{ color: "var(--accent-ink)", textDecoration: "underline" }}>
+                        View on {pub.logLabel} ↗
+                      </a>
+                    );
+                  })()}
+                  {editItem.publishError && (
+                    <div style={{ fontSize: 11, color: "oklch(48% 0.16 25)" }}>
+                      Last error: {editItem.publishError}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Copy / Caption editor */}
               <FormRow label="Copy">
@@ -526,24 +988,16 @@ function PublishingQueue({ state, actions }) {
                 </FormRow>
               )}
 
-              {/* Schedule section */}
-              <FormRow label="Schedule">
+              {/* Schedule section — absolute date + time. Stored UTC at submit. */}
+              <FormRow label="Schedule" hint="Fires at this date/time in your local zone (stored as UTC)">
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   <div>
-                    <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 4 }}>Day</div>
-                    <select
-                      value={editDraft.day}
-                      onChange={e => setEditDraft(d => ({ ...d, day: e.target.value }))}
-                      style={{
-                        width: "100%", padding: "6px 8px", fontSize: 12.5,
-                        border: "1px solid var(--rule)", borderRadius: 4,
-                        background: "var(--paper-2)", color: "var(--ink)",
-                        fontFamily: "var(--font-sans)",
-                      }}
-                    >
-                      <option value="">— unscheduled —</option>
-                      {DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
-                    </select>
+                    <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 4 }}>Date</div>
+                    <Input
+                      type="date"
+                      value={editDraft.scheduledDate}
+                      onChange={e => setEditDraft(d => ({ ...d, scheduledDate: e.target.value }))}
+                    />
                   </div>
                   <div>
                     <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 4 }}>Time</div>

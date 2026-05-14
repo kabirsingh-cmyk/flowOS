@@ -125,7 +125,23 @@ state.brandPreset     // currently active brand object (null = default MVEDA)
 state.notifications   // toast array
 state.activity        // audit log
 state.calendar items shape:
-  { id, platform, kind, title, body, imagePrompt, status, scheduledAt, day, channel, tone, campaign, fromChat, createdAt }
+  { id, platform, kind, title, body, imagePrompt, imageUrl, imageStatus,
+    status, scheduledAt, day, channel, tone, campaign, fromChat, createdAt,
+    // After publish (per platform — only the matching set is populated):
+    publishStatus, publishError,
+    linkedinPostId,  linkedinUrl,  linkedinAuthorUrn,
+    facebookPostId,  facebookUrl,  facebookPageId,
+    xPostId,         xUrl,
+    instagramPostId, instagramUrl, instagramCreationId, instagramAccountId,
+    redditPostId,    redditUrl,    redditSubreddit, redditTitle, redditImageAsLink }
+
+  imageStatus: "none" | "pending" | "completed" | "failed" | "failed_content_policy"
+    — set on QUEUE_ADD_DRAFT based on whether imagePrompt is present
+    — patched via actions.updateItem(id, { imageUrl, imageStatus }) once
+      /api/generate returns. Rendered as a 36×36 thumbnail in the queue
+      Drafts strip and as a full preview in the draft drawer.
+  actions.addDraft(platform, contentType, copy, imagePrompt, id?) — id is
+    optional; pass one if you need to patch the row later (chat-to-create does).
 ```
 
 **Adding a new action — always touch both places:**
@@ -200,11 +216,13 @@ User sends message
 | type | What renders |
 |---|---|
 | `draft_created` | `DraftCreatedCard` — copy with platform badge, char count, "Send to queue" |
+| `email_draft` | `EmailDraftCard` — subject/preheader/body + "Push to Klaviyo" → POST `/api/klaviyo` `create_draft_campaign` |
+| `sms_draft` | `SmsDraftCard` — body + char counter, STOP-footer warning + "Push to Klaviyo SMS" → POST `/api/klaviyo` `create_draft_sms` |
 | `drafts` | Simple list preview → "Open all in canvas" |
 | `metric` | Big number card |
 | `strategy` | Channel mix bar chart |
 | `campaign-plan` | Campaign summary → opens planner |
-| `email` | Email preview → expand |
+| `email` | Email preview → expand (legacy seeded) |
 | `policy-review` | Flag list |
 | `workspace` | (handled before render — opens workspace directly) |
 
@@ -228,6 +246,8 @@ if (hasCreateVerb && hasContentNoun) { return makeDraftArtifact(t); }
 | `show_drafts` | Supervisor | Opens drafts canvas |
 | `show_metric` | Supervisor | Shows metric card |
 | `create_draft` | **Drafter** | Produces `draft_created` artifact in chat |
+| `create_email_draft` | **Drafter** | Produces `email_draft` artifact (subject/preheader/body) |
+| `create_sms_draft` | **Drafter** | Produces `sms_draft` artifact (body ≤160, audienceHint, includeStopFooter) |
 
 ---
 
@@ -261,8 +281,15 @@ All in `/api/`. All use `export const config = { runtime: "edge" }`.
 | `POST /api/brand-import` | Scrapes URL via Jina AI, sends to Claude, upserts to Supabase `brands` table. |
 | `POST /api/analytics-ingest` | Fetches analytics from connected platforms via Composio, stores snapshots. |
 | `POST /api/generate` | Image/video generation via Runware, HeyGen, Runway, etc. |
-| `POST /api/social` | Post to social platforms via Composio. |
+| `POST /api/linkedin` | LinkedIn organic posting via Composio. Actions: `resolve_author` (returns normalized `authors:[{urn,name,kind}]`, kind ∈ "person"\|"organization", caches into `state.connectors.li.meta.authors`), `publish_now` (authorUrn + text + optional imageUrl — uploads via `LINKEDIN_INITIALIZE_IMAGE_UPLOAD`, posts via `LINKEDIN_CREATE_LINKED_IN_POST`). Scheduling not yet wired — see `/BACKLOG.md`. |
+| `POST /api/facebook` | Facebook Page posting via Composio. Actions: `resolve_pages` (`FACEBOOK_LIST_MANAGED_PAGES` → `authors:[{urn:pageId,kind:"page",extra:{igUserId?}}]`), `publish_now` (pageId + text + optional imageUrl — `FACEBOOK_CREATE_PHOTO_POST` for images, else `FACEBOOK_CREATE_POST`). Page tokens are injected transparently by Composio when `page_id` is supplied. |
+| `POST /api/x` | X (Twitter) posting via Composio. Single authenticated user — no author picker. Action: `publish_now` (text ≤280 + optional imageUrl). Image flow: fetch bytes → `TWITTER_UPLOAD_MEDIA` (base64) → `TWITTER_CREATION_OF_A_POST` with `media_media_ids:[id]`. |
+| `POST /api/instagram` | Instagram Business posting via Composio. Actions: `resolve_accounts` (thin wrapper over `FACEBOOK_LIST_MANAGED_PAGES` with `fields=...,instagram_business_account` — IG accounts are reachable only via linked FB Pages), `publish_now` (igUserId + caption ≤2200 + **required** imageUrl — two-step: `INSTAGRAM_POST_IG_USER_MEDIA` → `INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH`). Personal IG accounts can't post via API; drawer surfaces a warn when `resolve_accounts` returns empty. |
+| `POST /api/reddit` | Reddit posting via Composio. Actions: `search_subreddits` (`REDDIT_GET_SUBREDDITS_SEARCH` — typeahead, since Composio exposes no `mine/*` listing), `publish_now` (subreddit + title ≤300 + text ≤40000 + optional imageUrl). **Image gap**: `REDDIT_CREATE_REDDIT_POST` doesn't support `kind:image` — when imageUrl is supplied we fall back to `kind:link` with the hosted image URL and surface `imageAsLink:true` so the drawer toasts a warn. The drawer renders subreddit as a free-text input, not a dropdown. |
+| `POST /api/klaviyo` | Klaviyo push via Composio. Actions: `create_draft_campaign` (email — template + campaign + assign), `create_draft_sms` (SMS — single campaign with inline message body, ≤160 chars, no template), `list_audiences`. Audience resolution shared (fuzzy name match → fallback to largest list). Writes land in `state.outbound.{emails,sms}` and surface in EmailStudio / SmsCenter `ChatDraftsToKlaviyo*` strips. |
+| `GET/POST/PATCH /api/proactive-emails` | Flavor #1 (Proactive) for email. POST reads latest `analytics_insights` for tenant, classifies `recommended_actions` into 5 rules (R1 win-back · R2 replenish · R3 rescue · R4 cart aging · R5 VIP quiet, max 2/run), Claude-generates subject/preheader/body using brand voice, persists to `proactive_emails`. Idempotent by `(tenant, rule, source_insight_id)`. Demo fallback emits 1 seeded draft if no insights row exists. GET hydrates `state.outbound.proactiveEmails`. PATCH updates status/Klaviyo IDs after client push. |
 | `GET  /api/cron/daily-analytics` | Vercel Cron (06:00 UTC) — calls analytics-ingest for all tenants. |
+| `GET  /api/cron/proactive-emails` | Vercel Cron (07:30 UTC) — iterates tenants and POSTs to /api/proactive-emails. |
 | `POST /api/google-ads` | Google Ads API v18. Actions: `list_campaigns`, `create_campaign`, `update_budget`, `enable_campaign`, `pause_campaign`, `keyword_ideas`, `campaign_detail`, `generate_copy`. |
 | `GET  /api/google-ads-auth?action=connect&tenantId=...` | Returns Google OAuth2 consent URL. |
 | `GET  /api/google-ads-auth?code=...&state=tenantId` | OAuth callback — exchanges code, stores tokens in Supabase `google_ads_tokens`. |
@@ -282,6 +309,8 @@ if (cronSecret && req.headers.get("authorization") !== `Bearer ${cronSecret}`) {
 - `analytics_insights` — Claude-generated summaries. Keys: `tenant_id`, `period`.
 - `agent_overrides` — custom system prompts per agent per tenant.
 - `google_ads_tokens` — OAuth refresh tokens for Google Ads. Keys: `tenant_id`. Columns: `refresh_token`, `customer_id`, `all_customer_ids` (array).
+- `proactive_drafts` — weekly social calendar drafts (status `pending`/`archived`). Keys: `tenant_id`, `status`.
+- `proactive_emails` — analytics-triggered email drafts. Keys: `tenant_id`, `rule`, `source_insight_id`. Unique index enforces idempotency. Status: `proactive_draft` → `pushed` (via /api/klaviyo) | `dismissed`.
 
 ---
 
@@ -318,17 +347,36 @@ Three flavors, all active:
 |---|---|---|---|
 | **#2 Chat-to-create** | User types creation request in chat rail | `draft_created` artifact inline → "Send to queue" | ✅ built |
 | **#3 Edit in Flow** | Click any draft in Publishing Queue | Controlled drawer: edit copy, image prompt, schedule | ✅ built |
-| **#1 Proactive** | Scheduled / trend-triggered | Drafts auto-land in queue | ⬜ not built |
+| **#1 Proactive (social)** | `proactive-drafts` cron, daily 07:00 UTC | Drafts land in PublishingQueue Drafts strip | ✅ built |
+| **#1 Proactive (email)** | `proactive-emails` cron, daily 07:30 UTC. Reads `analytics_insights.recommended_actions`, classifies into 5 rules, drafts via Claude in brand voice. | `state.outbound.proactiveEmails` → ProactiveEmailDrafts card in EmailStudio. User clicks **Approve & push** → `/api/klaviyo` `create_draft_campaign`. | ✅ built |
 
 ### Platform × content type → creation tool mapping:
 See `full-mapping.md` in project root for the full 100+ row table.
 
 Quick reference:
 - **Text/copy** → Claude (`api/chat.js`)
-- **Static images** → Runware (`api/generate.js`)
+- **Static images** → Runware (`api/generate.js` — `provider: 'runware'`, sync, returns `rawUrl` inline)
+- **Video (Kling/Veo/Seedance/Wan)** → Runware (`api/generate.js` — `videoInference`, usually async, poll via `job_status`)
 - **UGC/avatar video** → HeyGen (`api/generate.js`)
-- **Cinematic video** → Runway or Luma (`api/generate.js`)
+- **Cinematic video** → Higgsfield `cinematic_studio_3_0` or `kling3_0` (`api/generate.js`)
 - **Voice-over** → ElevenLabs (`api/generate.js`)
+
+### `/api/generate` — provider contract
+
+Adapters in `api/lib/providerRouter.js` return `{ providerJobId, status?, rawUrl?, thumbnailUrl? }`.
+When `status` is `completed` or `failed_content_policy`, `handleGenerateImage` /
+`handleGenerateVideo` persist the row terminal on first write (with
+`raw_url`, `thumbnail_url`, `completed_at`) — no polling needed for sync
+providers like Runware image. Async paths return `status: 'pending'`; clients
+poll via `action: 'job_status'`.
+
+### Custom scene strings in `buildPrompt`
+
+`api/lib/assetPrompts.js` `resolveScene` checks `intent.scene` then
+`intent.extra.scene` before falling back to the library / brand override.
+Chat-to-create passes the LLM's imagePrompt through `promptIntent.extra.scene`
+so the user's scene description survives the prompt assembly while the
+format-context / preservation / lighting / camera / negatives blocks still wrap it.
 
 ---
 
@@ -356,6 +404,8 @@ SUPABASE_URL             Supabase project URL
 SUPABASE_SERVICE_KEY     Supabase service role key (server-side only)
 COMPOSIO_API_KEY2        Composio tool execution
 CRON_SECRET              Vercel cron auth (optional on Hobby plan)
+RUNWARE_API_KEY          Runware image + video generation
+HIGGSFIELD_API_KEY       Higgsfield video (cinematic_studio_3_0, kling3_0)
 GOOGLE_ADS_DEVELOPER_TOKEN  Google Ads API Developer Token (from API Center in manager account)
 GOOGLE_ADS_CLIENT_ID        Google OAuth2 Client ID (same as existing Google Cloud OAuth app)
 GOOGLE_ADS_CLIENT_SECRET    Google OAuth2 Client Secret (same as above)
