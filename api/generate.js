@@ -188,12 +188,15 @@ async function handleGenerateImage(body) {
   });
 
   // Submit to provider
-  let providerJobId;
+  let providerJobId, immediateStatus, rawUrl, thumbnailUrl;
   try {
     const result = await generateImage(provider, {
       model, prompt, negative, aspectRatio, resolution, referenceMediaId,
     });
-    providerJobId = result.providerJobId;
+    providerJobId   = result.providerJobId;
+    immediateStatus = result.status       || null;  // synchronous providers (Runware) set this
+    rawUrl          = result.rawUrl       || null;
+    thumbnailUrl    = result.thumbnailUrl || null;
   } catch (e) {
     if (e?.code === 'UNWORKABLE_MODEL') {
       return err(e.message, 422, { code: e.code, suggestedAlternative: e.suggestedAlternative });
@@ -201,7 +204,9 @@ async function handleGenerateImage(body) {
     return err(`Provider error: ${e.message}`, 502);
   }
 
-  // Persist generation_jobs row
+  // Persist generation_jobs row. Synchronous providers (Runware) land as
+  // 'completed' (or 'failed_content_policy') with the URL on first write.
+  const isTerminal = immediateStatus === 'completed' || immediateStatus === 'failed_content_policy';
   const row = await supabaseInsert('generation_jobs', {
     tenant_id:       tenantId,
     provider,
@@ -211,12 +216,22 @@ async function handleGenerateImage(body) {
     sku_id:          promptIntent.skuId  || null,
     story_id:        promptIntent.story  || null,
     beat:            promptIntent.beat   || null,
-    status:          'pending',
+    status:          immediateStatus || 'pending',
     prompt_used:     prompt,
     prompt_intent:   promptIntent,
+    raw_url:         rawUrl,
+    thumbnail_url:   thumbnailUrl,
+    completed_at:    isTerminal ? new Date().toISOString() : null,
   });
 
-  return json({ ok: true, jobId: row?.id || providerJobId, status: 'pending', provider });
+  return json({
+    ok:       true,
+    jobId:    row?.id || providerJobId,
+    status:   immediateStatus || 'pending',
+    provider,
+    rawUrl,
+    thumbnailUrl,
+  });
 }
 
 /**
@@ -253,13 +268,16 @@ async function handleGenerateVideo(body) {
   });
 
   // Submit — aspect-ratio check happens inside providerRouter.generateVideo
-  let providerJobId;
+  let providerJobId, immediateStatus, rawUrl, thumbnailUrl;
   try {
     const result = await generateVideo(provider, {
       model, prompt, negative, aspectRatio, duration,
       startImageJobId, startImageAspectRatio,
     });
-    providerJobId = result.providerJobId;
+    providerJobId   = result.providerJobId;
+    immediateStatus = result.status       || null;
+    rawUrl          = result.rawUrl       || null;
+    thumbnailUrl    = result.thumbnailUrl || null;
   } catch (e) {
     if (e?.code === 'UNWORKABLE_MODEL') {
       return err(e.message, 422, { code: e.code, suggestedAlternative: e.suggestedAlternative });
@@ -271,6 +289,7 @@ async function handleGenerateVideo(body) {
     return err(`Provider error: ${e.message}`, 502);
   }
 
+  const isTerminal = immediateStatus === 'completed' || immediateStatus === 'failed_content_policy';
   const row = await supabaseInsert('generation_jobs', {
     tenant_id:       tenantId,
     provider,
@@ -280,12 +299,22 @@ async function handleGenerateVideo(body) {
     sku_id:          promptIntent.skuId || null,
     story_id:        promptIntent.story || null,
     beat:            promptIntent.beat  || null,
-    status:          'pending',
+    status:          immediateStatus || 'pending',
     prompt_used:     prompt,
     prompt_intent:   promptIntent,
+    raw_url:         rawUrl,
+    thumbnail_url:   thumbnailUrl,
+    completed_at:    isTerminal ? new Date().toISOString() : null,
   });
 
-  return json({ ok: true, jobId: row?.id || providerJobId, status: 'pending', provider });
+  return json({
+    ok:       true,
+    jobId:    row?.id || providerJobId,
+    status:   immediateStatus || 'pending',
+    provider,
+    rawUrl,
+    thumbnailUrl,
+  });
 }
 
 /**

@@ -117,6 +117,11 @@ function detectFunctionalBias(text = '') {
 
 /** Resolve a setting string from the library, with brand override support. */
 function resolveScene(intent, brand, product) {
+  // Caller-supplied scene wins outright — e.g. chat-to-create drafts where the
+  // user (or drafter LLM) wrote a complete visual description.
+  if (intent.scene) return intent.scene;
+  if (intent.extra?.scene) return intent.extra.scene;
+
   const register  = intent.register || 'regular';
   const lane      = intent.lane     || 'cinematic';
   const skuType   = product?.skuType || 'default';
