@@ -34,7 +34,7 @@ ui.jsx            → exposes: Btn, Icon, Chip, Dot, statusChip, ...
 store.jsx         → exposes: useMvedaStore
 workspaces1.jsx   → exposes: CommandCenter, BrandMemory
 workspaces2.jsx   → exposes: CampaignPlanner, ContentStudio
-workspaces3.jsx   → exposes: PublishingQueue, InsightsCenter, InboxEscalation, AutonomySettings
+workspaces3.jsx   → exposes: PublishingQueue, InboxEscalation, AutonomySettings
 workspaces4.jsx   → exposes: Connections, BrandImportModal, ConnectorIcon
 chat-data.jsx     → exposes: SPECIALISTS, CHANNELS, BRIEFING, TEAM_THREAD, PERSONAL_HISTORY, SUGGESTIONS
 chat-ui.jsx       → exposes: SpecialistAvatar, UserAvatar, ArtifactCard, Message, BriefingCard, Composer
@@ -44,7 +44,7 @@ studio.jsx        → exposes: StudioHub, EmailStudio, SearchStudio, SettingsHub
 login.jsx         → exposes: LoginScreen
 onboarding.jsx    → exposes: OnboardingWizard, applyPalette, BRAND_PALETTES
 agents.jsx        → exposes: AgentsWorkspace
-insights.jsx      → exposes: InsightsCenter (overrides workspaces3 version)
+insights.jsx      → exposes: InsightsCenter
 ai.jsx            → exposes: sendAIMessage
 chat-app.jsx      → mounts ReactDOM.createRoot → <ChatOS/>
 ```
