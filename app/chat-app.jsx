@@ -388,43 +388,92 @@ function ChannelRow({ channel, active, onSelect }) {
 
 // ─────────────── NAV RAIL ───────────────
 function NavRail({ active, onOpen, state, actions }) {
-  const items = [
-    { icon: "grid",     label: "Command",  t: "command"   },
-    { icon: "spark",    label: "Studio",   t: "studio"    },
-    { icon: "calendar", label: "Planner",  t: "planner"   },
-    { icon: "chart",    label: "Insights", t: "insights"  },
-    { icon: "inbox",    label: "Inbox",    t: "inbox"     },
-    { icon: "flash",    label: "Agents",   t: "agents"    },
-    { icon: "sliders",  label: "Settings", t: "settings"  },
+  const GROUPS = [
+    {
+      label: null,
+      items: [
+        { icon: "grid",     label: "Command Center", t: "command" },
+      ],
+    },
+    {
+      label: "Create",
+      items: [
+        { icon: "spark",    label: "Studio",          t: "studio"  },
+        { icon: "calendar", label: "Campaign Planner", t: "planner" },
+        { icon: "send",     label: "Publishing Queue", t: "publish" },
+      ],
+    },
+    {
+      label: "Monitor",
+      items: [
+        { icon: "chart",    label: "Insights",        t: "insights" },
+        { icon: "inbox",    label: "Inbox",           t: "inbox"    },
+      ],
+    },
+    {
+      label: null,
+      items: [
+        { icon: "flash",    label: "Agents",          t: "agents"   },
+        { icon: "sliders",  label: "Settings",        t: "settings" },
+      ],
+    },
   ];
 
   const [acctOpen, setAcctOpen] = React.useState(false);
   const ACCOUNTS = [
-    { id: "mveda",    name: "MVEDA",                  sub: "DTC Skincare",       initial: "M", color: "oklch(58% 0.13 60)"  },
-    { id: "erickson", name: "Erickson Refrigeration",  sub: "HVAC & Services",    initial: "E", color: "oklch(42% 0.18 250)" },
+    { id: "mveda",    name: "MVEDA",                 sub: "DTC Skincare",    initial: "M", color: "oklch(58% 0.13 60)"  },
+    { id: "erickson", name: "Erickson Refrigeration", sub: "HVAC & Services", initial: "E", color: "oklch(42% 0.18 250)" },
   ];
   const activeBrandId = state?.activeBrandId || "mveda";
   const current = ACCOUNTS.find(a => a.id === activeBrandId) || ACCOUNTS[0];
 
   return (
-    <nav style={{ width: 56, background: "var(--paper)", borderRight: "1px solid var(--rule)", display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 0", minHeight: 0 }}>
-      {/* Account switcher */}
-      <div style={{ width: "100%", padding: "0 6px 10px", position: "relative" }}>
+    <nav style={{
+      width: 200, background: "var(--paper)", borderRight: "1px solid var(--rule)",
+      display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden",
+    }}>
+
+      {/* ── Account switcher ── */}
+      <div style={{ padding: "12px 12px 10px", borderBottom: "1px solid var(--rule)", position: "relative", flexShrink: 0 }}>
         <button onClick={() => setAcctOpen(o => !o)} style={{
-          width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
-          background: "none", border: "none", cursor: "pointer", padding: "4px 0",
-        }}>
-          <div style={{ width: 28, height: 28, borderRadius: 6, background: current.color, color: "#fff", display: "grid", placeItems: "center", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{current.initial}</div>
-          <span style={{ fontSize: 7.5, color: "var(--muted)", letterSpacing: "0.04em", maxWidth: 44, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "center" }}>{current.name}</span>
+          width: "100%", display: "flex", alignItems: "center", gap: 9,
+          background: "none", border: "none", cursor: "pointer", padding: "4px 4px",
+          borderRadius: 6, transition: "background 0.1s",
+        }}
+          onMouseEnter={e => e.currentTarget.style.background = "var(--paper-2)"}
+          onMouseLeave={e => e.currentTarget.style.background = "none"}
+        >
+          <div style={{
+            width: 28, height: 28, borderRadius: 6, background: current.color,
+            color: "#fff", display: "grid", placeItems: "center",
+            fontSize: 12, fontWeight: 700, flexShrink: 0,
+          }}>{current.initial}</div>
+          <div style={{ flex: 1, textAlign: "left", minWidth: 0 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{current.name}</div>
+            <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{current.sub}</div>
+          </div>
+          <Icon name="chevron" size={10} style={{ color: "var(--muted)", flexShrink: 0 }}/>
         </button>
+
         {acctOpen && (
           <>
             <div onClick={() => setAcctOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 199 }}/>
-            <div style={{ position: "fixed", left: 58, top: 10, zIndex: 200, width: 220, background: "var(--paper)", border: "1px solid var(--rule-strong)", borderRadius: 8, boxShadow: "0 8px 32px -8px oklch(20% 0.02 80 / 0.25)", overflow: "hidden" }}>
+            <div style={{
+              position: "fixed", left: 204, top: 10, zIndex: 200, width: 230,
+              background: "var(--paper)", border: "1px solid var(--rule-strong)",
+              borderRadius: 8, boxShadow: "0 8px 32px -8px oklch(20% 0.02 80 / 0.25)",
+              overflow: "hidden",
+            }}>
               <div className="mono" style={{ fontSize: 9.5, color: "var(--muted)", padding: "10px 12px 6px", textTransform: "uppercase", letterSpacing: "0.1em" }}>Switch account</div>
               {ACCOUNTS.map(a => (
                 <button key={a.id} onClick={() => { actions?.switchBrand(a.id); setAcctOpen(false); }}
-                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", border: "none", background: a.id === activeBrandId ? "var(--paper-2)" : "transparent", cursor: "pointer", fontFamily: "inherit", textAlign: "left", borderBottom: "1px solid var(--rule)" }}>
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 10,
+                    padding: "10px 12px", border: "none",
+                    background: a.id === activeBrandId ? "var(--paper-2)" : "transparent",
+                    cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+                    borderBottom: "1px solid var(--rule)",
+                  }}>
                   <div style={{ width: 28, height: 28, borderRadius: 6, background: a.color, color: "#fff", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{a.initial}</div>
                   <div>
                     <div style={{ fontSize: 12.5, fontWeight: 600 }}>{a.name}</div>
@@ -437,23 +486,42 @@ function NavRail({ active, onOpen, state, actions }) {
           </>
         )}
       </div>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", width: "100%", overflow: "auto" }}>
-        {items.map(({ icon, label, t }) => {
-          const on = active === t;
-          return (
-            <button key={t} title={label} data-testid={`nav-${t}`} onClick={() => onOpen(t)} style={{
-              display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
-              padding: "8px 4px", border: "none",
-              background: on ? "var(--paper-2)" : "transparent",
-              color: on ? "var(--ink)" : "var(--muted)",
-              borderLeft: `2px solid ${on ? "var(--accent)" : "transparent"}`,
-              cursor: "pointer", transition: "all 0.12s", width: "100%",
-            }}>
-              <Icon name={icon} size={15}/>
-              <span style={{ fontSize: 9, fontFamily: "var(--font-sans)", letterSpacing: "0.03em" }}>{label}</span>
-            </button>
-          );
-        })}
+
+      {/* ── Nav groups ── */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "auto", padding: "8px 0" }}>
+        {GROUPS.map((group, gi) => (
+          <div key={gi}>
+            {group.label && (
+              <div className="mono" style={{
+                fontSize: 9.5, color: "var(--muted-2)", letterSpacing: "0.10em",
+                textTransform: "uppercase", padding: "10px 16px 4px",
+              }}>{group.label}</div>
+            )}
+            {gi > 0 && !group.label && (
+              <div style={{ height: 1, background: "var(--rule)", margin: "6px 12px" }}/>
+            )}
+            {group.items.map(({ icon, label, t }) => {
+              const on = active === t;
+              return (
+                <button key={t} data-testid={`nav-${t}`} onClick={() => onOpen(t)} style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "8px 14px", border: "none", width: "100%",
+                  background: on ? "var(--accent-wash, var(--paper-2))" : "transparent",
+                  color: on ? "var(--accent-ink, var(--ink))" : "var(--ink-2)",
+                  borderLeft: `2px solid ${on ? "var(--accent)" : "transparent"}`,
+                  cursor: "pointer", transition: "all 0.1s",
+                  fontFamily: "var(--font-sans)", textAlign: "left",
+                }}
+                  onMouseEnter={e => { if (!on) e.currentTarget.style.background = "var(--paper-2)"; }}
+                  onMouseLeave={e => { if (!on) e.currentTarget.style.background = "transparent"; }}
+                >
+                  <Icon name={icon} size={15} style={{ flexShrink: 0, opacity: on ? 1 : 0.65 }}/>
+                  <span style={{ fontSize: 12.5, fontWeight: on ? 600 : 400, letterSpacing: "-0.01em" }}>{label}</span>
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </div>
     </nav>
   );
@@ -1118,7 +1186,7 @@ function ChatOSAuthed({ auth, onLogout }) {
     <>
       <style>{ANIM_STYLE}</style>
       <div style={{
-        display: "grid", gridTemplateColumns: "56px 1fr 320px",
+        display: "grid", gridTemplateColumns: "200px 1fr 320px",
         height: "100vh", background: "var(--paper-2)",
       }} data-screen-label="FlowOS">
 
