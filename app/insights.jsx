@@ -1,8 +1,6 @@
 /**
- * InsightsCenter — replaces the stub in workspaces3.jsx
+ * InsightsCenter
  * Structure: Summary → Recommended Actions → Insights → Data by Channel → Analytics Chat
- *
- * Loaded after workspaces3.jsx so window.InsightsCenter is overwritten.
  */
 
 (function () {
@@ -502,55 +500,54 @@
     const [lastUpdated, setLastUpdated] = useState(null);
     const [error, setError]           = useState(null);
 
-    const supaUrl = window.__SUPABASE_URL__;
-    const supaKey = window.__SUPABASE_ANON_KEY__;
+    const sb = window.sb;
 
     // Load existing data from Supabase on mount / period change
     const loadCached = useCallback(async () => {
-      if (!tenantId) return;
+      if (!tenantId || !sb) return;
       setLoading(true);
       setError(null);
       try {
-        // RLS-protected reads — anon key as `apikey` (project routing) and
-        // user JWT as Authorization Bearer (tenant scoping). RLS policy in
-        // 007_core_schema_and_rls.sql restricts each row by
-        // tenant_id = auth.uid()::text.
-        const userToken = await window.flowAuth.getAccessToken();
-        const restHeaders = {
-          apikey:        supaKey,
-          Authorization: userToken ? `Bearer ${userToken}` : `Bearer ${supaKey}`,
-        };
+        // Reads use the Supabase JS client which auto-attaches the user's
+        // session token, so RLS in 007_core_schema_and_rls.sql does the
+        // row scoping (tenant_id = auth.uid()::text). For the dev seed
+        // bypass the sb client doesn't have a session — those reads return
+        // empty arrays under RLS, which is fine for the smoke tests.
         const [snapRes, insRes] = await Promise.all([
-          fetch(`${supaUrl}/rest/v1/analytics_snapshots?tenant_id=eq.${encodeURIComponent(tenantId)}&period=eq.${encodeURIComponent(period)}&select=*`,
-            { headers: restHeaders }),
-          fetch(`${supaUrl}/rest/v1/analytics_insights?tenant_id=eq.${encodeURIComponent(tenantId)}&period=eq.${encodeURIComponent(period)}&select=*&order=generated_at.desc&limit=1`,
-            { headers: restHeaders }),
+          sb.from("analytics_snapshots")
+            .select("*")
+            .eq("tenant_id", tenantId)
+            .eq("period", period),
+          sb.from("analytics_insights")
+            .select("*")
+            .eq("tenant_id", tenantId)
+            .eq("period", period)
+            .order("generated_at", { ascending: false })
+            .limit(1),
         ]);
 
-        if (snapRes.ok) {
-          const rows = await snapRes.json();
+        if (!snapRes.error && Array.isArray(snapRes.data)) {
+          const rows = snapRes.data;
           setSnapshots(rows.map(r => ({ channel: r.channel, metrics: r.metrics, fetched_at: r.fetched_at })));
           if (rows.length > 0) {
-            setLastUpdated(rows.sort((a, b) => new Date(b.fetched_at) - new Date(a.fetched_at))[0].fetched_at);
+            setLastUpdated(rows.slice().sort((a, b) => new Date(b.fetched_at) - new Date(a.fetched_at))[0].fetched_at);
           }
         }
 
-        if (insRes.ok) {
-          const rows = await insRes.json();
-          if (rows.length > 0) {
-            setInsights({
-              summary:             rows[0].summary,
-              insights:            rows[0].insights || [],
-              recommended_actions: rows[0].recommended_actions || [],
-            });
-          }
+        if (!insRes.error && Array.isArray(insRes.data) && insRes.data.length > 0) {
+          const row = insRes.data[0];
+          setInsights({
+            summary:             row.summary,
+            insights:            row.insights || [],
+            recommended_actions: row.recommended_actions || [],
+          });
         }
       } catch (e) {
         setError("Failed to load analytics data");
       } finally {
         setLoading(false);
       }
-    }, [tenantId, period, supaUrl, supaKey]);
+    }, [tenantId, period]);
 
     useEffect(() => { loadCached(); }, [loadCached]);
 

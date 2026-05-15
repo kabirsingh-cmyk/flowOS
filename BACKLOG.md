@@ -144,3 +144,310 @@ Generate N variants of a single ad or post (targeting different hooks, headlines
 - Where does the user set budget caps — per variant or total pool?
 
 ---
+
+# Audit findings — 2026-05-14
+
+Sourced from full codebase audit at HEAD `6d82a78`. Items grouped by severity. `[in progress]` markers indicate work already on a branch (see `feat/auth-and-rls`, `feat/fix-insights-center`). Items marked `[done]` have shipped since the audit.
+
+---
+
+## Server-side auth: JWT verification on every /api/* endpoint  `[in progress]`
+
+**Status:** In progress on `feat/auth-and-rls` · added 2026-05-14
+**Priority:** Critical — gates every other security control
+
+Every `/api/*.js` reads `tenantId` from the request body or query and trusts it. `api/scheduled-posts.js:14` even explicitly documents "tenantId is trusted from the request body … RLS is intentionally not used." With the anon key shipped in `app/supabase.jsx`, any caller can impersonate any tenant and publish/read/write on their behalf.
+
+**Plan**
+- Add `api/lib/auth.js` exporting `requireAuth(req)` (verifies Supabase JWT against `SUPABASE_JWT_SECRET`, returns `{ tenantId, claims }`) and `requireCron(req)` (verifies `Authorization: Bearer ${CRON_SECRET}`, fail closed if env var unset).
+- Apply `requireAuth` to: chat, generate, composio, brand-import, analytics-ingest, linkedin, facebook, x, instagram, reddit, klaviyo, proactive-drafts, proactive-emails, scheduled-posts, google-ads, google-ads-auth.
+- Apply `requireCron` to all `/api/cron/*` handlers (currently `if (cronSecret)` → fails open when env unset).
+- Frontend: every `fetch("/api/...")` in `app/*.jsx` must send `Authorization: Bearer ${session.access_token}` from the existing Supabase session.
+
+---
+
+## Row Level Security on every table  `[in progress]`
+
+**Status:** In progress on `feat/auth-and-rls` · added 2026-05-14
+**Priority:** Critical — companion to JWT auth
+
+`app/supabase.jsx` ships the public anon key in client code; the comment claims "all data is protected by Row Level Security" but RLS is off everywhere. 001 and 002 migrations have RLS lines commented out. 003 / 004 / 005 ship with no RLS clauses at all. Tables: `generation_jobs`, `media_uploads`, `agent_overrides`, `analytics_snapshots`, `analytics_insights`, `proactive_emails`, `scheduled_posts`.
+
+**Plan**
+- `alter table … enable row level security` on every public-schema table.
+- Per-table policy: `using (tenant_id = auth.uid()::text)` for select/insert/update/delete. Confirm text vs uuid cast per table.
+- Service-role paths in `/api` continue to work because service-role bypasses RLS.
+
+---
+
+## Missing migrations: brands, channels, posts, google_ads_tokens, proactive_drafts  `[in progress]`
+
+**Status:** In progress on `feat/auth-and-rls` (consolidated migration `006_core_schema.sql`) · added 2026-05-14
+**Priority:** Critical — fresh Supabase project cannot reproduce schema
+
+Code reads/writes these tables but no migration ships them:
+- `brands` (`api/brand-import.js:148`, `api/chat.js` brand fetch)
+- `channels` (`app/workspaces4.jsx:429,460,555,570`)
+- `posts` (`app/features.jsx` savePost path)
+- `google_ads_tokens` (`api/google-ads-auth.js:94`)
+- `proactive_drafts` (`api/proactive-drafts.js:74`)
+
+Pair with the RLS rollout — ship both at once.
+
+---
+
+## Google Ads OAuth — CSRF state binding
+
+**Status:** Open · added 2026-05-14
+**Priority:** Critical — auth gap independent of JWT work
+
+`api/google-ads-auth.js:40` sets `state = tenantId` and `:129` verifies on callback by trusting that same value. An attacker who knows a victim's tenantId crafts a malicious callback URL with their own `code` and the victim's tenantId — Google Ads account gets bound to the victim's tenant.
+
+**Fix:** sign state with HMAC-SHA256 over `{tenantId, nonce, exp}` using a new `OAUTH_STATE_SECRET`. 10-min TTL. Verify HMAC + exp on callback. The OAuth callback can't use the user's JWT (it's a Google redirect), so signed state is the only path.
+
+---
+
+## Fake API-key connector validation (workspaces4.jsx)
+
+**Status:** Open · added 2026-05-14
+**Priority:** Critical — false-positive "Connected" state misleads users
+
+`app/workspaces4.jsx:534-545` flips non-OAuth connectors (Runware, Heygen, Klaviyo when entered as raw key) to `connected: true` after a 1.1s `setTimeout` with **no validation call**. Users believe the key works; the real failure shows up later when an image gen or send fails.
+
+**Plan**
+- Add `action: "validate"` to each non-OAuth connector endpoint (`/api/runware`, `/api/klaviyo`, `/api/heygen`, etc.) — server makes a cheap real call to the provider (Klaviyo `GET /api/accounts`, Runware `GET /v1/balance`, etc.), returns 200 on success or 401 on bad key.
+- Frontend: replace the `setTimeout` with `await fetch(\`/api/${id}?action=validate\`)`; only flip `connected: true` on a real 200.
+
+---
+
+## Strip / preview-tag no-backend platform pickers
+
+**Status:** Open · added 2026-05-14
+**Priority:** Critical — UI advertises features that silently fail
+
+`seed.jsx` and `features.jsx` surface Mastodon, Bluesky, Threads, YouTube, TikTok, Snapchat, Pinterest, Telegram as connectable channels. Only 5 platforms have backends (linkedin / facebook / x / instagram / reddit). Selecting any of the others silently fails to schedule (correctly rejected by `scheduled-posts.js:33-35`).
+
+**Pick one:**
+- **Strip** — remove from connector list entirely (cleanest).
+- **Preview-tag** — keep visible with "Coming soon" badge and disabled Connect button (better for demos).
+
+---
+
+## CORS tightening + missing CORS on klaviyo / proactive-emails
+
+**Status:** Open · added 2026-05-14
+**Priority:** Critical — `Access-Control-Allow-Origin: "*"` combined with body-trusted tenantId enables cross-site account takeover
+
+Wildcard CORS on: `api/x.js:17`, `api/reddit.js:19`, `api/generate.js:31`, `api/composio.js:25`, `api/scheduled-posts.js:20`, `api/google-ads.js:403`, `api/instagram.js:22`, `api/linkedin.js:21`, `api/facebook.js:16`.
+
+**Missing CORS entirely:** `api/klaviyo.js`, `api/proactive-emails.js` — cross-origin preflight will fail outright.
+
+**Fix:** shared helper in `api/lib/cors.js` — restrict origin to allowlist (`process.env.APP_ORIGIN` + `flow-os-v2.vercel.app` + preview deploy regex). Apply uniformly.
+
+---
+
+## Cron fail-open + cron-to-platform auth handoff
+
+**Status:** Open · added 2026-05-14
+**Priority:** Critical — companion to JWT auth work
+
+Two bugs:
+1. **Fail-open** — `api/cron/*` handlers use `if (cronSecret && req.headers.get("authorization") !== ...)`. If `CRON_SECRET` env var is unset, auth is bypassed entirely. Should fail closed.
+2. **Cron-to-platform** — `api/cron/fire-scheduled.js:98` POSTs to `/api/<platform>` with no auth header. Once platform endpoints require JWT (from the auth-and-rls work), scheduled fires will break unless cron is allowlisted via a dual-auth pattern (`CRON_SECRET` accepted in lieu of JWT for service-to-service paths).
+
+---
+
+## /api/chat returns 200 + placeholder when ANTHROPIC_API_KEY missing
+
+**Status:** Open · added 2026-05-14
+**Priority:** Needs attention
+
+`api/chat.js:432-439` returns HTTP 200 with `content: [{type:"text", text:"API key not configured."}]`. Frontend can't distinguish from a real reply, so the `inferResponse` fallback in `chat-app.jsx` never triggers.
+
+**Fix:** return 503 + `{ ok: false, error: "missing_anthropic_key" }`; have `ai.jsx` treat non-2xx as a network error and run `inferResponse`.
+
+---
+
+## PATCH endpoints accept arbitrary patch keys
+
+**Status:** Open · added 2026-05-14
+**Priority:** Needs attention
+
+`api/proactive-emails.js:311-318` accepts `{ id, patch }` from the client and applies the whole patch object to the row. Client can overwrite `klaviyo_campaign_id`, `source_insight_id`, `tenant_id`, etc. — no tenant scope, no key allowlist.
+
+**Fix:** scope filter by `tenant_id` (from `requireAuth`) and allowlist patch keys (`{ status, klaviyo_campaign_id, klaviyo_template_id, sent_at }` only).
+
+Same pattern audit on any other PATCH/UPDATE handlers added in future.
+
+---
+
+## Brand prompt injection via client-supplied `brand`
+
+**Status:** Open · added 2026-05-14
+**Priority:** Needs attention
+
+`api/chat.js:445` and `api/proactive-drafts.js:27` accept `brand` from the request body as a fallback when the Supabase brand profile lookup misses. Client can pass an arbitrary brand object that gets embedded into Claude's system prompt — prompt injection vector.
+
+**Fix:** if Supabase lookup misses, return an error or use a server-side default. Never trust client-supplied brand in the prompt.
+
+---
+
+## MVEDA-specific fallback drafts shown to all tenants
+
+**Status:** Open · added 2026-05-14
+**Priority:** Needs attention
+
+`api/proactive-drafts.js:22-65` `FALLBACK_DRAFTS` is hardcoded Ayurveda content. Non-MVEDA tenants who hit the fallback path (when Claude API errors or key missing) see Ayurveda drafts as if they were generated for their brand.
+
+**Fix:** generate fallback drafts from the tenant's brand profile at request time, or return an explicit error instead of templated content.
+
+---
+
+## simulateImageGen writes broken image refs to posts.media_urls
+
+**Status:** Open · added 2026-05-14
+**Priority:** Needs attention
+
+`app/features.jsx:860-863` `simulateImageGen` returns a hardcoded `"product-shot-gen.jpg"` filename after a 2.2s timeout regardless of the connected image-gen provider. `savePost` then writes this into `posts.media_urls`. The real generation pipeline lives in `chat-app.jsx:874`; the simulate path produces dead refs.
+
+**Fix:** delete `simulateImageGen` and route the Studio flow through the same `/api/generate` path as chat-to-create, or document and label it as a demo-only placeholder.
+
+---
+
+## Klaviyo console.log dumps response payloads
+
+**Status:** Open · added 2026-05-14
+**Priority:** Needs attention
+
+`api/klaviyo.js:260` logs the full Klaviyo API response (including campaign objects with potential audience data) to Vercel logs. Long-term retention varies; sensitive PII may leak.
+
+**Fix:** structured log of `{ campaignId, status }` only.
+
+---
+
+## Composio connection_status / list_connections leak
+
+**Status:** Open · added 2026-05-14
+**Priority:** Needs attention
+
+`api/composio.js:179-217` `connection_status` and `list_connections` accept `tenantId` from the body. Without JWT auth, any caller can enumerate which connectors any tenant has linked. Subsumed by the JWT work but worth verifying explicitly when that lands.
+
+---
+
+## /api/brand-import overwrites any tenant's brand profile
+
+**Status:** Open · added 2026-05-14
+**Priority:** Needs attention
+
+`api/brand-import.js:148` takes `tenantId` from body and upserts the brand row. Same root as the JWT gap — but specifically, an attacker can rewrite another tenant's brand voice / palette / messaging by posting their own URL with the victim's tenantId. Verify after JWT work lands.
+
+---
+
+## Hardcoded Claude model strings
+
+**Status:** Open · added 2026-05-14
+**Priority:** Low
+
+`api/proactive-emails.js:260` and `api/proactive-drafts.js` hardcode `claude-opus-4-5`. `api/chat.js` uses a different (newer) default. Drift across endpoints will cause silent quality differences.
+
+**Fix:** env var `ANTHROPIC_MODEL` consumed by a shared `api/lib/anthropic.js` helper.
+
+---
+
+## InsightsCenter hook-alias drift (bare React hooks)
+
+**Status:** Open · added 2026-05-14
+**Priority:** Low
+
+`app/insights.jsx:9` destructures bare `useState/useEffect/useRef/useCallback` from `React` inside its IIFE. CLAUDE.md "Hook aliases" table has no row for `insights.jsx` — the file silently violates the per-file alias contract. Works today because of script load order, but breaks the moment another file's bare hooks collide.
+
+**Fix:** add row `insights.jsx → useStateI / useEffectI / useRefI / useCallbackI` to the table and the file. Companion to the now-shipped InsightsCenter fix (PR `feat/fix-insights-center`).
+
+---
+
+## APP_ORIGIN falls back to localhost
+
+**Status:** Open · added 2026-05-14
+**Priority:** Low
+
+`api/google-ads-auth.js:21-23` falls back to `http://localhost:3000` when `VERCEL_URL` is unset. OAuth redirects break on preview deploys where the env var isn't injected the same way.
+
+**Fix:** derive from `VERCEL_URL` with `https://` prefix, or require an explicit `APP_ORIGIN` env var at boot.
+
+---
+
+## Math.random() UUIDs in providerRouter
+
+**Status:** Open · added 2026-05-14
+**Priority:** Low
+
+`api/lib/providerRouter.js:271` uses `Math.random()` for server-side IDs. Acceptable today (no collision-sensitive use), but `crypto.randomUUID()` is one line and available on the Edge runtime.
+
+---
+
+## app.html vs index.html drift
+
+**Status:** Open · added 2026-05-14
+**Priority:** Low
+
+`app.html` includes `app/ui2.jsx`; `index.html` does not. `server.py:29` serves `app.html` locally while Vercel serves `index.html` in production. Components defined in `ui2.jsx` (Drawer, Input, Textarea, etc.) are available in dev but not prod.
+
+**Fix:** align both to the same script list, or delete `app.html` and have `server.py` serve `index.html`.
+
+---
+
+## set_updated_at() helper trigger location
+
+**Status:** Open · added 2026-05-14
+**Priority:** Low
+
+`db/migrations/002_agent_overrides.sql:25-36` defines `set_updated_at()`. If another migration needs the same helper, the second `CREATE FUNCTION` will collide. Move to `000_helpers.sql` so it lives once.
+
+---
+
+## google-ads-auth: prompt=consent is over-aggressive
+
+**Status:** Open · added 2026-05-14
+**Priority:** Low
+
+`api/google-ads-auth.js:38` always passes `prompt: "consent"` to Google's OAuth endpoint, forcing a re-consent every time the user reconnects. Switch to `prompt: "select_account"` once initial consent is granted.
+
+---
+
+## Vercel cron schedule requires Pro plan
+
+**Status:** Open · added 2026-05-14
+**Priority:** Low — documented constraint, but no runtime guard
+
+`vercel.json` `* * * * *` on `fire-scheduled` is rejected at deploy on the Hobby plan. The 2026-05-14 BACKLOG entry on Scheduled Posting already notes this. Add a deploy-time check or a no-op fallback so the rest of the app still ships if Hobby is the target.
+
+---
+
+## Five platform publishers share publish_now pattern with no shared helper
+
+**Status:** Open · added 2026-05-14
+**Priority:** Low — refactor
+
+`api/linkedin.js`, `api/facebook.js`, `api/x.js`, `api/instagram.js`, `api/reddit.js` each implement near-identical `publish_now` skeleton: validate input, fetch token, call Composio, handle image branch, return shaped response. Extract into `api/lib/platformPublisher.js` once the auth-and-rls work settles (touching every platform file at once is risky).
+
+---
+
+## InsightsCenter undefined globals + duplicate stub  `[done]`
+
+**Status:** Shipped — PR `feat/fix-insights-center` (commit `d21b963`)
+**Priority:** Critical (resolved 2026-05-14)
+
+`app/insights.jsx` was reading `window.__SUPABASE_URL__` / `__SUPABASE_ANON_KEY__` — neither is set anywhere, so cached analytics fetches silently failed. Swapped to the existing `window.sb` client. Also deleted the 532-line dead InsightsCenter stub in `workspaces3.jsx:1126-1657` (overridden at runtime by `insights.jsx` via load order).
+
+---
+
+## WIP: proactive SMS feature (analogue to proactive-emails)
+
+**Status:** Stashed locally · noted 2026-05-14
+**Priority:** Medium
+
+Local stash on `feat/klaviyo-sms`: `api/proactive-sms.js`, `api/cron/proactive-sms.js`, `db/migrations/006_proactive_sms.sql`, plus supporting edits in `app/features.jsx`, `app/store.jsx`, `app/studio.jsx`, `app/ui.jsx`, `app/chat-app.jsx`, `CLAUDE.md`, `vercel.json`. Recover with `git stash pop` once the auth-and-rls work is in.
+
+Mirrors the proactive-emails design: cron reads `analytics_insights.recommended_actions`, classifies into SMS-friendly rules, Claude drafts ≤160-char body in brand voice, lands in `state.outbound.proactiveSms` for review in `SmsCenter`.
+
+---
