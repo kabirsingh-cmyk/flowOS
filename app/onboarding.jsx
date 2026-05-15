@@ -453,7 +453,7 @@ function Step2({ data, onChange, onNext, onBack }) {
     });
 
     // ── Real API call: Claude brand analysis ──
-    const apiPromise = fetch("/api/brand-import", {
+    const apiPromise = apiFetch("/api/brand-import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: data.website }),

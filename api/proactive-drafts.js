@@ -12,6 +12,7 @@
  */
 
 import { fetchBrandProfile, sbHeaders } from './lib/supabase.js';
+import { requireAuth, requireAuthOrCron } from './lib/auth.js';
 
 export const config = { runtime: "edge" };
 
@@ -206,10 +207,9 @@ export default async function handler(req) {
 
   // ── GET: return persisted pending drafts for a tenant ────────────────────────
   if (req.method === "GET") {
-    const url      = new URL(req.url);
-    const tenantId = url.searchParams.get("tenantId");
-    if (!tenantId) return json(400, { ok: false, error: "tenantId required" });
-    const drafts = await loadPending(tenantId);
+    const auth = await requireAuth(req);
+    if (auth instanceof Response) return auth;
+    const drafts = await loadPending(auth.tenantId);
     return json(200, { ok: true, drafts, source: "supabase" });
   }
 
@@ -222,7 +222,13 @@ export default async function handler(req) {
   try { body = await req.json(); }
   catch { return json(400, { ok: false, error: "Invalid JSON" }); }
 
-  const { tenantId, brand: brandFromClient, days = 7, count = 7 } = body;
+  // Dual-auth: user JWT (UI "Generate drafts" button) OR cron secret (the
+  // proactive-drafts cron iterates brands server-side and stamps tenantId).
+  const { tenantId: bodyTenantId } = body;
+  const auth = await requireAuthOrCron(req, bodyTenantId);
+  if (auth instanceof Response) return auth;
+  const tenantId = auth.tenantId;
+  const { brand: brandFromClient, days = 7, count = 7 } = body;
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
 

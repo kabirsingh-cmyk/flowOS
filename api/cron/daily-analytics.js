@@ -8,19 +8,14 @@
  * 4. Return a run summary
  */
 
+import { requireCron } from "../lib/auth.js";
+
 export const config = { runtime: "edge" };
 
 export default async function handler(req) {
-  // ── Auth ──────────────────────────────────────────────────────────────────
-  // Vercel sets Authorization: Bearer <CRON_SECRET> on every cron invocation.
-  // If CRON_SECRET is set in env, reject anything that doesn't match.
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const auth = req.headers.get("authorization") || "";
-    if (auth !== `Bearer ${cronSecret}`) {
-      return new Response("Unauthorized", { status: 401 });
-    }
-  }
+  // Cron auth — fails closed if CRON_SECRET isn't set.
+  const cronAuth = requireCron(req);
+  if (cronAuth instanceof Response) return cronAuth;
 
   const sbUrl = process.env.SUPABASE_URL;
   const sbKey = process.env.SUPABASE_SERVICE_KEY;
@@ -56,7 +51,14 @@ export default async function handler(req) {
     try {
       const res = await fetch(`${origin}/api/analytics-ingest`, {
         method:  "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Pass cron secret so /api/analytics-ingest's requireAuthOrCron
+          // accepts this server-to-server call. tenantId in the body is
+          // what the helper validates against (we set it just above from
+          // the brands table, not from any client input).
+          Authorization:  `Bearer ${process.env.CRON_SECRET}`,
+        },
         body:    JSON.stringify({ tenantId, period: "30d" }),
       });
       const data    = await res.json().catch(() => ({}));

@@ -299,16 +299,62 @@ All in `/api/`. All use `export const config = { runtime: "edge" }`.
 | `GET  /api/google-ads-auth?code=...&state=tenantId` | OAuth callback — exchanges code, stores tokens in Supabase `google_ads_tokens`. |
 | `POST /api/google-ads-auth` | Set active customer ID when user has multiple Google Ads accounts. |
 
-### Auth pattern for cron:
+### Auth pattern (every /api/* handler)
+
+All auth helpers live in [api/lib/auth.js](api/lib/auth.js). Each returns either a `Response` (failure — caller `return`s it) or `{ tenantId, claims, ... }` on success. tenantId is **always** the verified JWT sub — never trusted from the request body or query.
+
 ```js
-const cronSecret = process.env.CRON_SECRET;
-if (cronSecret && req.headers.get("authorization") !== `Bearer ${cronSecret}`) {
-  return new Response("Unauthorized", { status: 401 });
-}
+import { requireAuth, requireCron, requireAuthOrCron } from "./lib/auth.js";
+
+// User-only endpoint (chat, brand-import, generate, klaviyo, scheduled-posts,
+// google-ads, composio, GET on proactive-* endpoints):
+const auth = await requireAuth(req);
+if (auth instanceof Response) return auth;
+const tenantId = auth.tenantId;
+
+// Cron-only endpoint (api/cron/*):
+const cronAuth = requireCron(req);   // fails closed if CRON_SECRET unset
+if (cronAuth instanceof Response) return cronAuth;
+
+// Dual-auth — user JWT OR cron secret (analytics-ingest, proactive-drafts/
+// emails POST, and the five platform handlers linkedin/facebook/x/instagram/
+// reddit). For the cron path the body MUST carry the tenantId — for
+// scheduled posts that's stamped at queue time in /api/scheduled-posts so
+// the cron can't be tricked into acting on a tenantId of an attacker's
+// choosing.
+const { tenantId: bodyTenantId } = body;
+const auth = await requireAuthOrCron(req, bodyTenantId);
+if (auth instanceof Response) return auth;
+const tenantId = auth.tenantId;
+```
+
+### OAuth state (google-ads-auth)
+
+The OAuth callback can't carry a user JWT (Google performs the redirect). Instead the `connect` step (requireAuth + tenantId from JWT) HMAC-signs `{tenantId, nonce, exp}` with `OAUTH_STATE_SECRET` and puts the signed blob in the OAuth `state` param. The callback verifies the HMAC and reads tenantId from the *signed* payload, never from the raw URL. State has a 10-minute TTL.
+
+### Dev seed bypass JWT
+
+`?seed=mveda` / `?seed=erickson` in [app/chat-app.jsx](app/chat-app.jsx) calls `/api/dev/mint-token` to obtain a short-lived (1h) JWT signed with `SUPABASE_JWT_SECRET`. The endpoint is hard-gated on `VERCEL_ENV !== "production"` (404s in prod). Sub is a deterministic UUID per seed (so `auth.uid()::text` works in RLS policies). Token is held in `window.flowAuth` and used by `apiFetch()` for every /api/* call.
+
+### Frontend fetch helper
+
+`window.apiFetch(input, init)` — defined in [app/supabase.jsx](app/supabase.jsx) — auto-attaches the Authorization header to every /api/* call. Plain `fetch` is reserved for `/api/dev/mint-token` (the bootstrap that mints the token). Direct Supabase REST reads in [app/insights.jsx](app/insights.jsx) attach the user JWT as `Authorization: Bearer ${access_token}` while keeping the anon key as `apikey` — RLS in [db/migrations/007_core_schema_and_rls.sql](db/migrations/007_core_schema_and_rls.sql) does the row filtering.
+
+### Required env vars added by this work
+
+```
+SUPABASE_JWT_SECRET   — verifies user JWTs in requireAuth (Supabase project settings)
+OAUTH_STATE_SECRET    — HMAC for google-ads-auth OAuth state (any high-entropy string)
+CRON_SECRET           — already required; now fail-closed (no longer optional)
 ```
 
 ### Supabase tables:
-- `brands` — brand profiles, one per tenant. Primary key: `user_id`.
+
+All public-schema tables have RLS enabled (see [db/migrations/007_core_schema_and_rls.sql](db/migrations/007_core_schema_and_rls.sql)). Service-role (server-side) writes bypass RLS; the anon key + user JWT path is row-filtered by `tenant_id = auth.uid()::text` (or `user_id = auth.uid()::text` for the legacy-named tables).
+
+- `brands` — brand profiles, one per tenant. Primary key: `user_id` (text).
+- `channels` — per-tenant connected platform records. `(user_id, platform)` unique. Stores `composio_connection_id`, `account_handle`, `followers_count`, `status`.
+- `posts` — per-tenant social-post drafts and history. Written by Organic Social Studio.
 - `analytics_snapshots` — raw per-channel metrics. Keys: `tenant_id`, `channel`, `period`.
 - `analytics_insights` — Claude-generated summaries. Keys: `tenant_id`, `period`.
 - `agent_overrides` — custom system prompts per agent per tenant.
@@ -408,7 +454,9 @@ ANTHROPIC_API_KEY        Claude API — required for live AI
 SUPABASE_URL             Supabase project URL
 SUPABASE_SERVICE_KEY     Supabase service role key (server-side only)
 COMPOSIO_API_KEY2        Composio tool execution
-CRON_SECRET              Vercel cron auth (optional on Hobby plan)
+CRON_SECRET              Vercel cron auth — REQUIRED (fail-closed; see api/lib/auth.js)
+SUPABASE_JWT_SECRET      Verifies user JWTs in requireAuth (Supabase project settings → JWT Secret)
+OAUTH_STATE_SECRET       HMAC for google-ads-auth OAuth state — any high-entropy string
 RUNWARE_API_KEY          Runware image + video generation
 HIGGSFIELD_API_KEY       Higgsfield video (cinematic_studio_3_0, kling3_0)
 GOOGLE_ADS_DEVELOPER_TOKEN  Google Ads API Developer Token (from API Center in manager account)

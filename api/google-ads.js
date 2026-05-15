@@ -10,6 +10,8 @@
 //   SUPABASE_SERVICE_KEY
 //   ANTHROPIC_API_KEY            — for AI ad copy generation
 
+import { requireAuth } from "./lib/auth.js";
+
 export const config = { runtime: "edge" };
 
 const ADS_API_BASE = "https://googleads.googleapis.com/v18";
@@ -407,6 +409,10 @@ export default async function handler(req) {
 
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+  const tenantId = auth.tenantId;
+
   let body;
   try {
     body = await req.json();
@@ -414,7 +420,7 @@ export default async function handler(req) {
     return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400, headers: cors });
   }
 
-  const { action, tenantId, ...params } = body;
+  const { action, ...params } = body;
 
   try {
     // AI copy gen doesn't need Google credentials

@@ -23,6 +23,7 @@ import {
   jobStatus,
   modelsExplore,
 }                                          from './lib/providerRouter.js';
+import { requireAuth }                     from './lib/auth.js';
 
 export const config = { runtime: 'edge' };
 
@@ -389,6 +390,11 @@ export default async function handler(req) {
     return err('POST required', 405);
   }
 
+  // job_status and models_explore don't touch tenant data — keep them
+  // available to authenticated callers but skip the tenantId requirement.
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+
   let body;
   try {
     body = await req.json();
@@ -396,6 +402,8 @@ export default async function handler(req) {
     return err('Invalid JSON body', 400);
   }
 
+  // Server-trusted tenantId — overrides anything the client sent.
+  body = { ...body, tenantId: auth.tenantId };
   const { action } = body;
 
   try {

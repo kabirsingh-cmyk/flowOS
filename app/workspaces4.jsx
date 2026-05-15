@@ -65,13 +65,10 @@ function BrandImportModal({ open, onClose, onApply }) {
 
     // Real API call
     try {
-      const { data: { session } } = await sb.auth.getSession();
-      const tenantId = session?.user?.id || null;
-
-      const res  = await fetch("/api/brand-import", {
+      const res  = await apiFetch("/api/brand-import", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ url: url.trim(), tenantId }),
+        body:    JSON.stringify({ url: url.trim() }),
       });
       const raw  = await res.text();
       let data;
@@ -413,14 +410,13 @@ function Connections({ state, actions }) {
 
       const { data: { session } } = await sb.auth.getSession();
       if (!session?.user) return;
-      const tenantId = session.user.id;
 
       try {
         // Verify the connection is actually active
-        const res = await fetch("/api/composio", {
+        const res = await apiFetch("/api/composio", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "connection_status", tenantId, app: connectorId }),
+          body: JSON.stringify({ action: "connection_status", app: connectorId }),
         });
         const data = await res.json();
         if (!data.connected) return;
@@ -497,16 +493,14 @@ function Connections({ state, actions }) {
       setAuthStep({ connector, step: "syncing" });
       try {
         const { data: { session } } = await sb.auth.getSession();
-        if (!session?.user) throw new Error("Not signed in");
-        const tenantId = session.user.id;
+        if (!session?.user && !window.flowAuth.hasDevToken()) throw new Error("Not signed in");
 
         const redirectUri = `${window.location.origin}/?composio_connected=${connector.id}`;
-        const res = await fetch("/api/composio", {
+        const res = await apiFetch("/api/composio", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
           body:    JSON.stringify({
             action:      "initiate_connection",
-            tenantId,
             app:         connector.id,
             redirectUri,
           }),
@@ -560,7 +554,7 @@ function Connections({ state, actions }) {
 
         if (channelRow?.composio_connection_id) {
           // Best-effort revoke — don't block UI on failure
-          fetch("/api/composio", {
+          apiFetch("/api/composio", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({ action: "disconnect", accountId: channelRow.composio_connection_id }),

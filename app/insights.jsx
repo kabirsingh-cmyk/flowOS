@@ -348,13 +348,12 @@
 
         const apiMessages = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }));
 
-        const res = await fetch("/api/chat", {
+        const res = await apiFetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             messages: apiMessages,
             specialist: "analyst",
-            tenantId,
             // Inject analytics context via a special brand override
             brand: { name: "Analytics Assistant", voice: { tone: systemContext } },
           }),
@@ -512,11 +511,20 @@
       setLoading(true);
       setError(null);
       try {
+        // RLS-protected reads — anon key as `apikey` (project routing) and
+        // user JWT as Authorization Bearer (tenant scoping). RLS policy in
+        // 007_core_schema_and_rls.sql restricts each row by
+        // tenant_id = auth.uid()::text.
+        const userToken = await window.flowAuth.getAccessToken();
+        const restHeaders = {
+          apikey:        supaKey,
+          Authorization: userToken ? `Bearer ${userToken}` : `Bearer ${supaKey}`,
+        };
         const [snapRes, insRes] = await Promise.all([
           fetch(`${supaUrl}/rest/v1/analytics_snapshots?tenant_id=eq.${encodeURIComponent(tenantId)}&period=eq.${encodeURIComponent(period)}&select=*`,
-            { headers: { "apikey": supaKey, "Authorization": `Bearer ${supaKey}` } }),
+            { headers: restHeaders }),
           fetch(`${supaUrl}/rest/v1/analytics_insights?tenant_id=eq.${encodeURIComponent(tenantId)}&period=eq.${encodeURIComponent(period)}&select=*&order=generated_at.desc&limit=1`,
-            { headers: { "apikey": supaKey, "Authorization": `Bearer ${supaKey}` } }),
+            { headers: restHeaders }),
         ]);
 
         if (snapRes.ok) {
@@ -552,10 +560,10 @@
       setRefreshing(true);
       setError(null);
       try {
-        const res = await fetch("/api/analytics-ingest", {
+        const res = await apiFetch("/api/analytics-ingest", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tenantId, period }),
+          body: JSON.stringify({ period }),
         });
         const data = await res.json();
         if (data.ok) {

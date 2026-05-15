@@ -43,13 +43,13 @@ function extractTools(blocks) {
 
 // ─── Single specialist call (JSON, not SSE) ───────────────────────────────
 // Posts to /api/chat with full context, returns { text, tools, fallback }.
-async function callSpecialist({ messages, specialist, tenantId, brand }) {
+async function callSpecialist({ messages, specialist, brand }) {
   let response;
   try {
-    response = await fetch("/api/chat", {
+    response = await apiFetch("/api/chat", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ messages, specialist, tenantId, brand }),
+      body:    JSON.stringify({ messages, specialist, brand }),
     });
   } catch {
     return { text: "", tools: [], fallback: true };
@@ -82,7 +82,6 @@ async function sendAIMessage({
   openCanvas,
   t,
   onFallback,
-  tenantId,
   brand,
 }) {
   const messages = buildMessages(threadMessages, userText);
@@ -91,7 +90,7 @@ async function sendAIMessage({
   dispatch({ type: "STREAM_START", channel: channelId, agent: SPECIALIST_LABEL.supervisor, time: t });
   dispatch({ type: "SET_TYPING",   agent: SPECIALIST_LABEL.supervisor });
 
-  const sup = await callSpecialist({ messages, specialist: "supervisor", tenantId, brand });
+  const sup = await callSpecialist({ messages, specialist: "supervisor", brand });
 
   if (sup.fallback) {
     dispatch({ type: "STREAM_DONE", channel: channelId });
@@ -145,7 +144,6 @@ async function sendAIMessage({
     const spec = await callSpecialist({
       messages:   delegateMessages,
       specialist: delegation.specialist,
-      tenantId,
       brand,
     });
 
