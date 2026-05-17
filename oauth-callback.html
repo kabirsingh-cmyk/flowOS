@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Connection successful</title>
+<style>
+  :root {
+    --paper: oklch(98% 0.005 80);
+    --paper-2: oklch(95% 0.008 80);
+    --ink: oklch(22% 0.02 80);
+    --ink-2: oklch(40% 0.02 80);
+    --muted: oklch(60% 0.01 80);
+    --rule: oklch(88% 0.01 80);
+    --success: oklch(58% 0.13 145);
+  }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    background: var(--paper-2);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    color: var(--ink);
+    display: grid; place-items: center;
+  }
+  .card {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 40px 56px;
+    text-align: center;
+    box-shadow: 0 24px 80px -20px oklch(20% 0.02 80 / 0.18);
+    max-width: 420px;
+  }
+  .logo {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    background: var(--ink);
+    color: var(--paper);
+    display: inline-grid; place-items: center;
+    font-weight: 600; font-size: 18px;
+    letter-spacing: -0.02em;
+    margin-bottom: 18px;
+  }
+  .check {
+    display: inline-flex; align-items: center; gap: 8px;
+    color: var(--success); font-weight: 500; font-size: 14px;
+    margin-bottom: 10px;
+  }
+  .check svg { width: 16px; height: 16px; }
+  h1 {
+    margin: 0 0 10px;
+    font-size: 16px; font-weight: 500;
+    color: var(--ink);
+  }
+  h1 .app { text-transform: capitalize; }
+  p {
+    margin: 0;
+    font-size: 12.5px; color: var(--muted); line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">F</div>
+    <div class="check">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="m9 12 2 2 4-4"></path>
+      </svg>
+      Connection successful
+    </div>
+    <h1><span class="app" id="app">Connector</span> is now connected and ready to use.</h1>
+    <p>You can close this window and return to FlowOS.</p>
+  </div>
+<script>
+  (function () {
+    var params = new URLSearchParams(window.location.search);
+    var app = params.get("composio_connected") || params.get("pipedream_connected") || params.get("connector") || "Connector";
+    var el = document.getElementById("app");
+    if (el) el.textContent = app;
+
+    // Notify opener so it can flip the tile green without waiting for polling.
+    try {
+      if (window.opener) {
+        window.opener.postMessage(
+          { type: "flowos_oauth_connected", app: app },
+          window.location.origin
+        );
+      }
+    } catch (_) {}
+
+    // Auto-close after 1.5s — polling on the opener will catch the connection if close is blocked.
+    setTimeout(function () { try { window.close(); } catch (_) {} }, 1500);
+  })();
+</script>
+</body>
+</html>

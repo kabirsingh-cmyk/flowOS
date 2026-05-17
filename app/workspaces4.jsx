@@ -2,16 +2,25 @@
 // MVEDA workspaces — part 4: Connections + Brand Import flow
 const { useState: useState4, useEffect: useEffect4, useMemo: useMemo4, useRef: useRef4 } = React;
 
-// Connector IDs that use Composio managed OAuth.
-// These get a real OAuth redirect instead of the fake setTimeout connect.
-const COMPOSIO_OAUTH_APPS = new Set([
-  // Social
-  "ig", "tt", "fb", "li", "yt", "pn", "x", "threads", "reddit", "snap", "bluesky", "mastodon", "telegram",
-  // Ads & commerce
-  "googleads", "ga4", "metaads", "liads", "shopify",
-  // Email
-  "klaviyo",
-]);
+// Filter pill groups for the Connections grid.
+// Each pill corresponds to a `connector.group` value in seed.jsx (or "all").
+const CONNECTOR_PILLS = [
+  { id: "all",              label: "All" },
+  { id: "Social",           label: "Social" },
+  { id: "Ads",              label: "Ads" },
+  { id: "Email & SMS",      label: "Email & SMS" },
+  { id: "Commerce",         label: "Commerce" },
+  { id: "Analytics & Ops",  label: "Analytics & Ops" },
+  { id: "Creative AI",      label: "Creative AI" },
+];
+
+// Map FlowOS connector provider → backend API route.
+// Pipedream is treated identically to Composio at the surface level; if /api/pipedream
+// is not deployed the popup fails and the tile rolls back to unconnected.
+function providerApiPath(provider) {
+  if (provider === "pipedream") return "/api/pipedream";
+  return "/api/composio";
+}
 
 // ────────────────────────────── BRAND IMPORT MODAL ──────────────────────────────
 function BrandImportModal({ open, onClose, onApply }) {
@@ -334,125 +343,167 @@ function BrandImportModal({ open, onClose, onApply }) {
 }
 
 // ────────────────────────────── CONNECTIONS WORKSPACE ──────────────────────────────
-function ConnectorIcon({ id }) {
-  // brand letter mark — color-shifted per category
-  const map = {
-    pb:      { fg: "oklch(44% 0.18 260)", letter: "Pb" },
-    ay:      { fg: "oklch(44% 0.18 260)", letter: "A" }, // legacy
-    ig:      { fg: "linear-gradient(135deg, oklch(70% 0.18 30), oklch(58% 0.2 320))", letter: "I" },
-    tt:      { fg: "var(--ink)",           letter: "T" },
-    fb:      { fg: "oklch(48% 0.18 260)", letter: "f" },
-    li:      { fg: "oklch(48% 0.14 235)", letter: "in" },
-    yt:      { fg: "oklch(58% 0.22 28)",  letter: "▶" },
-    pn:      { fg: "oklch(56% 0.18 25)",  letter: "P" },
-    x:       { fg: "var(--ink)",           letter: "𝕏" },
-    threads: { fg: "var(--ink)",           letter: "@" },
-    reddit:  { fg: "oklch(58% 0.22 28)",  letter: "R" },
-    snap:    { fg: "oklch(88% 0.16 100)", letter: "👻", inkColor: "var(--ink)" },
-    bsky:    { fg: "oklch(55% 0.18 240)", letter: "Bk" },
-    mst:     { fg: "oklch(48% 0.16 285)", letter: "M" },
-    tg:      { fg: "oklch(60% 0.16 225)", letter: "Tg" },
-    klaviyo:   { fg: "oklch(38% 0.04 80)", letter: "K" },
-    mailchimp: { fg: "oklch(80% 0.16 95)", letter: "✻", inkColor: "var(--ink)" },
-    googleads: { fg: "oklch(72% 0.17 100)", letter: "G", inkColor: "var(--ink)" },
-    msads:     { fg: "oklch(58% 0.18 220)", letter: "⊞" },
-    appleads:  { fg: "var(--ink)", letter: "" },
-    amazonads: { fg: "oklch(72% 0.18 75)", letter: "a", inkColor: "var(--ink)" },
-    metaads:   { fg: "oklch(54% 0.2 260)", letter: "∞" },
-    ttads:     { fg: "var(--ink)", letter: "T" },
-    liads:     { fg: "oklch(48% 0.14 235)", letter: "in" },
-    pinads:    { fg: "oklch(56% 0.18 25)", letter: "P" },
-    xads:      { fg: "var(--ink)", letter: "X" },
-    redditads: { fg: "oklch(58% 0.22 30)", letter: "R" },
-    snapads:   { fg: "oklch(88% 0.18 100)", letter: "👻", inkColor: "var(--ink)" },
-    heygen:    { fg: "oklch(52% 0.18 280)", letter: "H" },
-    fal:       { fg: "oklch(18% 0.02 260)", letter: "fal", fontSize: 11 },
-    elevenlabs:{ fg: "oklch(28% 0.04 80)",  letter: "11" },
-    runway:    { fg: "var(--ink)",           letter: "R" },
-    shopify:   { fg: "oklch(58% 0.13 145)", letter: "S" },
-    ga4:       { fg: "oklch(60% 0.16 50)",  letter: "GA", inkColor: "var(--ink)" },
-    amplitude: { fg: "oklch(58% 0.18 250)", letter: "A" },
-    // Creative AI
-    runware:   { fg: "oklch(54% 0.20 170)", letter: "Rw" },
-    higgsfield:{ fg: "oklch(30% 0.04 260)", letter: "Hf" },
-    luma:      { fg: "oklch(48% 0.16 300)", letter: "Lu" },
-    pika:      { fg: "oklch(58% 0.18 320)", letter: "Pk" },
-    kling:     { fg: "oklch(22% 0.02 260)", letter: "Kl" },
-    // MCP
-    mcp:       { fg: "oklch(44% 0.14 260)", letter: "⬡", fontSize: 18 },
-    klaviyo:   { fg: "oklch(38% 0.04 80)",  letter: "K" },
-  };
-  const cfg = map[id] || { fg: "var(--ink)", letter: "?" };
+
+// Letter-mark fallback for connectors without a Simple Icons slug, or whose logo failed to load.
+// Deterministically derives a soft pastel from the id so each tile is visually distinct.
+function LetterMark({ id, name, size = 56 }) {
+  const label = (name || id || "?")
+    .replace(/\.(io|ai|so|com)$/i, "")
+    .replace(/[^a-z0-9]/gi, "")
+    .slice(0, 2)
+    .toUpperCase() || "?";
+  const hue = String(id || name || "")
+    .split("")
+    .reduce((a, c) => (a + c.charCodeAt(0)) % 360, 0);
   return (
     <div style={{
-      width: 36, height: 36, borderRadius: 7,
-      background: cfg.fg, color: cfg.inkColor || "var(--paper)",
+      width: size, height: size, borderRadius: Math.round(size * 0.18),
+      background: `oklch(92% 0.045 ${hue})`,
+      color:      `oklch(36% 0.13 ${hue})`,
       display: "grid", placeItems: "center",
-      fontFamily: "var(--font-serif)", fontSize: cfg.letter.length > 2 ? 13 : 17,
-      fontWeight: 500, letterSpacing: "0.02em",
+      fontWeight: 600, fontSize: Math.round(size * 0.34),
+      fontFamily: "var(--font-sans)", letterSpacing: "-0.02em",
       flexShrink: 0,
-      border: "1px solid color-mix(in oklch, var(--ink) 8%, transparent)",
-    }}>{cfg.letter}</div>
+    }}>{label}</div>
+  );
+}
+
+// ConnectorIcon — three-stage logo resolution.
+//   1. Simple Icons CDN (`slug`) → brand-coloured SVG, sharp at any size
+//   2. Google S2 favicon (`domain`) → 128px PNG, reliable for any registered domain
+//   3. LetterMark fallback → deterministic pastel + initials
+// Accepts either a connector object or just an id (legacy callers).
+function ConnectorIcon({ connector, id, size = 56 }) {
+  const [failedSimple, setFailedSimple] = useState4(false);
+  const [failedFavicon, setFailedFavicon] = useState4(false);
+
+  const row = useMemo4(() => {
+    if (connector) return connector;
+    if (!id) return null;
+    return (window.SEED?.connectorCatalog || []).find(c => c.id === id)
+        || { id, name: id, slug: null, domain: null };
+  }, [connector, id]);
+
+  if (!row) return null;
+
+  const useSimple  = row.slug   && !failedSimple;
+  const useFavicon = row.domain && !failedFavicon;
+
+  if (!useSimple && !useFavicon) {
+    return <LetterMark id={row.id} name={row.name} size={size}/>;
+  }
+
+  const src = useSimple
+    ? `https://cdn.simpleicons.org/${row.slug}`
+    : `https://www.google.com/s2/favicons?domain=${row.domain}&sz=128`;
+
+  return (
+    <img
+      key={useSimple ? "simple" : "favicon"}
+      src={src}
+      alt={row.name}
+      width={size}
+      height={size}
+      onError={() => {
+        if (useSimple) setFailedSimple(true);
+        else if (useFavicon) setFailedFavicon(true);
+      }}
+      style={{
+        width: size, height: size, borderRadius: Math.round(size * 0.16),
+        objectFit: "contain", display: "block",
+        background: "transparent", flexShrink: 0,
+      }}
+    />
+  );
+}
+
+// One-line switch — used for Read/Write/Admin toggles in the Manage modal.
+function PermissionSwitch({ value, onChange }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!value)}
+      aria-checked={value}
+      role="switch"
+      style={{
+        width: 36, height: 20, padding: 2, border: 0,
+        borderRadius: 999,
+        background: value ? "var(--accent)" : "color-mix(in oklch, var(--ink) 18%, transparent)",
+        cursor: "pointer", display: "inline-flex",
+        alignItems: "center",
+        transition: "background .15s ease",
+      }}>
+      <span style={{
+        width: 16, height: 16, borderRadius: "50%",
+        background: "var(--paper)",
+        transform: value ? "translateX(16px)" : "translateX(0)",
+        transition: "transform .15s ease",
+        boxShadow: "0 1px 3px oklch(20% 0.02 80 / 0.3)",
+      }}/>
+    </button>
   );
 }
 
 function Connections({ state, actions }) {
-  const [importOpen, setImportOpen] = useState4(false);
-  const [authStep, setAuthStep] = useState4(null); // { connector, step }
+  const [importOpen, setImportOpen]   = useState4(false);
+  const [connectStep, setConnectStep] = useState4(null);  // { connector }
+  const [manageStep, setManageStep]   = useState4(null);  // { connector }
+  const [search, setSearch]           = useState4("");
+  const [activeGroup, setActiveGroup] = useState4("all");
+  // { [id]: { startedAt } } — drives the amber "Connecting" tile state.
+  const [connecting, setConnecting]   = useState4({});
+  const pollersRef = useRef4({});
 
-  // On mount, check for Composio OAuth callback (?composio_connected=<id>)
+  // Shared "OAuth has completed — verify and persist" routine.
+  // Called from: ?composio_connected= return URL, popup postMessage, and connection_status poll.
+  const verifyAndPersistConnection = async (connectorId) => {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session?.user) return;
+    const tenantId = session.user.id;
+    const connector = (SEED.connectorCatalog || []).find(c => c.id === connectorId);
+    const apiPath = providerApiPath(connector?.provider);
+    try {
+      const res = await fetch(apiPath, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ action: "connection_status", tenantId, app: connectorId }),
+      });
+      const data = await res.json();
+      if (!data.connected) return;
+      await sb.from("channels").upsert({
+        user_id:                session.user.id,
+        platform:               connectorId,
+        composio_connection_id: data.accountId,
+        status:                 "connected",
+        updated_at:             new Date().toISOString(),
+      }, { onConflict: "user_id, platform" });
+      actions.setConnector(connectorId, {
+        connected: true,
+        status:    "ok",
+        note:      `OAuth connected · ${connector?.provider || "composio"}`,
+        syncCount: "syncing…",
+      }, {
+        logEvent: `connected · ${connector?.name || connectorId}`,
+        notify:   { tone: "ok", text: `${connector?.name || connectorId} connected` },
+      });
+    } catch (e) {
+      console.error("[connector verify]", e.message);
+    }
+  };
+
+  // Full-page redirect fallback — fires when the popup was blocked and the user came back
+  // via the legacy ?composio_connected= URL param.
   useEffect4(() => {
     (async () => {
       const params = new URLSearchParams(window.location.search);
-      const connectorId = params.get("composio_connected");
+      const connectorId = params.get("composio_connected") || params.get("pipedream_connected");
       if (!connectorId) return;
-
-      // Clear the URL param immediately so refresh doesn't re-trigger
-      const cleanUrl = window.location.pathname;
-      window.history.replaceState({}, "", cleanUrl);
-
-      const { data: { session } } = await sb.auth.getSession();
-      if (!session?.user) return;
-      const tenantId = session.user.id;
-
-      try {
-        // Verify the connection is actually active
-        const res = await fetch("/api/composio", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "connection_status", tenantId, app: connectorId }),
-        });
-        const data = await res.json();
-        if (!data.connected) return;
-
-        // Save connected_account_id to Supabase channels table
-        await sb.from("channels").upsert({
-          user_id:                session.user.id,
-          platform:               connectorId,
-          composio_connection_id: data.accountId,
-          status:                 "connected",
-          updated_at:             new Date().toISOString(),
-        }, { onConflict: "user_id, platform" });
-
-        // Update store
-        const catalog = SEED.connectorCatalog;
-        const connector = catalog.find(c => c.id === connectorId);
-        actions.setConnector(connectorId, {
-          connected: true,
-          status:    "ok",
-          note:      `OAuth connected · Composio`,
-          syncCount: "syncing…",
-        }, {
-          logEvent: `connected · ${connector?.name || connectorId}`,
-          notify:   { tone: "ok", text: `${connector?.name || connectorId} connected` },
-        });
-      } catch (e) {
-        console.error("[composio callback]", e.message);
-      }
+      window.history.replaceState({}, "", window.location.pathname);
+      await verifyAndPersistConnection(connectorId);
     })();
   }, []); // eslint-disable-line
 
-  // On mount, hydrate store connector state from Supabase channels table
+  // Hydrate connector state from Supabase channels on mount.
   useEffect4(() => {
     (async () => {
       const { data: { session } } = await sb.auth.getSession();
@@ -462,8 +513,6 @@ function Connections({ state, actions }) {
         .eq("user_id", session.user.id)
         .eq("status", "connected");
       if (!data?.length) return;
-
-      // Map DB rows → connector store
       const platformToId = { instagram: "ig", tiktok: "tt", pinterest: "pn", youtube: "yt", facebook: "fb", linkedin: "li" };
       data.forEach(ch => {
         const id = platformToId[ch.platform] || ch.platform;
@@ -477,128 +526,280 @@ function Connections({ state, actions }) {
     })();
   }, []); // eslint-disable-line
 
-  const catalog = SEED.connectorCatalog;
-  const categories = ["Social", "Email", "SMS", "Search Ads", "Social Ads", "Commerce", "Analytics", "SEO", "Affiliate", "Experimentation", "Creative AI", "MCP · Custom"];
-  const byCat = useMemo4(() => {
-    const out = {};
-    catalog.forEach(c => { (out[c.category] ||= []).push(c); });
-    return out;
-  }, [catalog]);
+  // Listen for postMessage from the OAuth popup → fast-path detect connection.
+  useEffect4(() => {
+    const handler = (e) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.type !== "flowos_oauth_connected") return;
+      const appId = e.data.app;
+      if (!appId) return;
+      stopPolling(appId);
+      verifyAndPersistConnection(appId).finally(() => {
+        setConnecting(p => { const n = { ...p }; delete n[appId]; return n; });
+      });
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []); // eslint-disable-line
 
-  const startConnect = (connector) => {
-    setAuthStep({ connector, step: "auth" });
+  // Cancel any in-flight pollers when the workspace unmounts.
+  useEffect4(() => () => {
+    Object.values(pollersRef.current).forEach(clearInterval);
+    pollersRef.current = {};
+  }, []);
+
+  const stopPolling = (connectorId) => {
+    const handle = pollersRef.current[connectorId];
+    if (handle) {
+      clearInterval(handle);
+      delete pollersRef.current[connectorId];
+    }
   };
 
-  // Called by ConnectorAuthModal when user submits credentials
-  const completeConnect = async (connector, apiKey, mcpUrl) => {
+  // Kick off the setup flow. Always opens the (dumb) Connect modal first;
+  // the modal's primary button then triggers either popup-OAuth or API-key validate.
+  const startConnect = (connector) => setConnectStep({ connector });
 
-    // ── Composio OAuth connectors: initiate real OAuth redirect ──────────────
-    if (COMPOSIO_OAUTH_APPS.has(connector.id)) {
-      setAuthStep({ connector, step: "syncing" });
-      try {
-        const { data: { session } } = await sb.auth.getSession();
-        if (!session?.user) throw new Error("Not signed in");
-        const tenantId = session.user.id;
+  const handleConnectSubmit = async ({ apiKey }) => {
+    const connector = connectStep?.connector;
+    if (!connector) return;
+    setConnectStep(null);
 
-        const redirectUri = `${window.location.origin}/?composio_connected=${connector.id}`;
-        const res = await fetch("/api/composio", {
-          method:  "POST",
-          headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({
-            action:      "initiate_connection",
-            tenantId,
-            app:         connector.id,
-            redirectUri,
-          }),
-        });
-        // Use text() first — edge runtime may return plain-text on hard errors
-        const raw = await res.text();
-        let data;
-        try { data = JSON.parse(raw); } catch {
-          throw new Error(`Server error (${res.status}): ${raw.slice(0, 120)}`);
+    // ── API-key connectors ──
+    // Composio API-key connectors → POST credentials directly to Composio (no OAuth).
+    // Direct API-key connectors → no Composio backend; persist locally as before
+    // (per-provider validation route is the next iteration).
+    if (connector.auth === "API key") {
+      setConnecting(p => ({ ...p, [connector.id]: { startedAt: Date.now() } }));
+
+      if (connector.provider === "composio") {
+        try {
+          const { data: { session } } = await sb.auth.getSession();
+          if (!session?.user) throw new Error("Not signed in");
+          const tenantId = session.user.id;
+
+          const res = await fetch("/api/composio", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ action: "initiate_connection", tenantId, app: connector.id, apiKey }),
+          });
+          const raw = await res.text();
+          let data;
+          try { data = JSON.parse(raw); } catch { throw new Error(`Server (${res.status}): ${raw.slice(0, 120)}`); }
+          if (!data.ok) throw new Error(data.error || "Failed to register API key");
+
+          // Persist to Supabase channels for cross-session hydration.
+          await sb.from("channels").upsert({
+            user_id:                session.user.id,
+            platform:               connector.id,
+            composio_connection_id: data.connectionId,
+            status:                 "connected",
+            updated_at:             new Date().toISOString(),
+          }, { onConflict: "user_id, platform" });
+
+          actions.setConnector(connector.id, {
+            connected: true,
+            status:    "ok",
+            note:      "API key validated · Composio",
+            syncCount: "syncing…",
+          }, {
+            logEvent: `connected · ${connector.name}`,
+            notify:   { tone: "ok", text: `${connector.name} connected` },
+          });
+        } catch (err) {
+          actions.notify("warn", `${connector.name} connection failed: ${err.message}`);
+        } finally {
+          setConnecting(p => { const n = { ...p }; delete n[connector.id]; return n; });
         }
-        if (!data.ok) throw new Error(data.error || "Failed to initiate connection");
-
-        // Redirect user to OAuth provider.
-        // On return the ?composio_connected= callback effect will verify + persist the connection.
-        window.location.href = data.redirectUrl;
-      } catch (err) {
-        alert(`${connector.name} connection failed: ${err.message}`);
-        setAuthStep(null);
+        return;
       }
+
+      // Direct API-key (no Composio): keep the local simulated path for now.
+      // TODO: wire per-provider validation routes for Loops, Higgsfield, Luma, etc.
+      setTimeout(() => {
+        actions.setConnector(connector.id, {
+          connected: true,
+          status:    "ok",
+          note:      "API key validated · direct",
+          syncCount: "initial sync running…",
+        }, {
+          logEvent: `connected · ${connector.name}`,
+          notify:   { tone: "ok", text: `${connector.name} connected` },
+        });
+        setConnecting(p => { const n = { ...p }; delete n[connector.id]; return n; });
+      }, 1100);
       return;
     }
 
-    // ── Default: simulated connect for API-key connectors ─────────────────
-    setAuthStep({ connector, step: "syncing" });
-    setTimeout(() => {
-      actions.setConnector(connector.id, {
-        connected:  true,
-        status:     "ok",
-        note:       `synced just now · API key validated`,
-        syncCount:  "initial sync running…",
-      }, {
-        logEvent: `connected · ${connector.name}`,
-        notify:   { tone: "ok", text: `${connector.name} connected` },
+    // ── OAuth connectors: open popup + poll connection_status ──
+    setConnecting(p => ({ ...p, [connector.id]: { startedAt: Date.now() } }));
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session?.user) throw new Error("Not signed in");
+      const tenantId = session.user.id;
+      const apiPath  = providerApiPath(connector.provider);
+      const callbackUrl = `${window.location.origin}/oauth-callback.html?composio_connected=${connector.id}`;
+
+      const res = await fetch(apiPath, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ action: "initiate_connection", tenantId, app: connector.id, redirectUri: callbackUrl }),
       });
-      setAuthStep(null);
-    }, 1100);
+      const raw = await res.text();
+      let data;
+      try { data = JSON.parse(raw); } catch { throw new Error(`Server (${res.status}): ${raw.slice(0, 120)}`); }
+      if (!data.ok) throw new Error(data.error || "Failed to initiate connection");
+
+      const popup = window.open(data.redirectUrl, "flowos_oauth", "width=600,height=720");
+      if (!popup) {
+        // Popup blocked → fall back to full-page redirect; the page-load effect above will
+        // pick up ?composio_connected= when the user returns.
+        window.location.href = data.redirectUrl;
+        return;
+      }
+
+      // Poll connection_status every 1.5s. Stop on success, popup close, or 3-minute timeout.
+      const start = Date.now();
+      const TIMEOUT_MS = 3 * 60 * 1000;
+      const interval = setInterval(async () => {
+        // User closed popup → one last verify before deciding it was cancelled.
+        // We keep the "connecting" state on during this grace window so the tile
+        // doesn't flicker un-connected → connected if the user closed right as
+        // OAuth completed.
+        if (popup.closed) {
+          stopPolling(connector.id);
+          try {
+            const r = await fetch(apiPath, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body:   JSON.stringify({ action: "connection_status", tenantId, app: connector.id }),
+            }).then(r => r.json());
+            if (r.connected) {
+              await verifyAndPersistConnection(connector.id);
+            } else {
+              actions.notify("warn", `${connector.name} connection cancelled`);
+            }
+          } catch {
+            actions.notify("warn", `${connector.name} connection cancelled`);
+          }
+          setConnecting(p => { const n = { ...p }; delete n[connector.id]; return n; });
+          return;
+        }
+        if (Date.now() - start > TIMEOUT_MS) {
+          stopPolling(connector.id);
+          setConnecting(p => { const n = { ...p }; delete n[connector.id]; return n; });
+          actions.notify("warn", `${connector.name} connection timed out`);
+          return;
+        }
+        try {
+          const r = await fetch(apiPath, {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ action: "connection_status", tenantId, app: connector.id }),
+          });
+          const j = await r.json();
+          if (j.connected) {
+            stopPolling(connector.id);
+            await verifyAndPersistConnection(connector.id);
+            setConnecting(p => { const n = { ...p }; delete n[connector.id]; return n; });
+            try { popup.close(); } catch {}
+          }
+        } catch {}
+      }, 1500);
+      pollersRef.current[connector.id] = interval;
+    } catch (err) {
+      setConnecting(p => { const n = { ...p }; delete n[connector.id]; return n; });
+      actions.notify("warn", `${connector.name} connection failed: ${err.message}`);
+    }
   };
 
   const disconnect = async (connector) => {
-    if (COMPOSIO_OAUTH_APPS.has(connector.id)) {
-      // Composio-managed OAuth: revoke via API + clear Supabase row
+    const apiPath = providerApiPath(connector.provider);
+    // Revoke at the provider for any Composio-backed connector (OAuth or API key).
+    // Direct API-key connectors only need local cleanup.
+    if (connector.provider === "composio" || connector.provider === "pipedream") {
       const { data: { session } } = await sb.auth.getSession();
       if (session?.user) {
-        // Fetch the stored Composio account ID
         const { data: channelRow } = await sb
           .from("channels")
           .select("composio_connection_id")
           .eq("user_id", session.user.id)
           .eq("platform", connector.id)
           .single();
-
         if (channelRow?.composio_connection_id) {
-          // Best-effort revoke — don't block UI on failure
-          fetch("/api/composio", {
+          fetch(apiPath, {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({ action: "disconnect", accountId: channelRow.composio_connection_id }),
           }).catch(() => {});
         }
-
         await sb.from("channels")
-          .update({
-            status:                 "disconnected",
-            composio_connection_id: null,
-            updated_at:             new Date().toISOString(),
-          })
+          .update({ status: "disconnected", composio_connection_id: null, updated_at: new Date().toISOString() })
           .eq("user_id", session.user.id)
           .eq("platform", connector.id);
       }
-    } else {
-      // API-key connectors: no server-side revocation needed
     }
     actions.setConnector(connector.id, {
       connected: false, status: "—", note: "not connected", syncCount: "—",
-    }, { logEvent: `disconnected · ${connector.name}`, notify: { tone: "neutral", text: `${connector.name} disconnected` } });
+    }, {
+      logEvent: `disconnected · ${connector.name}`,
+      notify:   { tone: "neutral", text: `${connector.name} disconnected` },
+    });
   };
+
+  const resync = (connector) => {
+    actions.setConnector(connector.id, { note: "synced just now", status: "ok" }, {
+      notify: { tone: "ok", text: `${connector.name} re-synced` },
+    });
+  };
+
+  const setPermissions = (connector, patch) => {
+    const current = state.connectors[connector.id]?.permissions || { read: true, write: true, admin: false };
+    actions.setConnector(connector.id, { permissions: { ...current, ...patch } });
+  };
+
+  const catalog = SEED.connectorCatalog;
+  const recommendedIds = state.brandPreset?.recommendedConnectors || [];
+  const recommendedSet = useMemo4(() => new Set(recommendedIds), [recommendedIds]);
+
+  // Build the visible, sorted, filtered list.
+  const visible = useMemo4(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = catalog.filter(c => {
+      if (activeGroup !== "all" && c.group !== activeGroup) return false;
+      if (q && !c.name.toLowerCase().includes(q)) return false;
+      return true;
+    });
+    // Sort: connected → connecting → recommended → other, then alpha
+    const rank = (c) => {
+      const isConnected  = !!state.connectors[c.id]?.connected;
+      const isConnecting = !!connecting[c.id];
+      if (isConnected)  return 0;
+      if (isConnecting) return 1;
+      if (recommendedSet.has(c.id)) return 2;
+      return 3;
+    };
+    return [...filtered].sort((a, b) => {
+      const ra = rank(a), rb = rank(b);
+      if (ra !== rb) return ra - rb;
+      return a.name.localeCompare(b.name);
+    });
+  }, [catalog, search, activeGroup, state.connectors, connecting, recommendedSet]);
 
   const totalConnected = Object.values(state.connectors || {}).filter(c => c.connected).length;
   const totalAvailable = catalog.length;
 
-  // Recommended connector IDs from brand analysis (populated after brand import)
-  const recommendedIds = state.brandPreset?.recommendedConnectors || [];
-  const recommendedCatalog = recommendedIds.map(id => catalog.find(c => c.id === id)).filter(Boolean);
-
   return (
-    <div className="anim-fade" style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: 20, height: "100%", overflow: "auto" }}>
+    <div className="anim-fade" style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: 18, height: "100%", overflow: "auto" }}>
+      {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>
-          <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>00 · Connect</div>
-          <h1 style={{ fontSize: 28, fontWeight: 500, letterSpacing: "-0.025em", margin: "6px 0 0" }}>Connections</h1>
-          <div style={{ color: "var(--muted)", marginTop: 4, fontSize: 13 }}>
-            {totalConnected} of {totalAvailable} connected · brand: {state.brandImported ? <span style={{ color: "var(--ink)" }}>{state.brandPreset?.name || "imported"}</span> : "default"}
+          <h1 style={{ fontSize: 28, fontWeight: 500, letterSpacing: "-0.025em", margin: "6px 0 0" }}>Integrations</h1>
+          <div style={{ color: "var(--muted)", marginTop: 4, fontSize: 13, maxWidth: 640 }}>
+            Connect external apps. Connected services give your agents access to the tools they need to perform tasks.
+            <span style={{ marginLeft: 10, color: "var(--ink-2)" }}>
+              {totalConnected} of {totalAvailable} connected
+              {state.brandImported && <> · brand: <span style={{ color: "var(--ink)" }}>{state.brandPreset?.name}</span></>}
+            </span>
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -611,289 +812,295 @@ function Connections({ state, actions }) {
         </div>
       </div>
 
-      {/* Brand status banner */}
+      {/* Search + filter pill row */}
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ position: "relative", flex: "1 1 320px", minWidth: 240 }}>
+          <div style={{
+            position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)",
+            color: "var(--muted)", pointerEvents: "none",
+          }}>
+            <Icon name="search" size={13}/>
+          </div>
+          <Input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search integrations…"
+            style={{ paddingLeft: 32 }}
+          />
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {CONNECTOR_PILLS.map(p => {
+            const active = activeGroup === p.id;
+            return (
+              <button key={p.id} onClick={() => setActiveGroup(p.id)}
+                style={{
+                  padding: "6px 12px", borderRadius: 999,
+                  border: `1px solid ${active ? "var(--ink)" : "var(--rule)"}`,
+                  background: active ? "var(--ink)" : "var(--paper)",
+                  color:      active ? "var(--paper)" : "var(--ink-2)",
+                  fontSize: 12, fontWeight: 500, cursor: "pointer",
+                  fontFamily: "var(--font-sans)",
+                  transition: "all .12s",
+                }}>
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Grid */}
       <div style={{
-        border: "1px solid var(--rule)", borderRadius: 6,
-        background: state.brandImported ? "var(--success-wash)" : "var(--accent-wash)",
-        padding: 16, display: "flex", alignItems: "center", gap: 14,
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(132px, 1fr))",
+        gap: 12,
       }}>
-        <div style={{
-          width: 44, height: 44, borderRadius: 6,
-          background: state.brandImported ? "var(--success)" : "var(--accent)",
-          color: "var(--paper)", display: "grid", placeItems: "center",
-        }}>
-          <Icon name={state.brandImported ? "check" : "globe"} size={18}/>
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 2 }}>
-            {state.brandImported
-              ? `${state.brandPreset?.name} brand applied`
-              : "Import your brand to personalize the OS"}
+        {visible.map(c => {
+          const st = state.connectors[c.id] || {};
+          const isConnected  = !!st.connected;
+          const isConnecting = !!connecting[c.id];
+          const isRecommended = recommendedSet.has(c.id);
+
+          const onClick = () => {
+            if (isConnecting) return;
+            if (isConnected)  setManageStep({ connector: c });
+            else              startConnect(c);
+          };
+
+          const borderColor = isConnected  ? "var(--success)"
+                            : isConnecting ? "var(--warn)"
+                            : isRecommended? "var(--accent)"
+                            : "var(--rule)";
+          const tint = isConnected  ? "color-mix(in oklch, var(--success) 5%, var(--paper))"
+                     : isConnecting ? "color-mix(in oklch, var(--warn)    5%, var(--paper))"
+                     : "var(--paper)";
+          return (
+            <button
+              key={c.id}
+              onClick={onClick}
+              title={`${c.name} — ${c.desc}`}
+              style={{
+                border: `1.5px solid ${borderColor}`,
+                background: tint,
+                borderRadius: 10,
+                padding: "16px 10px 12px",
+                display: "flex", flexDirection: "column",
+                alignItems: "center", gap: 8,
+                cursor: isConnecting ? "default" : "pointer",
+                transition: "border-color .12s, background .12s, transform .12s",
+                minHeight: 132,
+                fontFamily: "var(--font-sans)",
+                textAlign: "center",
+              }}
+              onMouseEnter={e => { if (!isConnecting) e.currentTarget.style.transform = "translateY(-1px)"; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; }}
+            >
+              <ConnectorIcon connector={c} size={48}/>
+              <div style={{
+                fontSize: 12.5, fontWeight: 500,
+                color: isConnected ? "var(--success)" : "var(--ink)",
+                lineHeight: 1.2,
+              }}>{c.name}</div>
+              {isConnected && (
+                <div style={{ fontSize: 10.5, color: "var(--success)", marginTop: -2 }}>Connected</div>
+              )}
+              {isConnecting && (
+                <div style={{ fontSize: 10.5, color: "var(--warn)", marginTop: -2 }}>Connecting…</div>
+              )}
+              {!isConnected && !isConnecting && isRecommended && (
+                <div style={{ fontSize: 10.5, color: "var(--accent)", marginTop: -2 }}>Recommended</div>
+              )}
+            </button>
+          );
+        })}
+        {visible.length === 0 && (
+          <div style={{
+            gridColumn: "1 / -1", padding: "40px 0",
+            textAlign: "center", color: "var(--muted)", fontSize: 13,
+          }}>
+            No integrations match “{search}”.
           </div>
-          <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.45 }}>
-            {state.brandImported
-              ? `Palette, type, voice, and approved claims pulled from ${state.brandPreset?.url}. Edit anytime in Brand Memory.`
-              : "Paste your URL or upload a guidelines doc. We'll extract palette, fonts, voice, claims, and prohibited topics — under 60 seconds."}
-          </div>
-        </div>
-        {!state.brandImported && (
-          <Btn size="sm" variant="primary" onClick={() => setImportOpen(true)}><Icon name="flash" size={11}/> Start scan</Btn>
         )}
       </div>
 
-      {/* ── Recommended section (shown when brand is imported) ───────────────── */}
-      {state.brandImported && recommendedCatalog.length > 0 && (
-        <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
-            <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-              Recommended for {state.brandPreset?.name}
-              <span style={{ marginLeft: 8, color: "var(--muted-2)" }}>
-                {recommendedCatalog.filter(c => state.connectors[c.id]?.connected).length} / {recommendedCatalog.length} connected
-              </span>
-            </div>
-            <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Based on brand analysis · edit in Brand Memory</div>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 8 }}>
-            {recommendedCatalog.map(c => {
-              const status = state.connectors[c.id] || {};
-              const connected = status.connected;
-              return (
-                <div key={c.id} style={{
-                  border: `1px solid ${connected ? "var(--success)" : "var(--accent)"}`,
-                  borderRadius: 6,
-                  background: connected ? "var(--success-wash)" : "var(--accent-wash)",
-                  padding: "10px 12px",
-                  display: "flex", alignItems: "center", gap: 10,
-                }}>
-                  <ConnectorIcon id={c.id}/>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
-                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 1 }}>
-                      {connected ? (status.note || "connected") : c.category}
-                    </div>
-                  </div>
-                  {connected ? (
-                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--success)", flexShrink: 0 }}/>
-                  ) : (
-                    <Btn size="sm" variant="primary" onClick={() => startConnect(c)}>
-                      <Icon name="plus" size={10}/>
-                    </Btn>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ── Section label before full catalog ────────────────────────────────── */}
-      {state.brandImported && (
-        <div style={{ borderTop: "1px solid var(--rule)", paddingTop: 16 }}>
-          <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-            All channels · {totalAvailable}
-          </div>
-        </div>
-      )}
-
-      {/* ── Connector grid by category ────────────────────────────────────────── */}
-      {categories.map(cat => (
-        <div key={cat}>
-          <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
-            {cat}
-            <span style={{ marginLeft: 8, color: "var(--muted-2)" }}>
-              {byCat[cat]?.filter(c => state.connectors[c.id]?.connected).length || 0} / {byCat[cat]?.length || 0}
-            </span>
-          </div>
-          {/* MCP explainer */}
-          {cat === "MCP · Custom" && (
-            <div style={{ background: "var(--accent-wash)", border: "1px solid var(--accent)", borderRadius: 8, padding: "14px 18px", marginBottom: 12, display: "flex", gap: 14, alignItems: "flex-start" }}>
-              <div style={{ fontSize: 22, lineHeight: 1 }}>⬡</div>
-              <div>
-                <div style={{ fontSize: 13.5, fontWeight: 500, marginBottom: 4 }}>Model Context Protocol (MCP)</div>
-                <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
-                  MCP lets FlowOS's AI specialists call tools on any compatible server — image generators, video engines, your own internal APIs.
-                  Paste your server URL and optionally an API key. No SDK required.
-                </div>
-              </div>
-            </div>
-          )}
-          {/* Creative AI note */}
-          {cat === "Creative AI" && (
-            <div style={{ background: "var(--paper-3)", border: "1px solid var(--rule)", borderRadius: 8, padding: "12px 16px", marginBottom: 12, fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
-              Connected creative tools are available to Drafter — ask it to "generate an image for this caption" and it will use your connected provider automatically.
-            </div>
-          )}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
-            {byCat[cat]?.map(c => {
-              const status = state.connectors[c.id] || {};
-              const connected = status.connected;
-              return (
-                <div key={c.id} style={{
-                  border: "1px solid var(--rule)", borderRadius: 6,
-                  background: "var(--paper)", padding: 14,
-                  display: "flex", flexDirection: "column", gap: 10,
-                  transition: "border-color .12s",
-                }}>
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                    <ConnectorIcon id={c.id}/>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontSize: 13.5, fontWeight: 500, letterSpacing: "-0.005em" }}>{c.name}</span>
-                        {connected
-                          ? <Chip tone="ok">connected</Chip>
-                          : recommendedIds.includes(c.id)
-                            ? <Chip tone="accent">★ recommended</Chip>
-                            : <Chip>—</Chip>
-                        }
-                      </div>
-                      <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 3, lineHeight: 1.4 }}>{c.desc}</div>
-                    </div>
-                  </div>
-
-                  {connected && (
-                    <div style={{ fontSize: 11, color: "var(--muted)", borderTop: "1px solid var(--rule)", paddingTop: 8, lineHeight: 1.45 }}>
-                      <div className="mono" style={{ fontSize: 10, color: "var(--muted-2)", letterSpacing: "0.04em", marginBottom: 2 }}>{c.auth} · {status.note}</div>
-                      {status.syncCount && <div style={{ color: "var(--ink-2)" }}>{status.syncCount}</div>}
-                    </div>
-                  )}
-
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
-                    {connected ? (
-                      <>
-                        <Btn size="sm" variant="ghost" onClick={() => actions.setConnector(c.id, { note: "synced just now", status: "ok" }, { notify: { tone: "ok", text: `${c.name} re-synced` } })}>
-                          <Icon name="flash" size={11}/> Sync
-                        </Btn>
-                        <Btn size="sm" variant="ghost" onClick={() => disconnect(c)}>
-                          <Icon name="x" size={11}/> Disconnect
-                        </Btn>
-                      </>
-                    ) : (
-                      <Btn size="sm" variant="primary" onClick={() => startConnect(c)}>
-                        <Icon name="plus" size={11}/> Connect
-                      </Btn>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-
+      {/* Modals */}
       <BrandImportModal open={importOpen} onClose={() => setImportOpen(false)} onApply={(preset) => actions.importBrand(preset)}/>
       <ConnectorAuthModal
-        step={authStep}
-        onClose={() => setAuthStep(null)}
-        onComplete={completeConnect}
+        step={connectStep}
+        onClose={() => setConnectStep(null)}
+        onSubmit={handleConnectSubmit}
+      />
+      <ManageConnectorModal
+        step={manageStep}
+        status={manageStep ? state.connectors[manageStep.connector.id] || {} : null}
+        onClose={() => setManageStep(null)}
+        onDisconnect={(c) => { disconnect(c); setManageStep(null); }}
+        onResync={resync}
+        onSetPermissions={setPermissions}
       />
     </div>
   );
 }
 
-function ConnectorAuthModal({ step, onClose, onComplete }) {
+// ────────────────────────────── CONNECT MODAL (dumb) ──────────────────────────────
+// One layout for every connector. OAuth gets a paragraph + button; API key gets the
+// same paragraph + an input + button. The provider's own OAuth page shows the actual
+// scope checklist — we don't try to re-state it here.
+function ConnectorAuthModal({ step, onClose, onSubmit }) {
   const [apiKey, setApiKey] = useState4("");
-  const [mcpUrl, setMcpUrl] = useState4("");
-  useEffect4(() => { if (step?.step === "auth") { setApiKey(""); setMcpUrl(""); } }, [step]);
+  useEffect4(() => { if (step) setApiKey(""); }, [step]);
   if (!step) return null;
-  const { connector, step: phase, hint } = step;
-  const isMcp = connector?.auth === "MCP";
+  const { connector } = step;
+  const isApiKey = connector.auth === "API key";
 
   return (
-    <Dialog open onClose={onClose} title={`Connect · ${connector.name}`} width={520}>
-      {phase === "auth" && (
+    <Dialog open onClose={onClose} title={`Connect · ${connector.name}`} width={440}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+        <ConnectorIcon connector={connector} size={32}/>
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
-            <ConnectorIcon id={connector.id}/>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 500 }}>{connector.name}</div>
-              <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{connector.desc}</div>
-            </div>
-          </div>
+          <div style={{ fontSize: 14, fontWeight: 500 }}>Connect {connector.name}</div>
+          <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{connector.desc}</div>
+        </div>
+      </div>
 
-          {/* Optional hint */}
-          {hint && (
-            <div style={{ padding: "10px 14px", background: "var(--accent-wash)", border: "1px solid var(--accent)", borderRadius: 6, fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.5, marginBottom: 14 }}>
-              {hint}
-            </div>
-          )}
-
-          {isMcp ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{ padding: 14, background: "var(--accent-wash)", border: "1px solid var(--accent)", borderRadius: 6, fontSize: 12.5, lineHeight: 1.55 }}>
-                FlowOS connects to your MCP server over HTTP. The server handles auth — paste its base URL below and we'll negotiate the protocol handshake.
-              </div>
-              <FormRow label="MCP server URL" hint="e.g. https://mcp.runware.ai or http://localhost:3000">
-                <Input value={mcpUrl} onChange={e => setMcpUrl(e.target.value)} placeholder="https://your-mcp-server.com"/>
-              </FormRow>
-              <FormRow label="API key (optional)" hint="If your MCP server requires authentication.">
-                <Input value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="Bearer token or API key" type="password"/>
-              </FormRow>
-              <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.04em" }}>
-                Connection is tested at save time. Credentials stored encrypted at rest.
-              </div>
-            </div>
-          ) : connector.auth === "OAuth" ? (
-            <div>
-              <div style={{
-                padding: 16, border: "1px solid var(--rule)", borderRadius: 6,
-                background: "var(--paper-2)", marginBottom: 14, fontSize: 12.5, lineHeight: 1.55,
-              }}>
-                FlowOS will request the following scopes from {connector.name}:
-                <ul style={{ margin: "10px 0 0", padding: "0 0 0 18px", color: "var(--ink-2)" }}>
-                  <li>Read account profile + connected accounts</li>
-                  <li>Publish content on your behalf</li>
-                  <li>Read insights and analytics</li>
-                  {(connector.category === "Search Ads" || connector.category === "Social Ads") && <li>Manage campaigns, budgets, and audiences</li>}
-                </ul>
-              </div>
-              <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 14 }}>
-                Tokens are stored encrypted at rest. Revocable anytime.
-              </div>
-            </div>
-          ) : (
-            <>
-              <FormRow label="API key" hint={`Found in your ${connector.name} dashboard → Settings → API. We never store this in plaintext.`}>
-                <Input value={apiKey} onChange={e => setApiKey(e.target.value)}
-                  placeholder={
-                    connector.id.startsWith("heygen")  ? "hg_live_xxxxxxxxxxxx" :
-                    connector.id.startsWith("runware") ? "rw-key-xxxxxxxxxxxx" :
-                    "key_xxxxxxxxxxxx"
-                  }
-                  type="password"/>
-              </FormRow>
-            </>
-          )}
-
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, paddingTop: 6 }}>
-            <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
-            <Btn variant="primary"
-              onClick={() => onComplete(connector, apiKey, mcpUrl)}
-              disabled={(connector.auth === "API key" && !apiKey.trim()) || (isMcp && !mcpUrl.trim())}>
-              <Icon name="check" size={12}/>
-              {isMcp ? "Test & connect MCP" : connector.auth === "OAuth" ? `Authorize ${connector.name}` : "Validate & connect"}
-            </Btn>
-          </div>
+      {!isApiKey && (
+        <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55, marginBottom: 14 }}>
+          Connect your {connector.name} account. We'll open a browser window, you approve access there,
+          and FlowOS will detect the connection automatically.
         </div>
       )}
 
-      {phase === "syncing" && (
-        <div style={{ padding: "30px 0", textAlign: "center" }}>
-          <div className="dot-pulse" style={{
-            width: 36, height: 36, borderRadius: "50%",
-            background: "var(--accent)", margin: "0 auto 16px",
-          }}/>
-          <div style={{ fontSize: 14, fontWeight: 500 }}>
-            {`Connecting to ${connector.name}…`}
+      {isApiKey && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55, marginBottom: 10 }}>
+            Paste your {connector.name} API key. We'll validate and store it encrypted at rest.
           </div>
-          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>
-            Validating credentials and pulling initial state
-          </div>
+          <FormRow label="API key" hint={`Found in your ${connector.name} dashboard → Settings → API.`}>
+            <Input
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              placeholder="key_xxxxxxxxxxxx"
+              type="password"
+            />
+          </FormRow>
         </div>
       )}
+
+      <div style={{
+        padding: "10px 12px",
+        background: "var(--paper-2)",
+        border: "1px solid var(--rule)",
+        borderRadius: 6, marginBottom: 14,
+        fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5,
+      }}>
+        {connector.name} can expose {connector.category.toLowerCase()} data. After you connect,
+        FlowOS's agent permissions are controlled in the Manage panel as read, write, and admin toggles.
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+        <Btn variant="primary"
+          onClick={() => onSubmit({ apiKey })}
+          disabled={isApiKey && !apiKey.trim()}>
+          <Icon name="check" size={12}/> Connect {connector.name}
+        </Btn>
+      </div>
     </Dialog>
   );
 }
 
-Object.assign(window, { Connections, BrandImportModal, ConnectorIcon });
+// ────────────────────────────── MANAGE MODAL ──────────────────────────────
+// Opened by clicking a Connected tile. Surfaces the connector status,
+// per-agent permission toggles, and disconnect.
+function ManageConnectorModal({ step, status, onClose, onDisconnect, onResync, onSetPermissions }) {
+  if (!step) return null;
+  const { connector } = step;
+  const permissions = status?.permissions || { read: true, write: true, admin: false };
+
+  const Row = ({ label, hint, children }) => (
+    <div style={{
+      display: "flex", justifyContent: "space-between", alignItems: "flex-start",
+      gap: 16, padding: "12px 0",
+      borderTop: "1px solid var(--rule)",
+    }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 500 }}>{label}</div>
+        <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2, lineHeight: 1.45 }}>{hint}</div>
+      </div>
+      <div style={{ paddingTop: 2 }}>{children}</div>
+    </div>
+  );
+
+  return (
+    <Dialog open onClose={onClose} title={`Manage · ${connector.name}`} width={520}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
+        <ConnectorIcon connector={connector} size={32}/>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 500 }}>Manage {connector.name}</div>
+          <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{connector.desc}</div>
+        </div>
+      </div>
+
+      {/* Status */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "12px 0", borderBottom: "1px solid var(--rule)", marginTop: 10,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--success)" }}/>
+          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--success)" }}>
+            {connector.name} is connected.
+          </div>
+        </div>
+        <Btn size="sm" variant="ghost" onClick={() => onResync(connector)}>
+          <Icon name="flash" size={11}/> Re-sync
+        </Btn>
+      </div>
+      {status?.note && (
+        <div style={{ fontSize: 11.5, color: "var(--muted)", padding: "8px 0 4px" }}>
+          {status.note}{status.syncCount ? ` · ${status.syncCount}` : ""}
+        </div>
+      )}
+
+      {/* Permissions */}
+      <div style={{ marginTop: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+            Permissions
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--muted)" }}>Read + Write enabled by default</div>
+        </div>
+        <Row label="Read" hint="Allow listing, fetching, searching (e.g. read posts, audiences, reports).">
+          <PermissionSwitch value={!!permissions.read}  onChange={v => onSetPermissions(connector, { read: v })}/>
+        </Row>
+        <Row label="Write" hint="Allow sending, creating, updating (e.g. publish posts, push campaigns).">
+          <PermissionSwitch value={!!permissions.write} onChange={v => onSetPermissions(connector, { write: v })}/>
+        </Row>
+        <Row label="Admin" hint="Allow destructive or permission-changing actions (delete, archive, share).">
+          <PermissionSwitch value={!!permissions.admin} onChange={v => onSetPermissions(connector, { admin: v })}/>
+        </Row>
+      </div>
+
+      {/* Triggers placeholder */}
+      <div style={{ marginTop: 18, paddingTop: 14, borderTop: "1px solid var(--rule)" }}>
+        <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>
+          Triggers
+        </div>
+        <div style={{ fontSize: 12, color: "var(--muted)" }}>
+          No triggers are currently available for {connector.name}.
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 18 }}>
+        <Btn variant="ghost" onClick={() => onDisconnect(connector)} style={{ color: "var(--danger)" }}>
+          <Icon name="x" size={11}/> Disconnect
+        </Btn>
+        <Btn variant="primary" onClick={onClose}>Close</Btn>
+      </div>
+    </Dialog>
+  );
+}
+
+Object.assign(window, { Connections, BrandImportModal, ConnectorIcon, LetterMark });
 })();

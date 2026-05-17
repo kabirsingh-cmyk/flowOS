@@ -1446,7 +1446,7 @@ function SettingsHub({ state, actions, go }) {
       desc: "Connect your channels — social platforms via OAuth, email via Klaviyo, ad platforms, analytics, commerce, and creative AI tools.",
       stats: [
         { label: "Connected", value: Object.values(state?.connectors || {}).filter(c => c.connected).length },
-        { label: "Available", value: 30 },
+        { label: "Available", value: (window.SEED?.connectorCatalog || []).length },
         { label: "Recommended", value: state?.brandPreset?.recommendedConnectors?.length || 0 },
       ],
     },

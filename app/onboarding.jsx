@@ -301,7 +301,7 @@ const ALL_CHANNELS = [
   { id: "yt",         label: "YouTube",               sub: "Organic video — shorts & long-form",     color: "#ff0000" },
   { id: "li",         label: "LinkedIn",              sub: "Professional network & B2B social",      color: "#0077b5" },
   { id: "x",          label: "X",                     sub: "Organic social",                         color: "#000000" },
-  { id: "threads",    label: "Threads",               sub: "Organic social",                         color: "#000000" },
+  { id: "reddit",     label: "Reddit",                sub: "Community posting",                      color: "#ff4500" },
   { id: "metaads",    label: "Meta Ads",              sub: "Paid social — Advantage+",               color: "#0866ff" },
   { id: "ttads",      label: "TikTok Ads",            sub: "Paid social — spark ads",                color: "#69c9d0" },
   { id: "googleads",  label: "Google Ads",            sub: "Search, Shopping & Pmax",                color: "#4285f4" },
@@ -311,9 +311,9 @@ const ALL_CHANNELS = [
   { id: "shopify",    label: "Shopify",               sub: "Commerce & data",                        color: "#96bf48" },
   { id: "ga4",        label: "Google Analytics",      sub: "Web analytics",                          color: "#e37400" },
   { id: "gsc",        label: "Google Search Console", sub: "SEO & search performance",               color: "#4285f4" },
-  { id: "yelp",       label: "Yelp",                  sub: "Local reviews & reputation",             color: "#d32323" },
   { id: "ahrefs",     label: "Ahrefs",                sub: "SEO & backlink analysis",                color: "#ff6200" },
-  { id: "semrush",    label: "SEMrush",               sub: "SEO & competitive research",             color: "#ff642d" },
+  { id: "moz",        label: "Moz",                   sub: "Domain authority & rank tracking",       color: "#005ea2" },
+  { id: "hubspot",    label: "HubSpot",               sub: "CRM & marketing hub",                    color: "#ff7a59" },
 ];
 
 // ─── Progress dots ─────────────────────────────────────────────────────────
