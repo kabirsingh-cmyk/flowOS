@@ -160,8 +160,7 @@ const SEED = {
 
     // ── E-commerce ───────────────────────────────────────────────────────────
     { id: "shopify",     name: "Shopify",         category: "E-commerce", group: "Commerce",      desc: "Products, inventory, orders, customers",          auth: "OAuth",   provider: "composio", slug: "shopify", domain: "shopify.com"  },
-    { id: "woocommerce", name: "WooCommerce",     category: "E-commerce", group: "Commerce",      desc: "WordPress storefront · products, orders",         auth: "API key", provider: "pipedream",slug: "woocommerce", domain: "woocommerce.com"  },
-    { id: "wordpress",   name: "WordPress",       category: "E-commerce", group: "Commerce",      desc: "CMS publishing · posts, pages, media",            auth: "OAuth",   provider: "pipedream",slug: "wordpress", domain: "wordpress.com"  },
+    { id: "wordpress",   name: "WordPress",       category: "E-commerce", group: "Commerce",      desc: "CMS publishing · posts, pages, media",            auth: "API key", provider: "direct",   slug: "wordpress", domain: "wordpress.com"  },
 
     // ── A/B Testing ──────────────────────────────────────────────────────────
     { id: "abtasty",     name: "AB Tasty",        category: "A/B Testing", group: "Analytics & Ops", desc: "A/B + personalisation · CRO",                  auth: "OAuth",   provider: "direct", slug: null, domain: "abtasty.com"  },
@@ -190,7 +189,7 @@ const SEED = {
   // Manage modal toggles `permissions.{read,write,admin}` — defaults set by makeConnState below.
   connectorState: {
     // Paid Search
-    googleads:      { connected: true,  status: "ok",   note: "spend $4,820 MTD · 6 campaigns",       syncCount: "", permissions: { read: true, write: true, admin: false } },
+    googleads:      { connected: false, status: "warn", note: "reconnect required · Composio migration", syncCount: "—", permissions: { read: true, write: true, admin: false } },
     msads:          { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // Paid Audio
     spotifyads:     { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
@@ -233,7 +232,6 @@ const SEED = {
     neuronwriter:   { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // E-commerce
     shopify:        { connected: true,  status: "ok",   note: "32 products · 1,408 orders MTD",       syncCount: "", permissions: { read: true, write: true, admin: false } },
-    woocommerce:    { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     wordpress:      { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // A/B Testing
     abtasty:        { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
@@ -260,7 +258,7 @@ const SEED = {
     mveda: null, // null = use default connectorState above
     erickson: {
       // Paid Search
-      googleads:      { connected: true,  status: "ok", note: "synced 3m ago · $4,800 MTD",                       syncCount: "4 campaigns active", permissions: { read: true, write: true, admin: false } },
+      googleads:      { connected: false, status: "warn", note: "reconnect required · Composio migration",          syncCount: "—", permissions: { read: true, write: true, admin: false } },
       msads:          { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       // Paid Audio
       spotifyads:     { connected: false, status: "—",  note: "not connected — not relevant for B2B commercial",  syncCount: "—", permissions: { read: true, write: true, admin: false } },
@@ -303,7 +301,6 @@ const SEED = {
       neuronwriter:   { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       // E-commerce
       shopify:        { connected: false, status: "—",  note: "not connected — service business, no storefront",  syncCount: "—", permissions: { read: true, write: true, admin: false } },
-      woocommerce:    { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       wordpress:      { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       // A/B Testing
       abtasty:        { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },

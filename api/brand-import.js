@@ -27,21 +27,19 @@ const CONNECTOR_IDS = [
   // Paid Social
   "metaads", "ttads", "liads", "pinads", "xads",
   // Email + SMS
-  "klaviyo", "klaviyo_sms", "mailchimp", "mailerlite", "loops", "moosend",
+  "klaviyo", "klaviyo_sms", "mailchimp",
   "sendgrid", "activecampaign", "hunter",
   "attentive", "twilio",
   // Email Verification
   "neverbounce", "kickbox", "listclean",
   // Commerce
-  "shopify", "woocommerce", "wordpress",
+  "shopify", "wordpress",
   // Analytics + SEO
   "ga4", "gsc", "ahrefs", "moz", "neuronwriter",
   // A/B Testing
   "abtasty", "optimizely", "vwo",
   // Creative AI
   "heygen", "runware", "luma", "elevenlabs", "replicate", "higgsfield", "audiostack",
-  // CRM
-  "hubspot", "salesforce",
 ];
 
 // ─── Jina reader ──────────────────────────────────────────────────────────────
