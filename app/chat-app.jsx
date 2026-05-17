@@ -85,9 +85,6 @@ function makeDraftArtifact(t) {
     /youtube/.test(t)        ? "youtube"   :
     /pinterest|pin\b/.test(t) ? "pinterest" :
     /reddit/.test(t)         ? "reddit"    :
-    /snap/.test(t)           ? "snapchat"  :
-    /threads/.test(t)        ? "threads"   :
-    /bluesky/.test(t)        ? "bluesky"   :
     /email/.test(t)          ? "email"     :
     /\bsms\b|text message/.test(t) ? "sms" :
     "instagram";

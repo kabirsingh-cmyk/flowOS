@@ -854,8 +854,8 @@ function OrganicSocialStudio({ state, actions }) {
     })();
   }, []);
 
-  const connectedImageGen = ["runware", "fal", "runway"].find(id => state.connectors?.[id]?.connected);
-  const connectedVideoGen = ["luma", "kling", "pika", "higgsfield", "runway"].find(id => state.connectors?.[id]?.connected);
+  const connectedImageGen = ["runware", "fal", "replicate"].find(id => state.connectors?.[id]?.connected);
+  const connectedVideoGen = ["luma", "kling", "pika", "higgsfield"].find(id => state.connectors?.[id]?.connected);
 
   const simulateImageGen = () => {
     setGenLoading(true);
@@ -917,7 +917,7 @@ function OrganicSocialStudio({ state, actions }) {
   };
 
   // Only show platform tabs for connected channels (+ "all")
-  const ALL_PLATFORMS = ["instagram", "tiktok", "pinterest", "youtube", "facebook", "linkedin", "x", "threads", "reddit", "snapchat", "bluesky", "mastodon", "telegram"];
+  const ALL_PLATFORMS = ["instagram", "tiktok", "pinterest", "youtube", "facebook", "linkedin", "x", "reddit"];
   const TABS = ["all", ...ALL_PLATFORMS.filter(p => channels[p])];
   const filtered = tab === "all" ? posts : posts.filter(p => p.platform === tab);
   const scheduled = posts.filter(p => p.status === "scheduled").length;
@@ -1095,14 +1095,9 @@ function OrganicSocialStudio({ state, actions }) {
                   {draft.platform === "facebook"   && <><option>Post</option><option>Story</option><option>Reel</option></>}
                   {draft.platform === "linkedin"   && <><option>Post</option><option>Article</option><option>Poll</option></>}
                   {draft.platform === "x"          && <><option>Post</option><option>Thread</option></>}
-                  {draft.platform === "threads"    && <><option>Post</option><option>Reply</option></>}
                   {draft.platform === "reddit"     && <><option>Text post</option><option>Image post</option><option>Link post</option></>}
-                  {draft.platform === "snapchat"   && <><option>Spotlight</option><option>Story</option></>}
-                  {draft.platform === "bluesky"    && <><option>Post</option><option>Thread</option></>}
-                  {draft.platform === "mastodon"   && <><option>Toot</option><option>Thread</option></>}
-                  {draft.platform === "telegram"   && <><option>Channel post</option><option>Poll</option></>}
                   {/* Fallback for any unmapped platform */}
-                  {!["instagram","tiktok","pinterest","youtube","facebook","linkedin","x","threads","reddit","snapchat","bluesky","mastodon","telegram"].includes(draft.platform) && <option>Post</option>}
+                  {!["instagram","tiktok","pinterest","youtube","facebook","linkedin","x","reddit"].includes(draft.platform) && <option>Post</option>}
                 </select>
               </label>
             </div>

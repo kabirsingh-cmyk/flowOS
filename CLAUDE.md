@@ -255,21 +255,65 @@ if (hasCreateVerb && hasContentNoun) { return makeDraftArtifact(t); }
 
 ## Connector system
 
-### Connector IDs (`seed.jsx` + `brand-import.js`)
+### Connector catalog (`seed.jsx` is the source of truth)
+
+The canonical 50-connector list lives in `SEED.connectorCatalog` in [seed.jsx](app/seed.jsx) and matches `mmvveeddaa/composio_marketing_connectors.md`. Every entry has:
+
+```js
+{
+  id,         // FlowOS-stable slug, used as the key everywhere
+  name,       // display name
+  category,   // canonical category (Paid Search / Paid Audio / Paid Social / Organic Social / Email Marketing / SMS Marketing / Email Verification / SEO & Search / E-commerce / A/B Testing / AI Video / Image / AI Audio / Voice / Analytics / CRM & Marketing Ops)
+  group,      // pill-filter bucket: "Social" | "Ads" | "Email & SMS" | "Commerce" | "Analytics & Ops" | "Creative AI"
+  desc,       // short description — tooltip + setup modal
+  auth,       // "OAuth" | "API key" — drives Connect-modal fork (paragraph vs. input)
+  provider,   // "composio" | "pipedream" | "direct" — drives the initiate path (provider-agnostic surface)
+  slug,       // Simple Icons CDN slug, or null
+  domain,     // Google S2 favicon fallback host (always set)
+}
+```
+
+`ConnectorIcon` in [workspaces4.jsx](app/workspaces4.jsx) resolves logos in three stages: Simple Icons CDN → Google S2 favicon → deterministic LetterMark fallback (no logo asset needed in-repo).
 
 When adding a new connector, update **all** of these:
 
-1. `seed.jsx` — connector definition object `{ id, category, name, desc, auth, icon }` in the connectors array
-2. `seed.jsx` — `connectorState` default status `{ connected, status, note, syncCount }`
-3. `seed.jsx` — second tenant's connector state (Erickson)
-4. `workspaces4.jsx` — `CONN_STYLE` color/letter map for the avatar badge
-5. `agents.jsx` — `CONNECTOR_LABELS` display name map
-6. `channel-strategy.jsx` — `connectedSet` id→name map
-7. `api/brand-import.js` — `CONNECTOR_IDS` array (Claude can recommend these)
-8. `store.jsx` — add to `channelRules` array if it's a publishing channel
+1. `seed.jsx` — catalog row (above shape) + `connectorState` default + Erickson's `brandConnectorStates.erickson`
+2. `agents.jsx` — `CONNECTOR_LABELS` display name map
+3. `channel-strategy.jsx` — `connectedSet` id→display-name map if it's a publishing channel
+4. `api/brand-import.js` — `CONNECTOR_IDS` array (Claude can recommend these)
+5. `store.jsx` — `channelRules` if it's a publishing channel that users approve via AutonomySettings
 
-### Connector categories (used in Settings → Connections grouping):
-`Social`, `Email`, `SMS`, `Search Ads`, `Social Ads`, `Commerce`, `Analytics`, `SEO`, `Affiliate`, `Experimentation`, `Creative AI`, `MCP · Custom`
+### Setup flow (Connect modal → popup → polling, or API-key direct)
+
+The connect surface in [workspaces4.jsx](app/workspaces4.jsx) is provider-agnostic — the same Connect modal serves Composio, Pipedream, and Direct API connectors:
+
+1. Click an unconnected tile → opens the dumb Connect modal (logo + one paragraph + one button). API-key connectors additionally surface a `<password>` input.
+2. On submit, the flow forks by `connector.auth`:
+   - **OAuth** → POST `/api/<provider>` `initiate_connection` with `redirectUri`; `window.open(redirectUrl, ...)`; tile flips amber.
+   - **API key (Composio)** → POST `/api/composio` `initiate_connection` with `apiKey`; Composio creates a `use_custom_auth` auth_config + connected_account synchronously. No popup. Tile flips green on success.
+   - **API key (direct)** → local `setTimeout` simulation for now (real per-provider validation routes are a follow-up).
+3. OAuth popup behaviour: closes immediately on flow start; tile shows amber "Connecting…". Popup blocked → falls back to `window.location.href` + legacy `?composio_connected=` URL-param hydration.
+4. Polling: every 1.5s the host posts `connection_status` to verify. On success → write to Supabase `channels`, dispatch `setConnector`, tile flips green. 3-minute timeout; popup-closed → short grace then cancel.
+5. The OAuth popup lands on [oauth-callback.html](oauth-callback.html) (static, served at site root) which `postMessage`s `{ type: "flowos_oauth_connected", app }` to the opener as a fast-path then self-closes after 1.5s. Polling is the redundant fallback.
+6. Click a Connected tile → `ManageConnectorModal` (status + Read/Write/Admin permission toggles + Re-sync + Disconnect). Permissions live on `state.connectors[id].permissions = { read, write, admin }` (default `{true,true,false}`); persisted to client state only — server-side enforcement is a follow-up.
+
+### Composio integration state (verified against live backend.composio.dev)
+
+[api/composio.js](api/composio.js) handles both OAuth and API-key flows. Field naming is inconsistent in Composio's API — `authScheme` is camelCase, everything else is snake_case.
+
+| Mode | Composio shape | Works for |
+|---|---|---|
+| **OAuth** | `auth_config: { type: "use_composio_managed_auth" }` + connected_account with `callback_url` | 13 toolkits with Composio managed credentials: googleads, ga4, gsc, hubspot, salesforce, mailchimp, reddit, youtube, fb (+ metaads), ig, li (+ liads) |
+| **API key** | `auth_config: { type: "use_custom_auth", authScheme: "API_KEY" }` + connected_account with `connection.data.apiKey` | 13 toolkits without managed credentials but supporting API-key auth: klaviyo (+ klaviyo_sms), mailerlite, moosend, hunter, ahrefs, moz, neuronwriter, neverbounce, kickbox, listclean, elevenlabs, heygen |
+| **OAuth — needs custom app** | Same OAuth shape, but Composio has no default managed credentials → returns error code 306 | 5 toolkits where you must register your own OAuth app in the Composio dashboard: shopify, tiktok (tt + ttads), twitter (x + xads) |
+
+Surface treatment of code 306: `/api/composio` returns a 409 with an actionable message — "configure a Composio auth_config for `<slug>` in the dashboard, or switch to direct provider."
+
+`/api/composio` debug actions: `list_toolkits` (1041 slugs available), `verify_app` (per-id check). Use [scripts/verify-composio.mjs](scripts/verify-composio.mjs) to regression-check the full APP_MAP against live Composio:
+
+```bash
+COMPOSIO_API_KEY2=<key> node scripts/verify-composio.mjs
+```
 
 ---
 
