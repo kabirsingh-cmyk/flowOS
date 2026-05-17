@@ -257,7 +257,7 @@ if (hasCreateVerb && hasContentNoun) { return makeDraftArtifact(t); }
 
 ### Connector catalog (`seed.jsx` is the source of truth)
 
-The canonical 49-connector list lives in `SEED.connectorCatalog` in [seed.jsx](app/seed.jsx) and is based on `mmvveeddaa/composio_marketing_connectors.md` (WooCommerce dropped post-verification — not in Pipedream's catalog and out of product scope). Every entry has:
+The canonical 49-connector list lives in `SEED.connectorCatalog` in [seed.jsx](app/seed.jsx) and is based on [docs/composio_marketing_connectors.md](docs/composio_marketing_connectors.md) (WooCommerce dropped post-verification — not in Pipedream's catalog and out of product scope). Every entry has:
 
 ```js
 {
