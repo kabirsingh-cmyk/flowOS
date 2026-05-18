@@ -923,7 +923,7 @@ const CONNECTOR_LABELS = {
   // Email Verification
   neverbounce: "NeverBounce", kickbox: "Kickbox", listclean: "Listclean",
   // Commerce
-  shopify: "Shopify", woocommerce: "WooCommerce", wordpress: "WordPress",
+  shopify: "Shopify", wordpress: "WordPress",
   // Analytics + SEO
   ga4: "GA4", gsc: "Search Console", ahrefs: "Ahrefs",
   moz: "Moz", neuronwriter: "Neuronwriter",

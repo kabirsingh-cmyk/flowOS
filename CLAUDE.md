@@ -257,7 +257,7 @@ if (hasCreateVerb && hasContentNoun) { return makeDraftArtifact(t); }
 
 ### Connector catalog (`seed.jsx` is the source of truth)
 
-The canonical 50-connector list lives in `SEED.connectorCatalog` in [seed.jsx](app/seed.jsx) and matches `mmvveeddaa/composio_marketing_connectors.md`. Every entry has:
+The canonical 49-connector list lives in `SEED.connectorCatalog` in [seed.jsx](app/seed.jsx) and is based on [docs/composio_marketing_connectors.md](docs/composio_marketing_connectors.md) (WooCommerce dropped post-verification — not in Pipedream's catalog and out of product scope). Every entry has:
 
 ```js
 {
@@ -315,6 +315,50 @@ Surface treatment of code 306: `/api/composio` returns a 409 with an actionable 
 COMPOSIO_API_KEY2=<key> node scripts/verify-composio.mjs
 ```
 
+### Pipedream integration state (verified against live api.pipedream.com)
+
+[api/pipedream.js](api/pipedream.js) handles Pipedream Connect — Pipedream's hosted OAuth + API-key product, equivalent to Composio's managed flow. Server-to-server auth uses the OAuth client_credentials grant for a 1-hour Bearer; per-user auth mints a short-lived **Connect Token** that the frontend opens in a popup at the `connect_link_url`.
+
+Pipedream's API has one important quirk: the **`x-pd-environment` header** (values: `production` | `development`) is required on every `/connect/{project_id}/*` call. Body fields don't satisfy it.
+
+| FlowOS id | Pipedream slug | Auth type | State |
+|---|---|---|---|
+| `pn`, `pinads` | `pinterest` | oauth | ✓ Connect token mints, popup opens Pipedream's hosted flow |
+| `sendgrid` | `sendgrid` | keys | ✓ |
+| `activecampaign` | `activecampaign` | keys | ✓ |
+| `twilio` | `twilio` | keys | ✓ |
+| `runware` | `runware` | keys | ✓ |
+
+Env vars (all required):
+```
+PIPEDREAM_PROJECT_ID     proj_XXXXXX  (Project → Connect → Configuration → Project ID)
+PIPEDREAM_CLIENT_ID      Account settings → API → OAuth client
+PIPEDREAM_CLIENT_SECRET  (rotate-only)
+PIPEDREAM_ENVIRONMENT    "production" (default) | "development"
+```
+
+`/api/pipedream` debug actions: `list_apps` (3000 apps available), `verify_app` (per-id check). Regression-check the APP_MAP against live Pipedream:
+
+```bash
+PIPEDREAM_PROJECT_ID=<id> PIPEDREAM_CLIENT_ID=<id> PIPEDREAM_CLIENT_SECRET=<secret> \
+  node scripts/verify-pipedream.mjs
+```
+
+WordPress was originally on Pipedream per the canonical doc but isn't in Pipedream's actual catalog → reclassified to `provider: "direct"` (WordPress Application Passwords or REST OAuth, wired in its own follow-up).
+
+### Direct-API integration state
+
+Per-tenant API-key connectors that don't go through Composio or Pipedream live behind their own `/api/<provider>` routes and share persistence via `api/lib/directCredentials.js` (writes to `public.connector_credentials`, mirrored to `channels` for the tile state). The frontend route table is `DIRECT_API_ROUTES` in [workspaces4.jsx](app/workspaces4.jsx); connector ids not in that map fall through to a local setTimeout simulation.
+
+| FlowOS id | Route | Validation endpoint | State |
+|---|---|---|---|
+| `replicate`  | `/api/replicate`  | `GET /v1/account`                           | ✓ |
+| `higgsfield` | `/api/higgsfield` | `GET /models`                               | ✓ |
+| `luma`       | `/api/luma`       | `GET /dream-machine/v1/generations?limit=1` | ✓ |
+| `msads`, `spotifyads`, `attentive`, `abtasty`, `optimizely`, `vwo`, `audiostack`, `loops`, `wordpress` | — | — | pending wire-up |
+
+All three follow the same shape: `action=initiate_connection` validates the supplied apiKey against the provider's REST API, persists into `connector_credentials`, and upserts a `channels` row with `status=connected`. `action=disconnect` deletes the credential and flips the channels row. Downstream API routes (e.g. `/api/generate`) can read the per-tenant key with `loadCredential({ tenantId, platform })` and fall back to the global env-var key if absent.
+
 ---
 
 ## API routes (Vercel Edge Functions)
@@ -338,10 +382,9 @@ All in `/api/`. All use `export const config = { runtime: "edge" }`.
 | `GET  /api/cron/daily-analytics` | Vercel Cron (06:00 UTC) — calls analytics-ingest for all tenants. |
 | `GET  /api/cron/proactive-emails` | Vercel Cron (07:30 UTC) — iterates tenants and POSTs to /api/proactive-emails. |
 | `GET  /api/cron/fire-scheduled` | Vercel Cron (`* * * * *` — **requires Pro** for guaranteed 1-min execution; Hobby cron schedules will be rejected at deploy). Calls Supabase RPC `claim_due_scheduled_posts(20)` which atomically picks due `pending` rows via `FOR UPDATE SKIP LOCKED`, transitions them to `publishing`, then POSTs `${origin}/api/<platform>` with the row's snapshot payload. PATCHes the row to `published`/`failed`. Idempotent by construction — same row can never be claimed twice concurrently. |
-| `POST /api/google-ads` | Google Ads API v18. Actions: `list_campaigns`, `create_campaign`, `update_budget`, `enable_campaign`, `pause_campaign`, `keyword_ideas`, `campaign_detail`, `generate_copy`. |
-| `GET  /api/google-ads-auth?action=connect&tenantId=...` | Returns Google OAuth2 consent URL. |
-| `GET  /api/google-ads-auth?code=...&state=tenantId` | OAuth callback — exchanges code, stores tokens in Supabase `google_ads_tokens`. |
-| `POST /api/google-ads-auth` | Set active customer ID when user has multiple Google Ads accounts. |
+| `POST /api/google-ads` | Composio-backed Google Ads wrapper. Actions: `list_customer_ids` (new — returns accessible MCC child accounts via `GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS`), `list_campaigns`, `create_campaign`, `update_budget`, `enable_campaign`, `pause_campaign`, `keyword_ideas`, `campaign_detail`, `generate_copy`. Frontend contract unchanged (`{ ok, data }`). Composio toolkit slug names live in the `TOOLS` constant at the top of the file. Pass `customerId` in params; if omitted, the user must pick one via `list_customer_ids` first. |
+| `POST /api/replicate` `POST /api/higgsfield` `POST /api/luma` | Direct-API connector routes (provider: "direct" in seed.jsx). Actions: `initiate_connection` (validates apiKey against the provider's REST API, persists to `connector_credentials`, flips `channels` to connected), `disconnect`. Shared persistence helper in [api/lib/directCredentials.js](api/lib/directCredentials.js). |
+| `GET/POST /api/google-ads-auth` | **REMOVED — 410 Gone tombstone.** Returns `{ error: "Google Ads OAuth has moved to Composio…", code: "GONE_USE_COMPOSIO" }`. Connect flow now goes through `/api/composio` like every other OAuth connector. The old `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET` env vars are no longer read at runtime. |
 
 ### Auth pattern for cron:
 ```js
@@ -356,8 +399,9 @@ if (cronSecret && req.headers.get("authorization") !== `Bearer ${cronSecret}`) {
 - `analytics_snapshots` — raw per-channel metrics. Keys: `tenant_id`, `channel`, `period`.
 - `analytics_insights` — Claude-generated summaries. Keys: `tenant_id`, `period`.
 - `agent_overrides` — custom system prompts per agent per tenant.
-- `google_ads_tokens` — OAuth refresh tokens for Google Ads. Keys: `tenant_id`. Columns: `refresh_token`, `customer_id`, `all_customer_ids` (array).
+- `google_ads_tokens` — **DEPRECATED** (2026-05-17 Composio cutover). No longer read or written by runtime. Safe to drop once any reconnecting tenant has completed the new Composio flow. Original schema: `tenant_id` (pk), `refresh_token`, `customer_id`, `all_customer_ids` (array).
 - `scheduled_posts` — queued posts awaiting cron firing. Columns: `tenant_id` (text), `item_id` (calendar row id), `platform`, `fire_at` (timestamptz UTC), `payload` (jsonb — snapshot of `/api/<platform>` publish_now body, minus `action` and `tenantId`), `status` (`pending`|`publishing`|`published`|`failed`|`cancelled`), `attempts`, `last_error`, `fire_attempted_at`, `published_at`, `result` (jsonb response). Unique partial index on `item_id` where `status in (pending,publishing)` prevents double-queueing. `payload` is a snapshot, not a reference — editing the calendar row after Schedule does NOT change what fires; an explicit reschedule (cancel + new Schedule) is required.
+- `connector_credentials` — per-tenant API keys for Direct-API connectors (Replicate, Higgsfield, Luma today; the other 9 Direct connectors as they're wired). Primary key `(user_id, platform)`. Columns: `secret_kind` (default `api_key`), `secret_value`, `validated_at`, `updated_at`. Service-role only (RLS enabled, no policies). Migration: [supabase/migrations/2026-05-18-connector-credentials.sql](supabase/migrations/2026-05-18-connector-credentials.sql).
 - `proactive_drafts` — weekly social calendar drafts (status `pending`/`archived`). Keys: `tenant_id`, `status`.
 - `proactive_emails` — analytics-triggered email drafts. Keys: `tenant_id`, `rule`, `source_insight_id`. Unique index enforces idempotency. Status: `proactive_draft` → `pushed` (via /api/klaviyo) | `dismissed`.
 
@@ -455,9 +499,9 @@ COMPOSIO_API_KEY2        Composio tool execution
 CRON_SECRET              Vercel cron auth (optional on Hobby plan)
 RUNWARE_API_KEY          Runware image + video generation
 HIGGSFIELD_API_KEY       Higgsfield video (cinematic_studio_3_0, kling3_0)
-GOOGLE_ADS_DEVELOPER_TOKEN  Google Ads API Developer Token (from API Center in manager account)
-GOOGLE_ADS_CLIENT_ID        Google OAuth2 Client ID (same as existing Google Cloud OAuth app)
-GOOGLE_ADS_CLIENT_SECRET    Google OAuth2 Client Secret (same as above)
+GOOGLE_ADS_DEVELOPER_TOKEN  DEPRECATED — no longer read (Composio cutover 2026-05-17)
+GOOGLE_ADS_CLIENT_ID        DEPRECATED — no longer read (Composio cutover 2026-05-17)
+GOOGLE_ADS_CLIENT_SECRET    DEPRECATED — no longer read (Composio cutover 2026-05-17)
 ```
 
 Frontend uses the Supabase anon key baked into `supabase.jsx` (public — safe).

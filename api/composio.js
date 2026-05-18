@@ -144,23 +144,29 @@ function resolveApp(app) {
 // or creates one if none exists.
 
 async function getOrCreateAuthConfigId(toolkitSlug) {
-  // 1. Try to find an existing managed auth config for this toolkit
+  // 1. Find any existing OAuth auth_config for this toolkit — managed OR
+  // user-supplied custom OAuth (registered via the Composio dashboard when
+  // the toolkit has no managed credentials, e.g. Shopify, TikTok, Twitter).
+  // Skip API_KEY-scheme configs — those belong to the custom-auth path
+  // (getOrCreateCustomAuthConfigId).
   const list = await composioFetch(
     `/auth_configs?toolkit_slug=${encodeURIComponent(toolkitSlug)}&limit=20`
   );
-
   const items = list.items || list.auth_configs || list.data || [];
   const existing = items.find(c => {
     const slug = c.toolkit?.slug || c.toolkit_slug || c.slug || "";
-    const isManaged = c.auth_config?.is_composio_managed ?? c.is_composio_managed ?? true;
-    return slug.toLowerCase() === toolkitSlug.toLowerCase() && isManaged;
+    if (slug.toLowerCase() !== toolkitSlug.toLowerCase()) return false;
+    const scheme = c.auth_config?.auth_scheme || c.authScheme || c.auth_scheme || "";
+    if (/api[_-]?key/i.test(scheme)) return false;
+    return true;
   });
+  if (existing) return existing.auth_config?.id || existing.id;
 
-  if (existing) {
-    return existing.auth_config?.id || existing.id;
-  }
-
-  // 2. Create a Composio-managed auth config for this toolkit
+  // 2. None exists → try to create a Composio-managed auth_config. This
+  // succeeds for toolkits with managed credentials (LinkedIn, GitHub, etc.)
+  // and fails with code 306 for toolkits that require BYO OAuth credentials
+  // (Shopify, TikTok, Twitter, …). The caller maps 306 to a 409 with a
+  // dashboard-configuration hint.
   const created = await composioFetch("/auth_configs", {
     method: "POST",
     body:   JSON.stringify({
