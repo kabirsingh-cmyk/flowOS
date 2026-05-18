@@ -112,7 +112,7 @@ const SEED = {
     { id: "googleads",  name: "Google Ads",       category: "Paid Search", group: "Ads",            desc: "Search, Performance Max, Display, YouTube",       auth: "OAuth",   provider: "composio", slug: "googleads", domain: "ads.google.com"  },
 
     // ── Paid Audio ───────────────────────────────────────────────────────────
-    { id: "spotifyads", name: "Spotify Ads",      category: "Paid Audio",  group: "Ads",            desc: "Audio + video spots · Ads Manager",               auth: "OAuth",   provider: "direct",   slug: "spotify", domain: "adstudio.spotify.com"  },
+    { id: "spotifyads", name: "Spotify Ads",      category: "Paid Audio",  group: "Ads",            desc: "Audio + video spots · creative handoff (manual upload to Ad Studio)", auth: "Manual",  provider: "direct",   slug: "spotify", domain: "adstudio.spotify.com"  },
 
     // ── Paid Social ──────────────────────────────────────────────────────────
     { id: "metaads",    name: "Meta Ads",         category: "Paid Social", group: "Ads",            desc: "Facebook + Instagram paid · Advantage+",          auth: "OAuth",   provider: "composio", slug: "meta", domain: "business.facebook.com"  },

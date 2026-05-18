@@ -74,32 +74,15 @@
 <script>
   (function () {
     var params = new URLSearchParams(window.location.search);
-    var app = params.get("composio_connected")
-           || params.get("pipedream_connected")
-           || params.get("direct_connected")
-           || params.get("connector")
-           || "Connector";
-    var ok = params.get("ok");
-    var errMsg = params.get("error");
+    var app = params.get("composio_connected") || params.get("pipedream_connected") || params.get("connector") || "Connector";
     var el = document.getElementById("app");
     if (el) el.textContent = app;
-    if (ok === "0" && errMsg) {
-      var card = document.querySelector(".card h1");
-      if (card) card.textContent = "Could not connect " + app + " — " + errMsg;
-    }
 
     // Notify opener so it can flip the tile green without waiting for polling.
-    // We only signal success when ok !== "0" — the Direct OAuth routes set ok=0
-    // on a failed exchange so the opener doesn't celebrate prematurely.
     try {
-      if (window.opener && ok !== "0") {
+      if (window.opener) {
         window.opener.postMessage(
           { type: "flowos_oauth_connected", app: app },
-          window.location.origin
-        );
-      } else if (window.opener && ok === "0") {
-        window.opener.postMessage(
-          { type: "flowos_oauth_error", app: app, error: errMsg || "Connection failed" },
           window.location.origin
         );
       }
