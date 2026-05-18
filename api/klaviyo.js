@@ -16,6 +16,7 @@
  */
 
 import { executeComposioTool } from './lib/composio.js';
+import { requireAuth } from './lib/auth.js';
 
 export const config = { runtime: "edge" };
 
@@ -309,9 +310,14 @@ async function handleListAudiences(req) {
 
 export default async function handler(req) {
   if (req.method !== "POST") return json(405, { ok: false, error: "POST only" });
+
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+
   let body;
   try { body = await req.json(); } catch { return json(400, { ok: false, error: "invalid JSON" }); }
 
+  body = { ...body, tenantId: auth.tenantId };
   const action = body.action || "create_draft_campaign";
   try {
     if (action === "create_draft_campaign") return await handleCreateDraftCampaign(body);

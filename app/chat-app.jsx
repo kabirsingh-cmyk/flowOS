@@ -772,8 +772,28 @@ function ChatOS() {
     // automated tests and local dev. Never reaches production (no query param).
     const seedParam = new URLSearchParams(window.location.search).get("seed");
     if (seedParam === "mveda" || seedParam === "erickson") {
-      setAuth({ id: `dev-${seedParam}`, name: seedParam === "mveda" ? "Kabir" : "Greg", email: `${seedParam}@dev.local` });
-      setOnboarded(true);
+      // Mint a short-lived dev JWT so all /api/* calls (which now require
+      // a valid Supabase JWT) work under the bypass. Endpoint is hard-gated
+      // to non-prod — see api/dev/mint-token.js.
+      (async () => {
+        try {
+          const res  = await fetch(`/api/dev/mint-token?seed=${seedParam}`);
+          const data = await res.json();
+          if (res.ok && data.accessToken) {
+            window.flowAuth.setDevToken(data.accessToken);
+          } else {
+            console.warn("[seed bypass] dev token mint failed:", data?.error || res.status);
+          }
+        } catch (e) {
+          console.warn("[seed bypass] dev token mint error:", e.message);
+        }
+        setAuth({
+          id:    `dev-${seedParam}`,
+          name:  seedParam === "mveda" ? "Kabir" : "Greg",
+          email: `${seedParam}@dev.local`,
+        });
+        setOnboarded(true);
+      })();
       return;
     }
 
@@ -871,7 +891,7 @@ function ChatOSAuthed({ auth, onLogout }) {
   // ── Load persisted proactive drafts on auth ──────────────────────────────────
   useEffectApp(() => {
     if (!auth?.id) return;
-    fetch(`/api/proactive-drafts?tenantId=${encodeURIComponent(auth.id)}`)
+    apiFetch(`/api/proactive-drafts`)
       .then(r => r.ok ? r.json() : null)
       .catch(() => null)
       .then(data => {
@@ -884,7 +904,7 @@ function ChatOSAuthed({ auth, onLogout }) {
   // ── Load persisted proactive email drafts (flavor #1) on auth ────────────────
   useEffectApp(() => {
     if (!auth?.id) return;
-    fetch(`/api/proactive-emails?tenantId=${encodeURIComponent(auth.id)}`)
+    apiFetch(`/api/proactive-emails`)
       .then(r => r.ok ? r.json() : null)
       .catch(() => null)
       .then(data => {
@@ -936,12 +956,11 @@ function ChatOSAuthed({ auth, onLogout }) {
           /carousel|pin/i.test(d.contentType || "")            ? "4:5"  :
           "1:1";
 
-        fetch("/api/generate", {
+        apiFetch("/api/generate", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
           body:    JSON.stringify({
             action:   "generate_image",
-            tenantId: auth?.id,
             provider: "runware",
             model:    "runware:101@1",
             aspectRatio,
@@ -965,7 +984,7 @@ function ChatOSAuthed({ auth, onLogout }) {
               const poll = async () => {
                 for (let i = 0; i < 20; i++) {
                   await new Promise(r => setTimeout(r, 3000));
-                  const pr = await fetch("/api/generate", {
+                  const pr = await apiFetch("/api/generate", {
                     method:  "POST",
                     headers: { "Content-Type": "application/json" },
                     body:    JSON.stringify({ action: "job_status", provider: "runware", jobIds: [res.jobId] }),
@@ -1013,12 +1032,11 @@ function ChatOSAuthed({ auth, onLogout }) {
         status:       "pushing",
       });
 
-      fetch("/api/klaviyo", {
+      apiFetch("/api/klaviyo", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({
           action:            "create_draft_sms",
-          tenantId:          auth?.id,
           body:              d.body,
           audienceHint:      d.audienceHint,
           campaignName:      d.campaignName,
@@ -1064,12 +1082,11 @@ function ChatOSAuthed({ auth, onLogout }) {
         status:       "pushing",
       });
 
-      fetch("/api/klaviyo", {
+      apiFetch("/api/klaviyo", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({
           action:       "create_draft_campaign",
-          tenantId:     auth?.id,
           subject:      d.subject,
           preheader:    d.preheader,
           bodyText:     d.body,
@@ -1121,7 +1138,6 @@ function ChatOSAuthed({ auth, onLogout }) {
       openCanvas,
       t,
       onFallback: simulateFallback,
-      tenantId:   auth?.id,
       brand:      state.brandPreset || null,
     });
   };

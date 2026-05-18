@@ -346,13 +346,12 @@
 
         const apiMessages = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }));
 
-        const res = await fetch("/api/chat", {
+        const res = await apiFetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             messages: apiMessages,
             specialist: "analyst",
-            tenantId,
             // Inject analytics context via a special brand override
             brand: { name: "Analytics Assistant", voice: { tone: systemContext } },
           }),
@@ -509,6 +508,11 @@
       setLoading(true);
       setError(null);
       try {
+        // Reads use the Supabase JS client which auto-attaches the user's
+        // session token, so RLS in 007_core_schema_and_rls.sql does the
+        // row scoping (tenant_id = auth.uid()::text). For the dev seed
+        // bypass the sb client doesn't have a session — those reads return
+        // empty arrays under RLS, which is fine for the smoke tests.
         const [snapRes, insRes] = await Promise.all([
           sb.from("analytics_snapshots")
             .select("*")
@@ -553,10 +557,10 @@
       setRefreshing(true);
       setError(null);
       try {
-        const res = await fetch("/api/analytics-ingest", {
+        const res = await apiFetch("/api/analytics-ingest", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tenantId, period }),
+          body: JSON.stringify({ period }),
         });
         const data = await res.json();
         if (data.ok) {

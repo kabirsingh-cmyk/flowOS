@@ -13,17 +13,13 @@
  * they pre-populate even before the user triggers generation manually.
  */
 
+import { requireCron } from "../lib/auth.js";
+
 export const config = { runtime: "edge" };
 
 export default async function handler(req) {
-  // ── Auth ──────────────────────────────────────────────────────────────────
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const auth = req.headers.get("authorization") || "";
-    if (auth !== `Bearer ${cronSecret}`) {
-      return new Response("Unauthorized", { status: 401 });
-    }
-  }
+  const cronAuth = requireCron(req);
+  if (cronAuth instanceof Response) return cronAuth;
 
   const sbUrl = process.env.SUPABASE_URL;
   const sbKey = process.env.SUPABASE_SERVICE_KEY;
@@ -59,7 +55,10 @@ export default async function handler(req) {
     try {
       const res = await fetch(`${origin}/api/proactive-drafts`, {
         method:  "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization:  `Bearer ${process.env.CRON_SECRET}`,
+        },
         body:    JSON.stringify({ tenantId, days: 7, count: 7 }),
       });
       const data    = await res.json().catch(() => ({}));

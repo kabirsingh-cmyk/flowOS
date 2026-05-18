@@ -55,10 +55,10 @@ function PublishingQueue({ state, actions }) {
 
     (async () => {
       try {
-        const res = await fetch("/api/scheduled-posts", {
+        const res = await apiFetch("/api/scheduled-posts", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ action: "list", tenantId }),
+          body:    JSON.stringify({ action: "list" }),
         }).then(r => r.json());
         if (cancelled || !res?.ok) return;
         for (const row of res.rows || []) {
@@ -104,11 +104,10 @@ function PublishingQueue({ state, actions }) {
   const handleGenerateDrafts = async () => {
     setGenerating(true);
     try {
-      const res = await fetch("/api/proactive-drafts", {
+      const res = await apiFetch("/api/proactive-drafts", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({
-          tenantId: state.auth?.id,
           brand:    state.brandPreset || null,
           days:     7,
           count:    7,
@@ -287,10 +286,10 @@ function PublishingQueue({ state, actions }) {
     if (!pub.resolveAction) return; // platform has no resolve flow
 
     setResolvingAuthor(true);
-    fetch(pub.apiPath, {
+    apiFetch(pub.apiPath, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ action: pub.resolveAction, tenantId: state.auth?.id }),
+      body:    JSON.stringify({ action: pub.resolveAction }),
     })
       .then(r => r.json())
       .then(res => {
@@ -745,12 +744,11 @@ function PublishingQueue({ state, actions }) {
 
           setScheduling(true);
           try {
-            const res = await fetch("/api/scheduled-posts", {
+            const res = await apiFetch("/api/scheduled-posts", {
               method:  "POST",
               headers: { "Content-Type": "application/json" },
               body:    JSON.stringify({
                 action:   "create",
-                tenantId: state.auth?.id,
                 itemId:   editItem.id,
                 platform: platformKey,
                 fireAt:   fireAtIso,
@@ -832,7 +830,7 @@ function PublishingQueue({ state, actions }) {
                 imageUrl:  hasImage ? editItem.imageUrl : null,
                 title:     pub.needsTitle ? redditTitle.trim() : undefined,
               });
-              const res = await fetch(pub.apiPath, {
+              const res = await apiFetch(pub.apiPath, {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
                 body:    JSON.stringify(payload),

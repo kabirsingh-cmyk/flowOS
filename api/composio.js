@@ -17,6 +17,8 @@
  *   disconnect           — remove a connected account
  */
 
+import { requireAuth } from "./lib/auth.js";
+
 export const config = { runtime: "edge" };
 
 const COMPOSIO_BASE = "https://backend.composio.dev/api/v3";
@@ -442,10 +444,15 @@ export default async function handler(req) {
   }
   if (req.method !== "POST") return err("POST required", 405);
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+
   let body;
   try { body = await req.json(); }
   catch { return err("Invalid JSON body", 400); }
 
+  // Server-trusted tenantId — overrides any client-supplied value.
+  body = { ...body, tenantId: auth.tenantId };
   const { action } = body;
 
   try {

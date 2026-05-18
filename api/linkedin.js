@@ -14,6 +14,7 @@
 // Scheduling is intentionally not implemented here — see /BACKLOG.md.
 
 import { executeComposioTool } from "./lib/composio.js";
+import { requireAuthOrCron }   from "./lib/auth.js";
 
 export const config = { runtime: "edge" };
 
@@ -143,8 +144,14 @@ export default async function handler(req) {
   try { body = await req.json(); }
   catch { return reply({ error: "Invalid JSON body" }, 400); }
 
-  const { action, tenantId } = body;
-  if (!tenantId) return reply({ error: "tenantId required" }, 400);
+  // Dual-auth: user JWT (publish from drawer) OR cron secret (scheduled
+  // post being fired by /api/cron/fire-scheduled with the tenant id we
+  // stamped onto the row at queue time).
+  const { tenantId: bodyTenantId } = body;
+  const auth = await requireAuthOrCron(req, bodyTenantId);
+  if (auth instanceof Response) return auth;
+  const tenantId = auth.tenantId;
+  const { action } = body;
 
   try {
     if (action === "resolve_author") {

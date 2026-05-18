@@ -115,13 +115,10 @@ function BrandImportModal({ open, onClose, onApply }) {
 
     // Real API call
     try {
-      const { data: { session } } = await sb.auth.getSession();
-      const tenantId = session?.user?.id || null;
-
-      const res  = await fetch("/api/brand-import", {
+      const res  = await apiFetch("/api/brand-import", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ url: url.trim(), tenantId }),
+        body:    JSON.stringify({ url: url.trim() }),
       });
       const raw  = await res.text();
       let data;
@@ -502,7 +499,6 @@ function Connections({ state, actions }) {
   const verifyAndPersistConnection = async (connectorId) => {
     const { data: { session } } = await sb.auth.getSession();
     if (!session?.user) return;
-    const tenantId = session.user.id;
     const connector = (SEED.connectorCatalog || []).find(c => c.id === connectorId);
     const directOAuth = connector?.provider === "direct" && DIRECT_OAUTH_ROUTES[connectorId];
 
@@ -510,15 +506,16 @@ function Connections({ state, actions }) {
       let connected = false;
       let accountId = null;
       if (directOAuth) {
-        const res = await fetch(`${directOAuth}?status=1&tenantId=${encodeURIComponent(tenantId)}`);
+        // tenantId comes from the JWT server-side (requireAuth); no query param needed.
+        const res = await apiFetch(`${directOAuth}?status=1`);
         const data = await res.json();
         connected = !!data.connected;
       } else {
         const apiPath = providerApiPath(connector?.provider);
-        const res = await fetch(apiPath, {
+        const res = await apiFetch(apiPath, {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ action: "connection_status", tenantId, app: connectorId }),
+          body:    JSON.stringify({ action: "connection_status", app: connectorId }),
         });
         const data = await res.json();
         connected = !!data.connected;
@@ -537,6 +534,7 @@ function Connections({ state, actions }) {
       };
       if (accountId) row.composio_connection_id = accountId;
       await sb.from("channels").upsert(row, { onConflict: "user_id, platform" });
+
 
       actions.setConnector(connectorId, {
         connected: true,
@@ -651,12 +649,13 @@ function Connections({ state, actions }) {
         try {
           const { data: { session } } = await sb.auth.getSession();
           if (!session?.user) throw new Error("Not signed in");
-          const tenantId = session.user.id;
 
-          const res = await fetch("/api/composio", {
+          // apiFetch attaches the user JWT; /api/composio's requireAuth
+          // pulls tenantId from the token, not from the body.
+          const res = await apiFetch("/api/composio", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ action: "initiate_connection", tenantId, app: connector.id, apiKey }),
+            body:    JSON.stringify({ action: "initiate_connection", app: connector.id, apiKey }),
           });
           const raw = await res.text();
           let data;
@@ -697,12 +696,11 @@ function Connections({ state, actions }) {
         try {
           const { data: { session } } = await sb.auth.getSession();
           if (!session?.user) throw new Error("Not signed in");
-          const tenantId = session.user.id;
 
-          const res = await fetch(directRoute, {
+          const res = await apiFetch(directRoute, {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ action: "initiate_connection", tenantId, ...creds }),
+            body:    JSON.stringify({ action: "initiate_connection", ...creds }),
           });
           const raw = await res.text();
           let data;
@@ -812,14 +810,13 @@ function Connections({ state, actions }) {
     try {
       const { data: { session } } = await sb.auth.getSession();
       if (!session?.user) throw new Error("Not signed in");
-      const tenantId = session.user.id;
       const apiPath  = providerApiPath(connector.provider);
       const callbackUrl = `${window.location.origin}/oauth-callback.html?composio_connected=${connector.id}`;
 
-      const res = await fetch(apiPath, {
+      const res = await apiFetch(apiPath, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ action: "initiate_connection", tenantId, app: connector.id, redirectUri: callbackUrl }),
+        body:    JSON.stringify({ action: "initiate_connection", app: connector.id, redirectUri: callbackUrl }),
       });
       const raw = await res.text();
       let data;
@@ -845,9 +842,9 @@ function Connections({ state, actions }) {
         if (popup.closed) {
           stopPolling(connector.id);
           try {
-            const r = await fetch(apiPath, {
+            const r = await apiFetch(apiPath, {
               method: "POST", headers: { "Content-Type": "application/json" },
-              body:   JSON.stringify({ action: "connection_status", tenantId, app: connector.id }),
+              body:   JSON.stringify({ action: "connection_status", app: connector.id }),
             }).then(r => r.json());
             if (r.connected) {
               await verifyAndPersistConnection(connector.id);
@@ -867,10 +864,10 @@ function Connections({ state, actions }) {
           return;
         }
         try {
-          const r = await fetch(apiPath, {
+          const r = await apiFetch(apiPath, {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ action: "connection_status", tenantId, app: connector.id }),
+            body:    JSON.stringify({ action: "connection_status", app: connector.id }),
           });
           const j = await r.json();
           if (j.connected) {
@@ -897,10 +894,10 @@ function Connections({ state, actions }) {
     if (directRoute) {
       const { data: { session } } = await sb.auth.getSession();
       if (session?.user) {
-        fetch(directRoute, {
+        apiFetch(directRoute, {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ action: "disconnect", tenantId: session.user.id }),
+          body:    JSON.stringify({ action: "disconnect" }),
         }).catch(() => {});
       }
     }
@@ -917,7 +914,9 @@ function Connections({ state, actions }) {
           .eq("platform", connector.id)
           .single();
         if (channelRow?.composio_connection_id) {
-          fetch(apiPath, {
+          // Best-effort revoke — don't block UI on failure. apiPath picks
+          // /api/composio or /api/pipedream based on provider.
+          apiFetch(apiPath, {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({ action: "disconnect", accountId: channelRow.composio_connection_id }),

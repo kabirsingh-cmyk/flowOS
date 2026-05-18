@@ -9,6 +9,8 @@
 
 import { executeComposioTool } from "./lib/composio.js";
 
+import { requireAuth } from "./lib/auth.js";
+
 export const config = { runtime: "edge" };
 
 // Composio Google Ads toolkit slugs. Names follow the GOOGLEADS_<ACTION> convention.
@@ -245,11 +247,18 @@ export default async function handler(req) {
   };
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+  const tenantId = auth.tenantId;
+
   let body;
   try { body = await req.json(); }
   catch { return new Response(JSON.stringify({ ok: false, error: "Invalid JSON" }), { status: 400, headers: cors }); }
 
-  const { action, tenantId, customerId, ...params } = body;
+  // tenantId comes from requireAuth above — any tenantId in the request
+  // body is ignored. customerId comes from the body because the user may
+  // have multiple Google Ads accounts under one Google identity.
+  const { action, customerId, ...params } = body;
 
   try {
     let result;

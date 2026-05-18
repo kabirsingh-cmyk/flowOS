@@ -11,8 +11,13 @@
 //   cancel  { tenantId, id }
 //             → flips a pending row to cancelled (no-op if already firing/done)
 //
-// All writes use the service key — tenantId is trusted from the request body
-// the same way /api/linkedin etc. do today. RLS is intentionally not used.
+// All writes use the service key, but tenantId is now resolved from the user
+// JWT (requireAuth) — the request body's tenantId is ignored. This is what
+// keeps cron's snapshot `payload` trustworthy: at queue time we stamped the
+// authenticated tenant onto the row, and the cron later replays that exact
+// tenant id when calling /api/<platform>.
+
+import { requireAuth } from "./lib/auth.js";
 
 export const config = { runtime: "edge" };
 
@@ -56,13 +61,16 @@ export default async function handler(req) {
     return reply({ error: "Supabase env vars not configured" }, 500);
   }
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+  const tenantId = auth.tenantId;
+
   let body;
   try { body = await req.json(); }
   catch { return reply({ error: "Invalid JSON body" }, 400); }
 
-  const { action, tenantId } = body;
-  if (!action)   return reply({ error: "action required" }, 400);
-  if (!tenantId) return reply({ error: "tenantId required" }, 400);
+  const { action } = body;
+  if (!action) return reply({ error: "action required" }, 400);
 
   try {
     if (action === "create") {

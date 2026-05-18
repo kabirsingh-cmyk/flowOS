@@ -254,7 +254,7 @@ function ProactiveEmailDrafts({ drafts, tenantId, actions }) {
   };
 
   const persistPatch = (id, patch) => {
-    fetch("/api/proactive-emails", {
+    apiFetch("/api/proactive-emails", {
       method:  "PATCH",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ id, patch }),
@@ -265,12 +265,11 @@ function ProactiveEmailDrafts({ drafts, tenantId, actions }) {
     if (d.status === "pushing" || d.status === "klaviyo_draft") return;
     actions.updateProactiveEmail(d.id, { status: "pushing", error: null });
 
-    fetch("/api/klaviyo", {
+    apiFetch("/api/klaviyo", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({
         action:       "create_draft_campaign",
-        tenantId,
         subject:      d.subject,
         preheader:    d.preheader,
         bodyText:     d.body,
@@ -767,11 +766,11 @@ const BLANK_FORM = {
   budget: "", bidding: "target-roas", finalUrl: "",
 };
 
-async function gadsCall(action, params, tenantId) {
-  const res = await fetch("/api/google-ads", {
+async function gadsCall(action, params) {
+  const res = await apiFetch("/api/google-ads", {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify({ action, tenantId, ...params }),
+    body:    JSON.stringify({ action, ...params }),
   });
   const data = await res.json();
   if (!data.ok) throw new Error(data.error || "Google Ads API error");
@@ -953,7 +952,7 @@ function SearchStudio({ state, actions }) {
     if (!copyProduct) return;
     setCopyLoading(true);
     const keywords = copyKeywords.split(/[\n,]+/).map(k => k.trim()).filter(Boolean);
-    fetch("/api/google-ads", {
+    apiFetch("/api/google-ads", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

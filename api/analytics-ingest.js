@@ -14,6 +14,7 @@
 
 import { getConnectedAccountSlugs, executeComposioTool as runComposioTool } from './lib/composio.js';
 import { sbHeaders, fetchBrandProfile } from './lib/supabase.js';
+import { requireAuthOrCron } from './lib/auth.js';
 
 export const config = { runtime: "edge" };
 
@@ -367,12 +368,14 @@ export default async function handler(req) {
   try { body = await req.json(); }
   catch { return new Response("Bad request", { status: 400 }); }
 
-  const { tenantId, period = "30d" } = body;
-  if (!tenantId) {
-    return new Response(JSON.stringify({ ok: false, error: "tenantId required" }), {
-      status: 400, headers: { "Content-Type": "application/json" },
-    });
-  }
+  // Dual-auth: user JWT (tenantId from token) OR cron secret (tenantId
+  // must be supplied in body — daily-analytics cron iterates the brands
+  // table server-side and stamps it).
+  const { tenantId: bodyTenantId } = body;
+  const auth = await requireAuthOrCron(req, bodyTenantId);
+  if (auth instanceof Response) return auth;
+  const tenantId = auth.tenantId;
+  const { period = "30d" } = body;
 
   try {
     // 1. Fetch brand profile + connected apps in parallel

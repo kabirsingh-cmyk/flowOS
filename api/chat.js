@@ -12,6 +12,7 @@
 
 import { COMPOSIO_BASE, composioHeaders, getConnectedAccountSlugs, executeComposioTool as _execTool } from './lib/composio.js';
 import { sbHeaders, fetchBrandProfile } from './lib/supabase.js';
+import { requireAuth } from './lib/auth.js';
 
 export const config = { runtime: "edge" };
 
@@ -438,11 +439,15 @@ export default async function handler(req) {
     });
   }
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+  const { tenantId } = auth;
+
   let body;
   try { body = await req.json(); }
   catch { return new Response("Bad request", { status: 400 }); }
 
-  const { messages, specialist = "supervisor", tenantId, brand: brandFromClient } = body;
+  const { messages, specialist = "supervisor", brand: brandFromClient } = body;
 
   try {
     // Fetch Composio tools, brand profile, agent override, and analytics data in parallel

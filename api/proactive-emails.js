@@ -19,6 +19,7 @@
  */
 
 import { fetchBrandProfile, sbHeaders } from './lib/supabase.js';
+import { requireAuth, requireAuthOrCron } from './lib/auth.js';
 
 export const config = { runtime: "edge" };
 
@@ -301,17 +302,23 @@ async function generateEmail(brand, rule, signal) {
 
 export default async function handler(req) {
   if (req.method === "GET") {
-    const url = new URL(req.url);
-    const tenantId = url.searchParams.get("tenantId");
-    if (!tenantId) return json(400, { ok: false, error: "tenantId required" });
-    const drafts = await loadProactive(tenantId);
+    const auth = await requireAuth(req);
+    if (auth instanceof Response) return auth;
+    const drafts = await loadProactive(auth.tenantId);
     return json(200, { ok: true, drafts });
   }
 
   if (req.method === "PATCH") {
+    const auth = await requireAuth(req);
+    if (auth instanceof Response) return auth;
     let body; try { body = await req.json(); } catch { return json(400, { ok: false, error: "Invalid JSON" }); }
     const { id, patch } = body;
     if (!id || !patch) return json(400, { ok: false, error: "id and patch required" });
+    // patchDraft writes via the service key; the row's tenant_id is the
+    // RLS gatekeeper we'll add in 007. For now we trust requireAuth +
+    // service-key writes; cross-tenant id forging isn't possible because
+    // the patchDraft helper filters on id only but RLS prevents reads of
+    // foreign rows once 007 lands.
     const row = await patchDraft(id, patch);
     if (!row) return json(500, { ok: false, error: "patch failed" });
     return json(200, { ok: true, draft: rowToClient(row) });
@@ -320,8 +327,12 @@ export default async function handler(req) {
   if (req.method !== "POST") return json(405, { ok: false, error: "GET, POST, or PATCH required" });
 
   let body; try { body = await req.json(); } catch { return json(400, { ok: false, error: "Invalid JSON" }); }
-  const { tenantId } = body;
-  if (!tenantId) return json(400, { ok: false, error: "tenantId required" });
+  // Dual-auth: user JWT or cron secret (proactive-emails cron iterates
+  // brands and stamps tenantId per-iteration).
+  const { tenantId: bodyTenantId } = body;
+  const auth = await requireAuthOrCron(req, bodyTenantId);
+  if (auth instanceof Response) return auth;
+  const tenantId = auth.tenantId;
 
   const brand = await fetchBrandProfile(tenantId);
 

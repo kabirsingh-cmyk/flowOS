@@ -12,6 +12,8 @@
  *     competitors, palette } }
  */
 
+import { requireAuth } from "./lib/auth.js";
+
 export const config = { runtime: "edge" };
 
 const ANTHROPIC_BASE = "https://api.anthropic.com/v1";
@@ -156,11 +158,15 @@ export default async function handler(req) {
     return new Response(JSON.stringify({ ok: false, error: "ANTHROPIC_API_KEY not configured" }), { status: 500 });
   }
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+  const tenantId = auth.tenantId;
+
   let body;
   try { body = await req.json(); }
   catch { return new Response(JSON.stringify({ ok: false, error: "Invalid JSON" }), { status: 400 }); }
 
-  const { url, tenantId } = body;
+  const { url } = body;
   if (!url) return new Response(JSON.stringify({ ok: false, error: "url required" }), { status: 400 });
 
   // Normalize URL

@@ -9,16 +9,13 @@
  * 'proactive_draft', not pushed). EmailStudio surfaces them for human review.
  */
 
+import { requireCron } from "../lib/auth.js";
+
 export const config = { runtime: "edge" };
 
 export default async function handler(req) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const auth = req.headers.get("authorization") || "";
-    if (auth !== `Bearer ${cronSecret}`) {
-      return new Response("Unauthorized", { status: 401 });
-    }
-  }
+  const cronAuth = requireCron(req);
+  if (cronAuth instanceof Response) return cronAuth;
 
   const sbUrl = process.env.SUPABASE_URL;
   const sbKey = process.env.SUPABASE_SERVICE_KEY;
@@ -51,7 +48,10 @@ export default async function handler(req) {
     try {
       const res = await fetch(`${origin}/api/proactive-emails`, {
         method:  "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization:  `Bearer ${process.env.CRON_SECRET}`,
+        },
         body:    JSON.stringify({ tenantId }),
       });
       const data    = await res.json().catch(() => ({}));
