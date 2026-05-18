@@ -19,7 +19,6 @@ const CHANNEL_LIB = {
   Email:     { type: "owned",  discovery: 0.10, retention: 0.95, intent: 0.85, cost: 0.20, age: "any",   fit: ["retention","tribe","longform","narrative","direct"] },
 
   "Google Ads":    { type: "search", discovery: 0.55, retention: 0.30, intent: 0.95, cost: 0.85, age: "any", fit: ["intent","conversion","branded","launch"] },
-  "Microsoft Ads": { type: "search", discovery: 0.30, retention: 0.20, intent: 0.85, cost: 0.50, age: "35-65", fit: ["intent","desktop","b2b","older"] },
   "Apple Search":  { type: "search", discovery: 0.40, retention: 0.20, intent: 0.80, cost: 0.55, age: "any", fit: ["app","ios","conversion"] },
   "Amazon Ads":    { type: "search", discovery: 0.45, retention: 0.30, intent: 0.90, cost: 0.70, age: "any", fit: ["conversion","commerce","intent","beauty"] },
 
@@ -154,7 +153,7 @@ function ChannelStrategyCanvas({ state, actions }) {
     const map = {
       ig: "Instagram", tt: "TikTok", fb: "Facebook", li: "LinkedIn", yt: "YouTube", pn: "Pinterest",
       klaviyo: "Email", mailchimp: "Email",
-      googleads: "Google Ads", msads: "Microsoft Ads", appleads: "Apple Search", amazonads: "Amazon Ads",
+      googleads: "Google Ads", appleads: "Apple Search", amazonads: "Amazon Ads",
       metaads: "Meta Ads", ttads: "TikTok Ads", liads: "LinkedIn Ads", pinads: "Pinterest Ads",
       xads: "X Ads", redditads: "Reddit Ads", snapads: "Snap Ads",
     };
