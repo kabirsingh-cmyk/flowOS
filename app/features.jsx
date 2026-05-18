@@ -456,7 +456,7 @@ function AbTestLab({ state, actions }) {
       <Card style={{ background: "var(--paper-2)" }}>
         <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase" }}>How this works</div>
         <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 6, lineHeight: 1.55 }}>
-          Every draft can be split. Email subject lines and PDP CTAs run inside Klaviyo / VWO; ad headlines via Optimizely or your ad platform's built-in test. Winners with ≥90% confidence and ≥10% lift can be promoted into Brand Memory — they become the default voice and Brand Guard enforces them on future drafts.
+          Every draft can be split. Email subject lines, PDP CTAs, and ad headlines run inside Optimizely or your ad platform's built-in test. Winners with ≥90% confidence and ≥10% lift can be promoted into Brand Memory — they become the default voice and Brand Guard enforces them on future drafts.
         </div>
       </Card>
 

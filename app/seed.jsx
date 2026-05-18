@@ -136,7 +136,6 @@ const SEED = {
     { id: "mailchimp",      name: "Mailchimp",      category: "Email Marketing", group: "Email & SMS", desc: "Audiences, automations, A/B tests",          auth: "API key", provider: "composio", slug: "mailchimp", domain: "mailchimp.com"  },
     { id: "klaviyo",        name: "Klaviyo",        category: "Email Marketing", group: "Email & SMS", desc: "Lists, flows, campaigns, segmentation",       auth: "API key", provider: "composio", slug: "klaviyo", domain: "klaviyo.com"  },
     { id: "mailerlite",     name: "MailerLite",     category: "Email Marketing", group: "Email & SMS", desc: "Campaigns, automation, transactional",        auth: "API key", provider: "composio", slug: "mailerlite", domain: "mailerlite.com"  },
-    { id: "loops",          name: "Loops.so",       category: "Email Marketing", group: "Email & SMS", desc: "Lifecycle email · transactional + marketing", auth: "API key", provider: "direct",   slug: null, domain: "loops.so"  },
     { id: "moosend",        name: "Moosend",        category: "Email Marketing", group: "Email & SMS", desc: "Campaigns, automation, landing pages",        auth: "API key", provider: "composio", slug: null, domain: "moosend.com"  },
     { id: "sendgrid",       name: "SendGrid",       category: "Email Marketing", group: "Email & SMS", desc: "Transactional + marketing email at scale",    auth: "API key", provider: "pipedream",slug: "twilio", domain: "sendgrid.com"  },
     { id: "activecampaign", name: "ActiveCampaign", category: "Email Marketing", group: "Email & SMS", desc: "Email + CRM + automation",                    auth: "API key", provider: "pipedream",slug: "activecampaign", domain: "activecampaign.com"  },
@@ -144,7 +143,7 @@ const SEED = {
 
     // ── SMS Marketing ────────────────────────────────────────────────────────
     { id: "klaviyo_sms", name: "Klaviyo SMS",     category: "SMS Marketing", group: "Email & SMS", desc: "TCPA consent, MMS, automations · shares Klaviyo key", auth: "API key", provider: "composio", slug: "klaviyo", domain: "klaviyo.com"  },
-    { id: "attentive",   name: "Attentive",       category: "SMS Marketing", group: "Email & SMS", desc: "Conversational SMS · enterprise & SMB",               auth: "API key", provider: "direct",   slug: null, domain: "attentive.com"  },
+    { id: "attentive",   name: "Attentive",       category: "SMS Marketing", group: "Email & SMS", desc: "Conversational SMS · enterprise & SMB",               auth: "OAuth",   provider: "direct",   slug: null, domain: "attentive.com"  },
     { id: "twilio",      name: "Twilio",          category: "SMS Marketing", group: "Email & SMS", desc: "Programmable SMS · global reach, A2P 10DLC",          auth: "API key", provider: "pipedream",slug: "twilio", domain: "twilio.com"  },
 
     // ── Email Verification ───────────────────────────────────────────────────
@@ -163,9 +162,7 @@ const SEED = {
     { id: "wordpress",   name: "WordPress",       category: "E-commerce", group: "Commerce",      desc: "CMS publishing · posts, pages, media",            auth: "API key", provider: "direct",   slug: "wordpress", domain: "wordpress.com"  },
 
     // ── A/B Testing ──────────────────────────────────────────────────────────
-    { id: "abtasty",     name: "AB Tasty",        category: "A/B Testing", group: "Analytics & Ops", desc: "A/B + personalisation · CRO",                  auth: "OAuth",   provider: "direct", slug: null, domain: "abtasty.com"  },
     { id: "optimizely",  name: "Optimizely",      category: "A/B Testing", group: "Analytics & Ops", desc: "Experimentation + feature flags · enterprise", auth: "API key", provider: "direct", slug: "optimizely", domain: "optimizely.com"  },
-    { id: "vwo",         name: "VWO",             category: "A/B Testing", group: "Analytics & Ops", desc: "Visual editor A/B testing + heatmaps",         auth: "API key", provider: "direct", slug: null, domain: "vwo.com"  },
 
     // ── AI Video / Image ─────────────────────────────────────────────────────
     { id: "heygen",     name: "HeyGen",           category: "AI Video / Image", group: "Creative AI", desc: "AI avatar videos · UGC personas, voiceover", auth: "API key", provider: "composio", slug: null, domain: "heygen.com"  },
@@ -212,7 +209,6 @@ const SEED = {
     mailchimp:      { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     klaviyo:        { connected: true,  status: "ok",   note: "lists synced 2m ago",                  syncCount: "24,118 contacts · 6 flows", permissions: { read: true, write: true, admin: false } },
     mailerlite:     { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
-    loops:          { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     moosend:        { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     sendgrid:       { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     activecampaign: { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
@@ -234,9 +230,7 @@ const SEED = {
     shopify:        { connected: true,  status: "ok",   note: "32 products · 1,408 orders MTD",       syncCount: "", permissions: { read: true, write: true, admin: false } },
     wordpress:      { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // A/B Testing
-    abtasty:        { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     optimizely:     { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
-    vwo:            { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // AI Video / Image
     heygen:         { connected: true,  status: "ok",   note: "3 assets rendering",                   syncCount: "12 personas", permissions: { read: true, write: true, admin: false } },
     replicate:      { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
@@ -281,7 +275,6 @@ const SEED = {
       mailchimp:      { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       klaviyo:        { connected: true,  status: "ok", note: "synced 4m ago",                                     syncCount: "1,840 contacts · 3 flows", permissions: { read: true, write: true, admin: false } },
       mailerlite:     { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
-      loops:          { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       moosend:        { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       sendgrid:       { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       activecampaign: { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
@@ -303,9 +296,7 @@ const SEED = {
       shopify:        { connected: false, status: "—",  note: "not connected — service business, no storefront",  syncCount: "—", permissions: { read: true, write: true, admin: false } },
       wordpress:      { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       // A/B Testing
-      abtasty:        { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       optimizely:     { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
-      vwo:            { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       // AI Video / Image
       heygen:         { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       replicate:      { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
@@ -634,7 +625,7 @@ const SEED = {
     { id: "ab1", subject: "Email · subject line",           variantA: "Welcome to the tribe",        variantB: "The story starts with a dachshund.", openA: 38.2, openB: 44.6, ctrA: 5.4, ctrB: 7.2, status: "winner-b", confidence: 96, lift: "+15.4% open · +33% CTR", linkedDraftId: "ci2" },
     { id: "ab2", subject: "IG carousel · first slide",      variantA: "Three drops, palms warmed.",   variantB: "Hair, the way our grandmothers knew.", saveA: 1.2,  saveB: 1.8,  ctrA: 0.8, ctrB: 1.1, status: "running", confidence: 78, lift: "+50% saves · running", linkedDraftId: "ci1" },
     { id: "ab3", subject: "Pmax · headline",                variantA: "Cold-Pressed Body Oil",         variantB: "Ayurveda · 5,000 Years",                ctrA: 1.4,  ctrB: 1.1,  cvrA: 2.4, cvrB: 1.8, status: "winner-a", confidence: 92, lift: "+27% CTR · won", linkedCampaign: "googleads" },
-    { id: "ab4", subject: "PDP · CTA copy",                 variantA: "Add to ritual",                 variantB: "Add to cart",                            cvrA: 3.1,  cvrB: 2.6, status: "winner-a", confidence: 88, lift: "+19% CVR via ritual framing", provider: "VWO" },
+    { id: "ab4", subject: "PDP · CTA copy",                 variantA: "Add to ritual",                 variantB: "Add to cart",                            cvrA: 3.1,  cvrB: 2.6, status: "winner-a", confidence: 88, lift: "+19% CVR via ritual framing", provider: "Optimizely" },
   ],
   abFedBrandRules: [
     { rule: "Story-led subject lines outperform generic by 22%", source: "ab1 → won 33% CTR · added to Brand Memory" },

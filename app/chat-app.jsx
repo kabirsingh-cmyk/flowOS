@@ -236,7 +236,7 @@ function inferResponse(userText) {
       { delay: 1300, agent: "Supervisor", text: "Open.", artifact: { type: "workspace", target: "seasonal" } },
     ];
   }
-  if (/a\/b|ab test|split test|variant|optimizely|vwo|growthbook/.test(t)) {
+  if (/a\/b|ab test|split test|variant|optimizely|growthbook/.test(t)) {
     return [
       { delay: 500, agent: "Brand Guard", text: "A/B Lab. 2 winners ready to promote into Brand Memory; 1 still running on Hair Mist carousel." },
       { delay: 1200, agent: "Brand Guard", text: "Here.", artifact: { type: "workspace", target: "abtests" } },

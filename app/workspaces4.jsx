@@ -30,6 +30,37 @@ const DIRECT_API_ROUTES = {
   replicate:  "/api/replicate",
   higgsfield: "/api/higgsfield",
   luma:       "/api/luma",
+  optimizely: "/api/optimizely",
+  audiostack: "/api/audiostack",
+  wordpress:  "/api/wordpress",
+  // OAuth direct connectors expose action=disconnect on /api/<id>; the OAuth
+  // surface (init/callback/status) lives on /api/<id>-auth — see
+  // DIRECT_OAUTH_ROUTES below. They're listed here so the shared disconnect
+  // path can call them without a second lookup table.
+  msads:      "/api/msads",
+  attentive:  "/api/attentive",
+};
+
+// Per-provider OAuth routes for Direct connectors (provider: "direct" +
+// auth: "OAuth" in seed.jsx). Each route hosts the init / callback / status
+// surface on a single GET endpoint (see /api/msads-auth.js).
+// `connection_status` poll URL: `${route}?status=1&tenantId=…`.
+// `authorize URL` mint:          `${route}?init=1&tenantId=…` returns { authorizeUrl }.
+const DIRECT_OAUTH_ROUTES = {
+  msads:     "/api/msads-auth",
+  attentive: "/api/attentive-auth",
+};
+
+// Direct-API connectors that need more than a single apiKey field in the
+// Connect modal. Each entry lists extra `<Input>` fields rendered above the
+// API-key field; their values are merged into the POST body alongside apiKey.
+// Keys in `extraFields` map 1:1 to the body params the /api/<id> route reads.
+const DIRECT_EXTRA_FIELDS = {
+  wordpress: [
+    { key: "siteUrl",     label: "Site URL",            placeholder: "https://yourblog.com",  type: "text",     hint: "Root of your WordPress install (with or without https://)." },
+    { key: "username",    label: "Username",            placeholder: "admin",                  type: "text",     hint: "Your WP login username — not the display name." },
+    { key: "appPassword", label: "Application Password", placeholder: "xxxx xxxx xxxx xxxx",   type: "password", hint: "Users → Profile → Application Passwords. Not your login password." },
+  ],
 };
 
 // ────────────────────────────── BRAND IMPORT MODAL ──────────────────────────────
@@ -465,33 +496,53 @@ function Connections({ state, actions }) {
   const pollersRef = useRef4({});
 
   // Shared "OAuth has completed — verify and persist" routine.
-  // Called from: ?composio_connected= return URL, popup postMessage, and connection_status poll.
+  // Called from: ?<provider>_connected= return URL, popup postMessage, and connection_status poll.
+  // Branches on provider — Composio/Pipedream POST to /api/<provider> with
+  // action=connection_status, Direct OAuth GETs /api/<id>-auth?status=1.
   const verifyAndPersistConnection = async (connectorId) => {
     const { data: { session } } = await sb.auth.getSession();
     if (!session?.user) return;
     const tenantId = session.user.id;
     const connector = (SEED.connectorCatalog || []).find(c => c.id === connectorId);
-    const apiPath = providerApiPath(connector?.provider);
+    const directOAuth = connector?.provider === "direct" && DIRECT_OAUTH_ROUTES[connectorId];
+
     try {
-      const res = await fetch(apiPath, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ action: "connection_status", tenantId, app: connectorId }),
-      });
-      const data = await res.json();
-      if (!data.connected) return;
-      await sb.from("channels").upsert({
-        user_id:                session.user.id,
-        platform:               connectorId,
-        composio_connection_id: data.accountId,
-        status:                 "connected",
-        updated_at:             new Date().toISOString(),
-      }, { onConflict: "user_id, platform" });
+      let connected = false;
+      let accountId = null;
+      if (directOAuth) {
+        const res = await fetch(`${directOAuth}?status=1&tenantId=${encodeURIComponent(tenantId)}`);
+        const data = await res.json();
+        connected = !!data.connected;
+      } else {
+        const apiPath = providerApiPath(connector?.provider);
+        const res = await fetch(apiPath, {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ action: "connection_status", tenantId, app: connectorId }),
+        });
+        const data = await res.json();
+        connected = !!data.connected;
+        accountId = data.accountId || null;
+      }
+      if (!connected) return;
+
+      // For Direct OAuth, /api/<id>-auth has already upserted connector_credentials;
+      // mirror the connected state into channels so the cross-session hydration
+      // path picks it up. No composio_connection_id is set.
+      const row = {
+        user_id:    session.user.id,
+        platform:   connectorId,
+        status:     "connected",
+        updated_at: new Date().toISOString(),
+      };
+      if (accountId) row.composio_connection_id = accountId;
+      await sb.from("channels").upsert(row, { onConflict: "user_id, platform" });
+
       actions.setConnector(connectorId, {
         connected: true,
         status:    "ok",
         note:      `OAuth connected · ${connector?.provider || "composio"}`,
-        syncCount: "syncing…",
+        syncCount: directOAuth ? "ready" : "syncing…",
       }, {
         logEvent: `connected · ${connector?.name || connectorId}`,
         notify:   { tone: "ok", text: `${connector?.name || connectorId} connected` },
@@ -506,7 +557,7 @@ function Connections({ state, actions }) {
   useEffect4(() => {
     (async () => {
       const params = new URLSearchParams(window.location.search);
-      const connectorId = params.get("composio_connected") || params.get("pipedream_connected");
+      const connectorId = params.get("composio_connected") || params.get("pipedream_connected") || params.get("direct_connected");
       if (!connectorId) return;
       window.history.replaceState({}, "", window.location.pathname);
       await verifyAndPersistConnection(connectorId);
@@ -537,16 +588,25 @@ function Connections({ state, actions }) {
   }, []); // eslint-disable-line
 
   // Listen for postMessage from the OAuth popup → fast-path detect connection.
+  // Direct OAuth routes can also post flowos_oauth_error on a failed exchange
+  // (e.g. user denied, provider rejected) so the tile rolls back immediately
+  // instead of waiting for the polling timeout.
   useEffect4(() => {
     const handler = (e) => {
       if (e.origin !== window.location.origin) return;
-      if (e.data?.type !== "flowos_oauth_connected") return;
-      const appId = e.data.app;
+      const appId = e.data?.app;
       if (!appId) return;
-      stopPolling(appId);
-      verifyAndPersistConnection(appId).finally(() => {
+      if (e.data?.type === "flowos_oauth_connected") {
+        stopPolling(appId);
+        verifyAndPersistConnection(appId).finally(() => {
+          setConnecting(p => { const n = { ...p }; delete n[appId]; return n; });
+        });
+      } else if (e.data?.type === "flowos_oauth_error") {
+        stopPolling(appId);
         setConnecting(p => { const n = { ...p }; delete n[appId]; return n; });
-      });
+        const connector = (SEED.connectorCatalog || []).find(c => c.id === appId);
+        actions.notify("warn", `${connector?.name || appId} connection failed: ${e.data?.error || "unknown"}`);
+      }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
@@ -570,10 +630,15 @@ function Connections({ state, actions }) {
   // the modal's primary button then triggers either popup-OAuth or API-key validate.
   const startConnect = (connector) => setConnectStep({ connector });
 
-  const handleConnectSubmit = async ({ apiKey }) => {
+  // creds is either { apiKey } (single-input direct + Composio API-key) or a
+  // free-form bag of extras (WordPress: { siteUrl, username, appPassword }, etc.).
+  // The Composio path always pulls creds.apiKey; direct routes spread the
+  // whole bag into the POST body so each route's handler can pick what it needs.
+  const handleConnectSubmit = async (creds) => {
     const connector = connectStep?.connector;
     if (!connector) return;
     setConnectStep(null);
+    const apiKey = creds?.apiKey || "";
 
     // ── API-key connectors ──
     // Composio API-key connectors → POST credentials directly to Composio (no OAuth).
@@ -637,7 +702,7 @@ function Connections({ state, actions }) {
           const res = await fetch(directRoute, {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ action: "initiate_connection", tenantId, apiKey }),
+            body:    JSON.stringify({ action: "initiate_connection", tenantId, ...creds }),
           });
           const raw = await res.text();
           let data;
@@ -679,6 +744,71 @@ function Connections({ state, actions }) {
 
     // ── OAuth connectors: open popup + poll connection_status ──
     setConnecting(p => ({ ...p, [connector.id]: { startedAt: Date.now() } }));
+
+    // Direct OAuth fork: per-provider /api/<id>-auth route mints the authorize
+    // URL itself, owns the callback, and writes connector_credentials directly.
+    // No Composio/Pipedream backend involved.
+    const directOAuth = connector.provider === "direct" ? DIRECT_OAUTH_ROUTES[connector.id] : null;
+    if (directOAuth) {
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        if (!session?.user) throw new Error("Not signed in");
+        const tenantId = session.user.id;
+
+        const initRes = await fetch(`${directOAuth}?init=1&tenantId=${encodeURIComponent(tenantId)}`);
+        const initRaw = await initRes.text();
+        let initData;
+        try { initData = JSON.parse(initRaw); } catch { throw new Error(`Server (${initRes.status}): ${initRaw.slice(0, 120)}`); }
+        if (!initData.ok) throw new Error(initData.error || "Failed to mint authorize URL");
+
+        const popup = window.open(initData.authorizeUrl, "flowos_oauth", "width=600,height=720");
+        if (!popup) {
+          window.location.href = initData.authorizeUrl;
+          return;
+        }
+
+        const start = Date.now();
+        const TIMEOUT_MS = 3 * 60 * 1000;
+        const interval = setInterval(async () => {
+          if (popup.closed) {
+            stopPolling(connector.id);
+            try {
+              const r = await fetch(`${directOAuth}?status=1&tenantId=${encodeURIComponent(tenantId)}`).then(r => r.json());
+              if (r.connected) {
+                await verifyAndPersistConnection(connector.id);
+              } else {
+                actions.notify("warn", `${connector.name} connection cancelled`);
+              }
+            } catch {
+              actions.notify("warn", `${connector.name} connection cancelled`);
+            }
+            setConnecting(p => { const n = { ...p }; delete n[connector.id]; return n; });
+            return;
+          }
+          if (Date.now() - start > TIMEOUT_MS) {
+            stopPolling(connector.id);
+            setConnecting(p => { const n = { ...p }; delete n[connector.id]; return n; });
+            actions.notify("warn", `${connector.name} connection timed out`);
+            return;
+          }
+          try {
+            const r = await fetch(`${directOAuth}?status=1&tenantId=${encodeURIComponent(tenantId)}`).then(r => r.json());
+            if (r.connected) {
+              stopPolling(connector.id);
+              await verifyAndPersistConnection(connector.id);
+              setConnecting(p => { const n = { ...p }; delete n[connector.id]; return n; });
+              try { popup.close(); } catch {}
+            }
+          } catch {}
+        }, 1500);
+        pollersRef.current[connector.id] = interval;
+      } catch (err) {
+        setConnecting(p => { const n = { ...p }; delete n[connector.id]; return n; });
+        actions.notify("warn", `${connector.name} connection failed: ${err.message}`);
+      }
+      return;
+    }
+
     try {
       const { data: { session } } = await sb.auth.getSession();
       if (!session?.user) throw new Error("Not signed in");
@@ -1008,11 +1138,29 @@ function Connections({ state, actions }) {
 // same paragraph + an input + button. The provider's own OAuth page shows the actual
 // scope checklist — we don't try to re-state it here.
 function ConnectorAuthModal({ step, onClose, onSubmit }) {
-  const [apiKey, setApiKey] = useState4("");
-  useEffect4(() => { if (step) setApiKey(""); }, [step]);
+  const [apiKey, setApiKey]     = useState4("");
+  const [extras, setExtras]     = useState4({});
+  const connector = step?.connector;
+  const extraFields = connector ? (DIRECT_EXTRA_FIELDS[connector.id] || []) : [];
+  const hasExtras   = extraFields.length > 0;
+
+  useEffect4(() => {
+    if (step) {
+      setApiKey("");
+      setExtras(Object.fromEntries(extraFields.map(f => [f.key, ""])));
+    }
+  }, [step]);
+
   if (!step) return null;
-  const { connector } = step;
   const isApiKey = connector.auth === "API key";
+
+  // WordPress-style multi-field connectors don't use the single apiKey input —
+  // every required field lives in extraFields, validated independently.
+  const submitDisabled = isApiKey && (
+    hasExtras
+      ? extraFields.some(f => !String(extras[f.key] || "").trim())
+      : !apiKey.trim()
+  );
 
   return (
     <Dialog open onClose={onClose} title={`Connect · ${connector.name}`} width={440}>
@@ -1034,16 +1182,32 @@ function ConnectorAuthModal({ step, onClose, onSubmit }) {
       {isApiKey && (
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55, marginBottom: 10 }}>
-            Paste your {connector.name} API key. We'll validate and store it encrypted at rest.
+            {hasExtras
+              ? `Enter the details below to connect your ${connector.name} site. We'll validate and store the credentials encrypted at rest.`
+              : `Paste your ${connector.name} API key. We'll validate and store it encrypted at rest.`}
           </div>
-          <FormRow label="API key" hint={`Found in your ${connector.name} dashboard → Settings → API.`}>
-            <Input
-              value={apiKey}
-              onChange={e => setApiKey(e.target.value)}
-              placeholder="key_xxxxxxxxxxxx"
-              type="password"
-            />
-          </FormRow>
+
+          {extraFields.map(f => (
+            <FormRow key={f.key} label={f.label} hint={f.hint}>
+              <Input
+                value={extras[f.key] || ""}
+                onChange={e => setExtras(p => ({ ...p, [f.key]: e.target.value }))}
+                placeholder={f.placeholder}
+                type={f.type || "text"}
+              />
+            </FormRow>
+          ))}
+
+          {!hasExtras && (
+            <FormRow label="API key" hint={`Found in your ${connector.name} dashboard → Settings → API.`}>
+              <Input
+                value={apiKey}
+                onChange={e => setApiKey(e.target.value)}
+                placeholder="key_xxxxxxxxxxxx"
+                type="password"
+              />
+            </FormRow>
+          )}
         </div>
       )}
 
@@ -1061,8 +1225,8 @@ function ConnectorAuthModal({ step, onClose, onSubmit }) {
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
         <Btn variant="primary"
-          onClick={() => onSubmit({ apiKey })}
-          disabled={isApiKey && !apiKey.trim()}>
+          onClick={() => onSubmit(hasExtras ? extras : { apiKey })}
+          disabled={submitDisabled}>
           <Icon name="check" size={12}/> Connect {connector.name}
         </Btn>
       </div>
