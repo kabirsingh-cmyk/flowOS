@@ -38,7 +38,6 @@ const DIRECT_API_ROUTES = {
   // DIRECT_OAUTH_ROUTES below. They're listed here so the shared disconnect
   // path can call them without a second lookup table.
   msads:      "/api/msads",
-  attentive:  "/api/attentive",
 };
 
 // Per-provider OAuth routes for Direct connectors (provider: "direct" +
@@ -48,7 +47,6 @@ const DIRECT_API_ROUTES = {
 // `authorize URL` mint:          `${route}?init=1&tenantId=…` returns { authorizeUrl }.
 const DIRECT_OAUTH_ROUTES = {
   msads:     "/api/msads-auth",
-  attentive: "/api/attentive-auth",
 };
 
 // Direct-API connectors that need more than a single apiKey field in the

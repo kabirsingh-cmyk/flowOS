@@ -101,9 +101,6 @@ const APP_MAP = {
   // Email Marketing
   mailchimp:    "mailchimp",
   klaviyo:      "klaviyo",
-  mailerlite:   "mailerlite",
-  moosend:      "moosend",
-  hunter:       "hunter",
 
   // SMS — Klaviyo SMS shares the Klaviyo toolkit
   klaviyo_sms:  "klaviyo",
@@ -228,7 +225,7 @@ async function getOrCreateCustomAuthConfigId(toolkitSlug) {
  *   2. API key (apiKey supplied) — create or reuse a `use_custom_auth`
  *      auth_config for the toolkit, then POST /connected_accounts with the
  *      caller-provided credentials. No redirect; the connection is active
- *      immediately. Used by Klaviyo, Mailchimp, ElevenLabs, Hunter, etc.
+ *      immediately. Used by Klaviyo, Mailchimp, ElevenLabs, NeverBounce, etc.
  */
 async function handleInitiateConnection({ tenantId, app, redirectUri, apiKey, credentials }) {
   if (!tenantId) return err("tenantId required");

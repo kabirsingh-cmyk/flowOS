@@ -136,7 +136,7 @@
 
 ## SMS
 
-### Klaviyo SMS · Attentive
+### Klaviyo SMS
 
 | Content Type | Text | Image | Voice |
 |---|---|---|---|
