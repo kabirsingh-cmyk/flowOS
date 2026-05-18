@@ -299,26 +299,6 @@ Direct and confident. Avoid corporate-speak. Use the brand's point of view.
 Don't over-explain — trust the audience to fill in gaps.`,
   },
   {
-    id: "threads",
-    name: "Threads",
-    role: "Conversational · text-first",
-    description: "Creates Threads posts with a conversational, authentic tone. Focuses on community replies and cross-posting opportunities with Instagram.",
-    connectors: ["threads"],
-    compound: false,
-    category: "social",
-    alwaysActive: false,
-    initial: "TH",
-    defaultPrompt: `You are the Threads agent for FlowOS.
-
-CONTENT
-- Posts: conversational, honest, slightly informal. Max 500 chars.
-- Replies: genuine, brand-voice. No promotional language in replies.
-- Cross-post from IG: adapt captions for text-first format (remove hashtags, adjust tone).
-
-NOTES
-Threads rewards authenticity over polish. Behind-the-scenes and unfiltered opinions perform best.`,
-  },
-  {
     id: "reddit",
     name: "Reddit",
     role: "Community · AMA · PR",
@@ -613,9 +593,9 @@ Generate performance report at 7d and 30d. Feed learnings into Brand Memory.`,
   {
     id: "analytics",
     name: "Analytics",
-    role: "GA4 · Amplitude · attribution",
-    description: "Pulls marketing performance data from GA4 and Amplitude. Surfaces channel attribution, conversion funnels, and cohort analysis in plain English.",
-    connectors: ["ga4", "amplitude"],
+    role: "GA4 · attribution",
+    description: "Pulls marketing performance data from GA4. Surfaces channel attribution, conversion funnels, and cohort analysis in plain English.",
+    connectors: ["ga4"],
     compound: false,
     category: "analytics",
     alwaysActive: false,
@@ -640,7 +620,7 @@ ALERTS
     name: "SEO",
     role: "Search Console · Ahrefs · content",
     description: "Manages organic search strategy. Tracks rankings, identifies content gaps, builds internal linking plans, and briefs content for target keywords.",
-    connectors: ["gsc", "ahrefs", "semrush"],
+    connectors: ["gsc", "ahrefs", "moz"],
     compound: false,
     category: "analytics",
     alwaysActive: false,
@@ -661,9 +641,9 @@ Flag: broken internal links, pages with no internal links, title tags over 60 ch
   {
     id: "reviews",
     name: "Reviews",
-    role: "Yelp · Google · reputation",
-    description: "Monitors and responds to reviews on Yelp and Google Business. Flags low ratings, drafts professional responses, and tracks Net Promoter Score trends.",
-    connectors: ["yelp"],
+    role: "Google · Facebook · reputation",
+    description: "Monitors and responds to reviews on Google Business and Facebook. Flags low ratings, drafts professional responses, and tracks Net Promoter Score trends.",
+    connectors: ["gsc", "fb"],
     compound: false,
     category: "analytics",
     alwaysActive: false,
@@ -686,8 +666,8 @@ Monthly: average rating by platform + sentiment themes + % response rate.`,
     id: "local_specialist",
     name: "Local Specialist",
     role: "★ Local search · reviews · ads",
-    description: "Combines Yelp reputation management, Google Search Console local queries, and Google Ads local campaigns for businesses competing on local search.",
-    connectors: ["yelp", "gsc", "googleads"],
+    description: "Combines Facebook page reputation, Google Search Console local queries, and Google Ads local campaigns for businesses competing on local search.",
+    connectors: ["fb", "gsc", "googleads"],
     compound: true,
     category: "analytics",
     alwaysActive: false,
@@ -735,9 +715,9 @@ FORMATS: 1:1 (IG feed), 9:16 (Stories/Reels), 16:9 (YouTube thumbnail), 4:5 (IG 
   {
     id: "video_gen",
     name: "Video Generator",
-    role: "AI video · Runway · Luma",
-    description: "Generates short-form video using Runway and Luma AI. Produces product demo clips, lifestyle content, and social video ads. Storyboards before generating.",
-    connectors: ["runway", "luma"],
+    role: "AI video · Luma · Higgsfield",
+    description: "Generates short-form video using Luma AI and Higgsfield. Produces product demo clips, lifestyle content, and social video ads. Storyboards before generating.",
+    connectors: ["luma", "higgsfield"],
     compound: false,
     category: "creative",
     alwaysActive: false,
@@ -848,9 +828,9 @@ All aligned to one campaign theme.`,
   {
     id: "affiliate",
     name: "Affiliate",
-    role: "Refersion · Impact · creators",
-    description: "Manages affiliate and creator partnerships. Tracks commission performance, approves new partner applications, and identifies top performers for VIP upgrades.",
-    connectors: ["refersion", "impact"],
+    role: "HubSpot · creators · pipeline",
+    description: "Manages affiliate and creator partnerships through HubSpot CRM. Tracks commission performance, approves new partner applications, and identifies top performers for VIP upgrades.",
+    connectors: ["hubspot"],
     compound: false,
     category: "growth",
     alwaysActive: false,
@@ -873,9 +853,9 @@ Flag content that makes claims not in the approved claims list.`,
   {
     id: "ab_testing",
     name: "A/B Testing",
-    role: "GrowthBook · experiments",
-    description: "Manages A/B tests across landing pages, email subject lines, and ad creative via GrowthBook. Monitors statistical significance and recommends winners.",
-    connectors: ["growthbook"],
+    role: "AB Tasty · experiments",
+    description: "Manages A/B tests across landing pages, email subject lines, and ad creative via AB Tasty. Monitors statistical significance and recommends winners.",
+    connectors: ["abtasty"],
     compound: false,
     category: "growth",
     alwaysActive: false,
@@ -900,8 +880,8 @@ When a winner is confirmed:
     id: "growth_specialist",
     name: "Growth Specialist",
     role: "★ Acquisition · referral · viral",
-    description: "Combines A/B Testing and Affiliate programmes with paid media to run structured growth experiments. Identifies highest-ROI acquisition levers and compounds them.",
-    connectors: ["growthbook", "refersion", "metaads"],
+    description: "Combines A/B Testing and CRM with paid media to run structured growth experiments. Identifies highest-ROI acquisition levers and compounds them.",
+    connectors: ["abtasty", "hubspot", "metaads"],
     compound: true,
     category: "growth",
     alwaysActive: false,
@@ -927,17 +907,33 @@ GOAL: reduce blended CAC by 10% per quarter.`,
 // ─── Connector display names ──────────────────────────────────────────────────
 
 const CONNECTOR_LABELS = {
+  // Organic Social
   ig: "Instagram", tt: "TikTok", fb: "Facebook", li: "LinkedIn",
-  yt: "YouTube", pn: "Pinterest", x: "X", threads: "Threads", reddit: "Reddit",
-  googleads: "Google Ads", msads: "Microsoft Ads", metaads: "Meta Ads",
-  ttads: "TikTok Ads", liads: "LinkedIn Ads", pinads: "Pinterest Ads",
-  xads: "X Ads", redditads: "Reddit Ads", snapads: "Snap Ads",
+  yt: "YouTube", pn: "Pinterest", x: "X", reddit: "Reddit",
+  // Paid Search + Audio
+  googleads: "Google Ads", msads: "Microsoft Ads", spotifyads: "Spotify Ads",
+  // Paid Social
+  metaads: "Meta Ads", ttads: "TikTok Ads", liads: "LinkedIn Ads",
+  pinads: "Pinterest Ads", xads: "X Ads",
+  // Email + SMS
   klaviyo: "Klaviyo", klaviyo_sms: "Klaviyo SMS", mailchimp: "Mailchimp",
-  attentive: "Attentive", shopify: "Shopify", ga4: "GA4",
-  amplitude: "Amplitude", gsc: "Search Console", ahrefs: "Ahrefs",
-  semrush: "Semrush", yelp: "Yelp", refersion: "Refersion",
-  impact: "Impact", growthbook: "GrowthBook", heygen: "HeyGen",
-  runware: "Runware", luma: "Luma", elevenlabs: "ElevenLabs", runway: "Runway",
+  mailerlite: "MailerLite", loops: "Loops.so", moosend: "Moosend",
+  sendgrid: "SendGrid", activecampaign: "ActiveCampaign", hunter: "Hunter",
+  attentive: "Attentive", twilio: "Twilio",
+  // Email Verification
+  neverbounce: "NeverBounce", kickbox: "Kickbox", listclean: "Listclean",
+  // Commerce
+  shopify: "Shopify", wordpress: "WordPress",
+  // Analytics + SEO
+  ga4: "GA4", gsc: "Search Console", ahrefs: "Ahrefs",
+  moz: "Moz", neuronwriter: "Neuronwriter",
+  // A/B
+  abtasty: "AB Tasty", optimizely: "Optimizely", vwo: "VWO",
+  // Creative AI
+  heygen: "HeyGen", runware: "RunWare", luma: "Luma AI", elevenlabs: "ElevenLabs",
+  replicate: "Replicate", higgsfield: "Higgsfield", audiostack: "AudioStack",
+  // CRM
+  hubspot: "HubSpot", salesforce: "Salesforce",
 };
 
 // ─── Agent status helper ───────────────────────────────────────────────────────

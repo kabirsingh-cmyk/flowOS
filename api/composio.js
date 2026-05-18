@@ -70,17 +70,69 @@ async function composioFetch(path, options = {}) {
 }
 
 // ─── App slug mapping ─────────────────────────────────────────────────────────
-// Maps FlowOS connector IDs to Composio toolkit slugs.
+// Maps FlowOS connector IDs → Composio toolkit slugs.
+// Source of truth for the canonical 50 lives in app/seed.jsx. Only IDs with
+// provider: "composio" need mapping here (32 of 50). Shared-auth platforms
+// resolve to the same Composio toolkit (e.g. metaads + fb + ig → facebook;
+// liads + li → linkedin) — Composio manages one connection per toolkit.
+//
+// Verify slugs at runtime by POSTing { action: "list_toolkits" }. If a slug
+// is wrong, /auth_configs lookup fails and the user sees a clear error.
 
 const APP_MAP = {
-  googleads:  "googleads",
-  ga4:        "google_analytics",
-  metaads:    "facebook",
-  liads:      "linkedin",
-  li:         "linkedin",
-  klaviyo:    "klaviyo",
-  shopify:    "shopify",
-  yt:         "youtube",
+  // Paid Search / Ads
+  googleads:    "googleads",
+
+  // Paid Social — share auth with their organic counterparts
+  metaads:      "facebook",     // Meta Ads Manager auth = Facebook
+  liads:        "linkedin",
+  ttads:        "tiktok",
+  xads:         "twitter",
+
+  // Organic Social
+  fb:           "facebook",
+  ig:           "instagram",
+  li:           "linkedin",
+  x:            "twitter",
+  tt:           "tiktok",
+  reddit:       "reddit",
+  yt:           "youtube",
+
+  // Email Marketing
+  mailchimp:    "mailchimp",
+  klaviyo:      "klaviyo",
+  mailerlite:   "mailerlite",
+  // loops.so is not in Composio's catalog → reclassified as provider:"direct" in seed.jsx
+  moosend:      "moosend",
+  hunter:       "hunter",
+
+  // SMS — Klaviyo SMS shares the Klaviyo toolkit
+  klaviyo_sms:  "klaviyo",
+
+  // Email Verification
+  neverbounce:  "neverbounce",
+  kickbox:      "kickbox",
+  listclean:    "listclean",
+
+  // SEO & Search
+  gsc:          "google_search_console",
+  ahrefs:       "ahrefs",
+  moz:          "moz",
+  neuronwriter: "neuronwriter",
+
+  // E-commerce
+  shopify:      "shopify",
+
+  // AI Video / Image + Audio
+  heygen:       "heygen",
+  elevenlabs:   "elevenlabs",
+
+  // Analytics
+  ga4:          "google_analytics",
+
+  // CRM
+  hubspot:      "hubspot",
+  salesforce:   "salesforce",
 };
 
 function resolveApp(app) {
@@ -94,23 +146,29 @@ function resolveApp(app) {
 // or creates one if none exists.
 
 async function getOrCreateAuthConfigId(toolkitSlug) {
-  // 1. Try to find an existing managed auth config for this toolkit
+  // 1. Find any existing OAuth auth_config for this toolkit — managed OR
+  // user-supplied custom OAuth (registered via the Composio dashboard when
+  // the toolkit has no managed credentials, e.g. Shopify, TikTok, Twitter).
+  // Skip API_KEY-scheme configs — those belong to the custom-auth path
+  // (getOrCreateCustomAuthConfigId).
   const list = await composioFetch(
     `/auth_configs?toolkit_slug=${encodeURIComponent(toolkitSlug)}&limit=20`
   );
-
   const items = list.items || list.auth_configs || list.data || [];
   const existing = items.find(c => {
     const slug = c.toolkit?.slug || c.toolkit_slug || c.slug || "";
-    const isManaged = c.auth_config?.is_composio_managed ?? c.is_composio_managed ?? true;
-    return slug.toLowerCase() === toolkitSlug.toLowerCase() && isManaged;
+    if (slug.toLowerCase() !== toolkitSlug.toLowerCase()) return false;
+    const scheme = c.auth_config?.auth_scheme || c.authScheme || c.auth_scheme || "";
+    if (/api[_-]?key/i.test(scheme)) return false;
+    return true;
   });
+  if (existing) return existing.auth_config?.id || existing.id;
 
-  if (existing) {
-    return existing.auth_config?.id || existing.id;
-  }
-
-  // 2. Create a Composio-managed auth config for this toolkit
+  // 2. None exists → try to create a Composio-managed auth_config. This
+  // succeeds for toolkits with managed credentials (LinkedIn, GitHub, etc.)
+  // and fails with code 306 for toolkits that require BYO OAuth credentials
+  // (Shopify, TikTok, Twitter, …). The caller maps 306 to a 409 with a
+  // dashboard-configuration hint.
   const created = await composioFetch("/auth_configs", {
     method: "POST",
     body:   JSON.stringify({
@@ -122,24 +180,107 @@ async function getOrCreateAuthConfigId(toolkitSlug) {
   return created.auth_config?.id || created.id;
 }
 
+// For API-key Composio connectors. Composio recognises these toolkits but doesn't
+// ship managed OAuth credentials — we don't need them, since the user supplies
+// their own API key per connection. Create a `use_custom_auth` auth_config that
+// declares the API_KEY scheme; credentials land on the connected_account itself.
+//
+// NB: Composio's API is inconsistent — most fields are snake_case but
+// `authScheme` here is camelCase (verified against /auth_configs payload errors).
+async function getOrCreateCustomAuthConfigId(toolkitSlug) {
+  // 1. Look specifically for an existing `use_custom_auth` config with API_KEY
+  // scheme. We must NOT reuse a managed-OAuth config here — connection.data.apiKey
+  // would be ignored and Composio would expect an OAuth round-trip instead.
+  const list = await composioFetch(
+    `/auth_configs?toolkit_slug=${encodeURIComponent(toolkitSlug)}&limit=20`
+  );
+  const items = list.items || list.auth_configs || list.data || [];
+  const existing = items.find(c => {
+    const slug = c.toolkit?.slug || c.toolkit_slug || c.slug || "";
+    if (slug.toLowerCase() !== toolkitSlug.toLowerCase()) return false;
+    const isManaged = c.auth_config?.is_composio_managed ?? c.is_composio_managed ?? false;
+    if (isManaged) return false;
+    const scheme = c.auth_config?.auth_scheme || c.authScheme || c.auth_scheme || "";
+    return /api[_-]?key/i.test(scheme) || scheme === "";
+  });
+  if (existing) return existing.auth_config?.id || existing.id;
+
+  // 2. Otherwise create a `use_custom_auth` auth_config declaring API_KEY scheme.
+  const created = await composioFetch("/auth_configs", {
+    method: "POST",
+    body:   JSON.stringify({
+      toolkit:     { slug: toolkitSlug },
+      auth_config: { type: "use_custom_auth", authScheme: "API_KEY" },
+    }),
+  });
+  return created.auth_config?.id || created.id;
+}
+
 // ─── Action handlers ──────────────────────────────────────────────────────────
 
 /**
  * initiate_connection
- * Starts OAuth for a tenant + app. Returns a redirect URL to send the user to.
- * After OAuth completes, Composio redirects to `redirectUri`.
+ * Two modes:
  *
- * v3 flow:
- *   1. Get/create managed auth_config for the toolkit
- *   2. POST /connected_accounts → get redirectUrl from connectionData
+ *   1. OAuth (no apiKey supplied) — request a managed auth_config, POST
+ *      /connected_accounts with a callback URL, return the OAuth redirectUrl.
+ *      Requires Composio to have managed credentials for the toolkit.
+ *
+ *   2. API key (apiKey supplied) — create or reuse a `use_custom_auth`
+ *      auth_config for the toolkit, then POST /connected_accounts with the
+ *      caller-provided credentials. No redirect; the connection is active
+ *      immediately. Used by Klaviyo, Mailchimp, ElevenLabs, Hunter, etc.
  */
-async function handleInitiateConnection({ tenantId, app, redirectUri }) {
-  if (!tenantId)    return err("tenantId required");
-  if (!app)         return err("app required");
-  if (!redirectUri) return err("redirectUri required");
+async function handleInitiateConnection({ tenantId, app, redirectUri, apiKey, credentials }) {
+  if (!tenantId) return err("tenantId required");
+  if (!app)      return err("app required");
 
-  const toolkitSlug  = resolveApp(app);
-  const authConfigId = await getOrCreateAuthConfigId(toolkitSlug);
+  const toolkitSlug = resolveApp(app);
+
+  // ── API-key branch ──────────────────────────────────────────────────────────
+  // If the caller supplied an apiKey (or credentials object), we treat this as
+  // a synchronous custom-auth connection — no OAuth round-trip.
+  //
+  // Composio expects credentials nested under `connection.data` with field names
+  // matching the toolkit's `auth_config_details` schema. Most toolkits use
+  // `apiKey` (camelCase). Toolkit-specific overrides can be passed via the
+  // `credentials` body field, which replaces the default { apiKey } payload.
+  if (apiKey || credentials) {
+    const authConfigId = await getOrCreateCustomAuthConfigId(toolkitSlug);
+    const data = await composioFetch("/connected_accounts", {
+      method: "POST",
+      body:   JSON.stringify({
+        auth_config: { id: authConfigId },
+        connection:  {
+          user_id: tenantId,
+          data:    credentials || { apiKey },
+        },
+      }),
+    });
+    return json({
+      ok:           true,
+      mode:         "api_key",
+      connectionId: data?.id || null,
+      status:       data?.status || "ACTIVE",
+    });
+  }
+
+  // ── OAuth branch ────────────────────────────────────────────────────────────
+  if (!redirectUri) return err("redirectUri required for OAuth flow");
+
+  let authConfigId;
+  try {
+    authConfigId = await getOrCreateAuthConfigId(toolkitSlug);
+  } catch (e) {
+    // Composio code 306 = "Default auth config not found … no managed credentials"
+    if (e.message.includes("306") || /managed credentials/i.test(e.message)) {
+      return err(
+        `${app} requires a custom OAuth app. Configure a Composio auth_config for "${toolkitSlug}" in the Composio dashboard, or switch the connector to provider:"direct" in seed.jsx and wire a per-provider OAuth route.`,
+        409,
+      );
+    }
+    throw e;
+  }
 
   const data = await composioFetch("/connected_accounts", {
     method: "POST",
@@ -152,7 +293,6 @@ async function handleInitiateConnection({ tenantId, app, redirectUri }) {
     }),
   });
 
-  // v3 nests the redirect URL: connectionData.val.redirectUrl
   const redirectUrl =
     data?.connectionData?.val?.redirectUrl ||
     data?.connectionData?.redirectUrl      ||
@@ -169,6 +309,7 @@ async function handleInitiateConnection({ tenantId, app, redirectUri }) {
 
   return json({
     ok:           true,
+    mode:         "oauth",
     redirectUrl,
     connectionId: data?.id || null,
   });
@@ -235,6 +376,67 @@ async function handleDisconnect({ accountId }) {
   return json({ ok: true });
 }
 
+/**
+ * list_toolkits
+ * Debug helper — returns every toolkit slug Composio knows about, so we can
+ * verify the FlowOS APP_MAP. Useful when adding new connectors or when an
+ * initiate_connection call fails with "No managed auth config".
+ *
+ * Returns: { ok, toolkits: [{ slug, name, hasManaged }], count }
+ */
+async function handleListToolkits() {
+  const data = await composioFetch("/toolkits?limit=500");
+  const items = data.items || data.toolkits || data.data || [];
+  const toolkits = items.map(t => ({
+    slug:       t.slug || t.toolkit_slug || t.id,
+    name:       t.name || t.display_name || t.label || null,
+    hasManaged: t.has_managed_auth ?? t.is_composio_managed ?? null,
+  }));
+  return json({ ok: true, count: toolkits.length, toolkits });
+}
+
+/**
+ * verify_app
+ * Debug helper — verifies that a single FlowOS connector id resolves to a
+ * Composio toolkit slug that exists AND has a managed auth config available.
+ * Returns { ok, app, toolkitSlug, exists, managedAvailable }
+ */
+async function handleVerifyApp({ app }) {
+  if (!app) return err("app required");
+  const toolkitSlug = resolveApp(app);
+
+  // 1. Does the toolkit exist?
+  const toolkitList = await composioFetch(`/toolkits?slug=${encodeURIComponent(toolkitSlug)}&limit=5`);
+  const items = toolkitList.items || toolkitList.toolkits || toolkitList.data || [];
+  const exists = items.some(t => {
+    const s = (t.slug || t.toolkit_slug || t.id || "").toLowerCase();
+    return s === toolkitSlug.toLowerCase();
+  });
+
+  // 2. Is there a managed auth config (or can one be created)?
+  let managedAvailable = false;
+  let authConfigId    = null;
+  let authError       = null;
+  if (exists) {
+    try {
+      authConfigId    = await getOrCreateAuthConfigId(toolkitSlug);
+      managedAvailable = !!authConfigId;
+    } catch (e) {
+      authError = e.message;
+    }
+  }
+
+  return json({
+    ok: true,
+    app,
+    toolkitSlug,
+    exists,
+    managedAvailable,
+    authConfigId,
+    authError,
+  });
+}
+
 // ─── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req) {
@@ -260,8 +462,10 @@ export default async function handler(req) {
       case "connection_status":   return handleConnectionStatus(body);
       case "list_connections":    return handleListConnections(body);
       case "disconnect":          return handleDisconnect(body);
+      case "list_toolkits":       return handleListToolkits();
+      case "verify_app":          return handleVerifyApp(body);
       default:
-        return err(`Unknown action "${action}". Supported: initiate_connection, connection_status, list_connections, disconnect`);
+        return err(`Unknown action "${action}". Supported: initiate_connection, connection_status, list_connections, disconnect, list_toolkits, verify_app`);
     }
   } catch (e) {
     console.error("[composio]", e);

@@ -19,14 +19,29 @@ export const config = { runtime: "edge" };
 const ANTHROPIC_BASE = "https://api.anthropic.com/v1";
 const JINA_BASE      = "https://r.jina.ai";
 
-// All connector IDs Claude can recommend
+// Canonical connector IDs Claude can recommend. Must stay aligned with
+// SEED.connectorCatalog in app/seed.jsx (the source of truth).
 const CONNECTOR_IDS = [
-  "ig", "tt", "fb", "li", "yt", "pn", "x", "threads", "reddit", "snap", "bluesky",
-  "googleads", "msads", "metaads", "ttads", "liads", "pinads", "xads", "redditads", "snapads",
-  "klaviyo", "klaviyo_sms", "mailchimp", "attentive",
-  "shopify", "ga4", "amplitude", "gsc", "ahrefs", "semrush",
-  "yelp", "refersion", "impact", "growthbook",
-  "heygen", "runware", "luma", "elevenlabs", "runway",
+  // Organic Social
+  "ig", "tt", "fb", "li", "yt", "pn", "x", "reddit",
+  // Paid Search + Paid Audio
+  "googleads", "msads", "spotifyads",
+  // Paid Social
+  "metaads", "ttads", "liads", "pinads", "xads",
+  // Email + SMS
+  "klaviyo", "klaviyo_sms", "mailchimp",
+  "sendgrid", "activecampaign", "hunter",
+  "attentive", "twilio",
+  // Email Verification
+  "neverbounce", "kickbox", "listclean",
+  // Commerce
+  "shopify", "wordpress",
+  // Analytics + SEO
+  "ga4", "gsc", "ahrefs", "moz", "neuronwriter",
+  // A/B Testing
+  "abtasty", "optimizely", "vwo",
+  // Creative AI
+  "heygen", "runware", "luma", "elevenlabs", "replicate", "higgsfield", "audiostack",
 ];
 
 // ─── Jina reader ──────────────────────────────────────────────────────────────

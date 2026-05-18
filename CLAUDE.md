@@ -255,21 +255,109 @@ if (hasCreateVerb && hasContentNoun) { return makeDraftArtifact(t); }
 
 ## Connector system
 
-### Connector IDs (`seed.jsx` + `brand-import.js`)
+### Connector catalog (`seed.jsx` is the source of truth)
+
+The canonical 49-connector list lives in `SEED.connectorCatalog` in [seed.jsx](app/seed.jsx) and is based on [docs/composio_marketing_connectors.md](docs/composio_marketing_connectors.md) (WooCommerce dropped post-verification — not in Pipedream's catalog and out of product scope). Every entry has:
+
+```js
+{
+  id,         // FlowOS-stable slug, used as the key everywhere
+  name,       // display name
+  category,   // canonical category (Paid Search / Paid Audio / Paid Social / Organic Social / Email Marketing / SMS Marketing / Email Verification / SEO & Search / E-commerce / A/B Testing / AI Video / Image / AI Audio / Voice / Analytics / CRM & Marketing Ops)
+  group,      // pill-filter bucket: "Social" | "Ads" | "Email & SMS" | "Commerce" | "Analytics & Ops" | "Creative AI"
+  desc,       // short description — tooltip + setup modal
+  auth,       // "OAuth" | "API key" — drives Connect-modal fork (paragraph vs. input)
+  provider,   // "composio" | "pipedream" | "direct" — drives the initiate path (provider-agnostic surface)
+  slug,       // Simple Icons CDN slug, or null
+  domain,     // Google S2 favicon fallback host (always set)
+}
+```
+
+`ConnectorIcon` in [workspaces4.jsx](app/workspaces4.jsx) resolves logos in three stages: Simple Icons CDN → Google S2 favicon → deterministic LetterMark fallback (no logo asset needed in-repo).
 
 When adding a new connector, update **all** of these:
 
-1. `seed.jsx` — connector definition object `{ id, category, name, desc, auth, icon }` in the connectors array
-2. `seed.jsx` — `connectorState` default status `{ connected, status, note, syncCount }`
-3. `seed.jsx` — second tenant's connector state (Erickson)
-4. `workspaces4.jsx` — `CONN_STYLE` color/letter map for the avatar badge
-5. `agents.jsx` — `CONNECTOR_LABELS` display name map
-6. `channel-strategy.jsx` — `connectedSet` id→name map
-7. `api/brand-import.js` — `CONNECTOR_IDS` array (Claude can recommend these)
-8. `store.jsx` — add to `channelRules` array if it's a publishing channel
+1. `seed.jsx` — catalog row (above shape) + `connectorState` default + Erickson's `brandConnectorStates.erickson`
+2. `agents.jsx` — `CONNECTOR_LABELS` display name map
+3. `channel-strategy.jsx` — `connectedSet` id→display-name map if it's a publishing channel
+4. `api/brand-import.js` — `CONNECTOR_IDS` array (Claude can recommend these)
+5. `store.jsx` — `channelRules` if it's a publishing channel that users approve via AutonomySettings
 
-### Connector categories (used in Settings → Connections grouping):
-`Social`, `Email`, `SMS`, `Search Ads`, `Social Ads`, `Commerce`, `Analytics`, `SEO`, `Affiliate`, `Experimentation`, `Creative AI`, `MCP · Custom`
+### Setup flow (Connect modal → popup → polling, or API-key direct)
+
+The connect surface in [workspaces4.jsx](app/workspaces4.jsx) is provider-agnostic — the same Connect modal serves Composio, Pipedream, and Direct API connectors:
+
+1. Click an unconnected tile → opens the dumb Connect modal (logo + one paragraph + one button). API-key connectors additionally surface a `<password>` input.
+2. On submit, the flow forks by `connector.auth`:
+   - **OAuth** → POST `/api/<provider>` `initiate_connection` with `redirectUri`; `window.open(redirectUrl, ...)`; tile flips amber.
+   - **API key (Composio)** → POST `/api/composio` `initiate_connection` with `apiKey`; Composio creates a `use_custom_auth` auth_config + connected_account synchronously. No popup. Tile flips green on success.
+   - **API key (direct)** → local `setTimeout` simulation for now (real per-provider validation routes are a follow-up).
+3. OAuth popup behaviour: closes immediately on flow start; tile shows amber "Connecting…". Popup blocked → falls back to `window.location.href` + legacy `?composio_connected=` URL-param hydration.
+4. Polling: every 1.5s the host posts `connection_status` to verify. On success → write to Supabase `channels`, dispatch `setConnector`, tile flips green. 3-minute timeout; popup-closed → short grace then cancel.
+5. The OAuth popup lands on [oauth-callback.html](oauth-callback.html) (static, served at site root) which `postMessage`s `{ type: "flowos_oauth_connected", app }` to the opener as a fast-path then self-closes after 1.5s. Polling is the redundant fallback.
+6. Click a Connected tile → `ManageConnectorModal` (status + Read/Write/Admin permission toggles + Re-sync + Disconnect). Permissions live on `state.connectors[id].permissions = { read, write, admin }` (default `{true,true,false}`); persisted to client state only — server-side enforcement is a follow-up.
+
+### Composio integration state (verified against live backend.composio.dev)
+
+[api/composio.js](api/composio.js) handles both OAuth and API-key flows. Field naming is inconsistent in Composio's API — `authScheme` is camelCase, everything else is snake_case.
+
+| Mode | Composio shape | Works for |
+|---|---|---|
+| **OAuth** | `auth_config: { type: "use_composio_managed_auth" }` + connected_account with `callback_url` | 13 toolkits with Composio managed credentials: googleads, ga4, gsc, hubspot, salesforce, mailchimp, reddit, youtube, fb (+ metaads), ig, li (+ liads) |
+| **API key** | `auth_config: { type: "use_custom_auth", authScheme: "API_KEY" }` + connected_account with `connection.data.apiKey` | 13 toolkits without managed credentials but supporting API-key auth: klaviyo (+ klaviyo_sms), mailerlite, moosend, hunter, ahrefs, moz, neuronwriter, neverbounce, kickbox, listclean, elevenlabs, heygen |
+| **OAuth — needs custom app** | Same OAuth shape, but Composio has no default managed credentials → returns error code 306 | 5 toolkits where you must register your own OAuth app in the Composio dashboard: shopify, tiktok (tt + ttads), twitter (x + xads) |
+
+Surface treatment of code 306: `/api/composio` returns a 409 with an actionable message — "configure a Composio auth_config for `<slug>` in the dashboard, or switch to direct provider."
+
+`/api/composio` debug actions: `list_toolkits` (1041 slugs available), `verify_app` (per-id check). Use [scripts/verify-composio.mjs](scripts/verify-composio.mjs) to regression-check the full APP_MAP against live Composio:
+
+```bash
+COMPOSIO_API_KEY2=<key> node scripts/verify-composio.mjs
+```
+
+### Pipedream integration state (verified against live api.pipedream.com)
+
+[api/pipedream.js](api/pipedream.js) handles Pipedream Connect — Pipedream's hosted OAuth + API-key product, equivalent to Composio's managed flow. Server-to-server auth uses the OAuth client_credentials grant for a 1-hour Bearer; per-user auth mints a short-lived **Connect Token** that the frontend opens in a popup at the `connect_link_url`.
+
+Pipedream's API has one important quirk: the **`x-pd-environment` header** (values: `production` | `development`) is required on every `/connect/{project_id}/*` call. Body fields don't satisfy it.
+
+| FlowOS id | Pipedream slug | Auth type | State |
+|---|---|---|---|
+| `pn`, `pinads` | `pinterest` | oauth | ✓ Connect token mints, popup opens Pipedream's hosted flow |
+| `sendgrid` | `sendgrid` | keys | ✓ |
+| `activecampaign` | `activecampaign` | keys | ✓ |
+| `twilio` | `twilio` | keys | ✓ |
+| `runware` | `runware` | keys | ✓ |
+
+Env vars (all required):
+```
+PIPEDREAM_PROJECT_ID     proj_XXXXXX  (Project → Connect → Configuration → Project ID)
+PIPEDREAM_CLIENT_ID      Account settings → API → OAuth client
+PIPEDREAM_CLIENT_SECRET  (rotate-only)
+PIPEDREAM_ENVIRONMENT    "production" (default) | "development"
+```
+
+`/api/pipedream` debug actions: `list_apps` (3000 apps available), `verify_app` (per-id check). Regression-check the APP_MAP against live Pipedream:
+
+```bash
+PIPEDREAM_PROJECT_ID=<id> PIPEDREAM_CLIENT_ID=<id> PIPEDREAM_CLIENT_SECRET=<secret> \
+  node scripts/verify-pipedream.mjs
+```
+
+WordPress was originally on Pipedream per the canonical doc but isn't in Pipedream's actual catalog → reclassified to `provider: "direct"` (WordPress Application Passwords or REST OAuth, wired in its own follow-up).
+
+### Direct-API integration state
+
+Per-tenant API-key connectors that don't go through Composio or Pipedream live behind their own `/api/<provider>` routes and share persistence via `api/lib/directCredentials.js` (writes to `public.connector_credentials`, mirrored to `channels` for the tile state). The frontend route table is `DIRECT_API_ROUTES` in [workspaces4.jsx](app/workspaces4.jsx); connector ids not in that map fall through to a local setTimeout simulation.
+
+| FlowOS id | Route | Validation endpoint | State |
+|---|---|---|---|
+| `replicate`  | `/api/replicate`  | `GET /v1/account`                           | ✓ |
+| `higgsfield` | `/api/higgsfield` | `GET /models`                               | ✓ |
+| `luma`       | `/api/luma`       | `GET /dream-machine/v1/generations?limit=1` | ✓ |
+| `msads`, `spotifyads`, `attentive`, `abtasty`, `optimizely`, `vwo`, `audiostack`, `loops`, `wordpress` | — | — | pending wire-up |
+
+All three follow the same shape: `action=initiate_connection` validates the supplied apiKey against the provider's REST API, persists into `connector_credentials`, and upserts a `channels` row with `status=connected`. `action=disconnect` deletes the credential and flips the channels row. Downstream API routes (e.g. `/api/generate`) can read the per-tenant key with `loadCredential({ tenantId, platform })` and fall back to the global env-var key if absent.
 
 ---
 
@@ -294,10 +382,9 @@ All in `/api/`. All use `export const config = { runtime: "edge" }`.
 | `GET  /api/cron/daily-analytics` | Vercel Cron (06:00 UTC) — calls analytics-ingest for all tenants. |
 | `GET  /api/cron/proactive-emails` | Vercel Cron (07:30 UTC) — iterates tenants and POSTs to /api/proactive-emails. |
 | `GET  /api/cron/fire-scheduled` | Vercel Cron (`* * * * *` — **requires Pro** for guaranteed 1-min execution; Hobby cron schedules will be rejected at deploy). Calls Supabase RPC `claim_due_scheduled_posts(20)` which atomically picks due `pending` rows via `FOR UPDATE SKIP LOCKED`, transitions them to `publishing`, then POSTs `${origin}/api/<platform>` with the row's snapshot payload. PATCHes the row to `published`/`failed`. Idempotent by construction — same row can never be claimed twice concurrently. |
-| `POST /api/google-ads` | Google Ads API v18. Actions: `list_campaigns`, `create_campaign`, `update_budget`, `enable_campaign`, `pause_campaign`, `keyword_ideas`, `campaign_detail`, `generate_copy`. |
-| `GET  /api/google-ads-auth?action=connect&tenantId=...` | Returns Google OAuth2 consent URL. |
-| `GET  /api/google-ads-auth?code=...&state=tenantId` | OAuth callback — exchanges code, stores tokens in Supabase `google_ads_tokens`. |
-| `POST /api/google-ads-auth` | Set active customer ID when user has multiple Google Ads accounts. |
+| `POST /api/google-ads` | Composio-backed Google Ads wrapper. Actions: `list_customer_ids` (new — returns accessible MCC child accounts via `GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS`), `list_campaigns`, `create_campaign`, `update_budget`, `enable_campaign`, `pause_campaign`, `keyword_ideas`, `campaign_detail`, `generate_copy`. Frontend contract unchanged (`{ ok, data }`). Composio toolkit slug names live in the `TOOLS` constant at the top of the file. Pass `customerId` in params; if omitted, the user must pick one via `list_customer_ids` first. |
+| `POST /api/replicate` `POST /api/higgsfield` `POST /api/luma` | Direct-API connector routes (provider: "direct" in seed.jsx). Actions: `initiate_connection` (validates apiKey against the provider's REST API, persists to `connector_credentials`, flips `channels` to connected), `disconnect`. Shared persistence helper in [api/lib/directCredentials.js](api/lib/directCredentials.js). |
+| `GET/POST /api/google-ads-auth` | **REMOVED — 410 Gone tombstone.** Returns `{ error: "Google Ads OAuth has moved to Composio…", code: "GONE_USE_COMPOSIO" }`. Connect flow now goes through `/api/composio` like every other OAuth connector. The old `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET` env vars are no longer read at runtime. |
 
 ### Auth pattern (every /api/* handler)
 
@@ -358,8 +445,9 @@ All public-schema tables have RLS enabled (see [db/migrations/007_core_schema_an
 - `analytics_snapshots` — raw per-channel metrics. Keys: `tenant_id`, `channel`, `period`.
 - `analytics_insights` — Claude-generated summaries. Keys: `tenant_id`, `period`.
 - `agent_overrides` — custom system prompts per agent per tenant.
-- `google_ads_tokens` — OAuth refresh tokens for Google Ads. Keys: `tenant_id`. Columns: `refresh_token`, `customer_id`, `all_customer_ids` (array).
+- `google_ads_tokens` — **DEPRECATED** (2026-05-17 Composio cutover). No longer read or written by runtime. Safe to drop once any reconnecting tenant has completed the new Composio flow. Original schema: `tenant_id` (pk), `refresh_token`, `customer_id`, `all_customer_ids` (array).
 - `scheduled_posts` — queued posts awaiting cron firing. Columns: `tenant_id` (text), `item_id` (calendar row id), `platform`, `fire_at` (timestamptz UTC), `payload` (jsonb — snapshot of `/api/<platform>` publish_now body, minus `action` and `tenantId`), `status` (`pending`|`publishing`|`published`|`failed`|`cancelled`), `attempts`, `last_error`, `fire_attempted_at`, `published_at`, `result` (jsonb response). Unique partial index on `item_id` where `status in (pending,publishing)` prevents double-queueing. `payload` is a snapshot, not a reference — editing the calendar row after Schedule does NOT change what fires; an explicit reschedule (cancel + new Schedule) is required.
+- `connector_credentials` — per-tenant API keys for Direct-API connectors (Replicate, Higgsfield, Luma today; the other 9 Direct connectors as they're wired). Primary key `(user_id, platform)`. Columns: `secret_kind` (default `api_key`), `secret_value`, `validated_at`, `updated_at`. Service-role only (RLS enabled, no policies). Migration: [supabase/migrations/2026-05-18-connector-credentials.sql](supabase/migrations/2026-05-18-connector-credentials.sql).
 - `proactive_drafts` — weekly social calendar drafts (status `pending`/`archived`). Keys: `tenant_id`, `status`.
 - `proactive_emails` — analytics-triggered email drafts. Keys: `tenant_id`, `rule`, `source_insight_id`. Unique index enforces idempotency. Status: `proactive_draft` → `pushed` (via /api/klaviyo) | `dismissed`.
 
@@ -459,9 +547,9 @@ SUPABASE_JWT_SECRET      Verifies user JWTs in requireAuth (Supabase project set
 OAUTH_STATE_SECRET       HMAC for google-ads-auth OAuth state — any high-entropy string
 RUNWARE_API_KEY          Runware image + video generation
 HIGGSFIELD_API_KEY       Higgsfield video (cinematic_studio_3_0, kling3_0)
-GOOGLE_ADS_DEVELOPER_TOKEN  Google Ads API Developer Token (from API Center in manager account)
-GOOGLE_ADS_CLIENT_ID        Google OAuth2 Client ID (same as existing Google Cloud OAuth app)
-GOOGLE_ADS_CLIENT_SECRET    Google OAuth2 Client Secret (same as above)
+GOOGLE_ADS_DEVELOPER_TOKEN  DEPRECATED — no longer read (Composio cutover 2026-05-17)
+GOOGLE_ADS_CLIENT_ID        DEPRECATED — no longer read (Composio cutover 2026-05-17)
+GOOGLE_ADS_CLIENT_SECRET    DEPRECATED — no longer read (Composio cutover 2026-05-17)
 ```
 
 Frontend uses the Supabase anon key baked into `supabase.jsx` (public — safe).

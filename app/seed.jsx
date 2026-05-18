@@ -46,7 +46,7 @@ const SEED = {
       prohibitedTopics: ["medical claims", "competitor by name", "weight loss", "religion", "specific dermatology advice"],
       // Connectors the AI recommends based on brand type (DTC skincare · visual + social commerce)
       recommendedConnectors: [
-        "ig", "tt", "pn", "threads",                     // organic social
+        "ig", "tt", "pn",                                 // organic social
         "metaads", "pinads",                              // paid social
         "shopify", "klaviyo", "klaviyo_sms",              // commerce + email
         "ga4", "heygen", "runware",                       // analytics + creative AI
@@ -92,202 +92,234 @@ const SEED = {
         "metaads", "fb",                     // Facebook for local B2B awareness + remarketing
         "klaviyo", "klaviyo_sms",            // service contract renewals + seasonal maintenance reminders
         "yt",                                // YouTube how-to content (build trust, SEO)
-        "yelp", "semrush",                  // Yelp reviews critical for restaurants choosing a vendor
       ],
     },
   },
   brandImported: false, // toggled by the import flow
 
-  // Connectors — what the user can connect via API
-  // Social platforms connect directly via Composio managed OAuth
+  // Canonical connector catalog — one row per platform.
+  // Fields:
+  //   id         FlowOS-stable slug, used as the key everywhere in code
+  //   name       display name
+  //   category   canonical category (used by filter pills, not as section headers)
+  //   group      filter-pill bucket (Social, Ads, Email & SMS, Commerce, Analytics & Ops, Creative AI)
+  //   desc       short description, shown in tooltip + setup modal
+  //   auth       "OAuth" | "API key" — drives the setup modal fork
+  //   provider   "composio" | "pipedream" | "direct" — drives the initiate path
+  //   slug       Simple Icons logo slug (lowercase, dash-separated). null → letter-mark fallback
   connectorCatalog: [
-    // ── Social ───────────────────────────────────────────────────────────────
-    { id: "ig",        category: "Social",     name: "Instagram",        desc: "Posts, Reels, Stories",                                            auth: "OAuth",    icon: "ig" },
-    { id: "tt",        category: "Social",     name: "TikTok",           desc: "Videos, Photo mode",                                               auth: "OAuth",    icon: "tt" },
-    { id: "fb",        category: "Social",     name: "Facebook",         desc: "Pages & posts",                                                    auth: "OAuth",    icon: "fb" },
-    { id: "li",        category: "Social",     name: "LinkedIn",         desc: "Company posts, articles",                                          auth: "OAuth",    icon: "li" },
-    { id: "yt",        category: "Social",     name: "YouTube",          desc: "Shorts & long-form video",                                         auth: "OAuth",    icon: "yt" },
-    { id: "pn",        category: "Social",     name: "Pinterest",        desc: "Pins & boards",                                                    auth: "OAuth",    icon: "pn"      },
-    { id: "x",         category: "Social",     name: "X",                desc: "Posts & Spaces",                                                   auth: "OAuth",    icon: "x"       },
-    { id: "threads",   category: "Social",     name: "Threads",          desc: "Text & media posts · Meta's open social layer",                    auth: "OAuth",    icon: "threads" },
-    { id: "reddit",    category: "Social",     name: "Reddit",           desc: "Subreddit posts & communities",                                    auth: "OAuth",    icon: "reddit"  },
-    { id: "snap",      category: "Social",     name: "Snapchat",         desc: "Spotlight + Story posts",                                          auth: "OAuth",    icon: "snap"    },
-    { id: "bluesky",   category: "Social",     name: "Bluesky",          desc: "Open AT Protocol social",                                          auth: "OAuth",    icon: "bsky"    },
-    { id: "mastodon",  category: "Social",     name: "Mastodon",         desc: "Federated open social",                                            auth: "OAuth",    icon: "mst"     },
-    { id: "telegram",  category: "Social",     name: "Telegram",         desc: "Channel posts & broadcasts",                                       auth: "OAuth",    icon: "tg"      },
+    // ── Paid Search ──────────────────────────────────────────────────────────
+    { id: "googleads",  name: "Google Ads",       category: "Paid Search", group: "Ads",            desc: "Search, Performance Max, Display, YouTube",       auth: "OAuth",   provider: "composio", slug: "googleads", domain: "ads.google.com"  },
+    { id: "msads",      name: "Microsoft Ads",    category: "Paid Search", group: "Ads",            desc: "Bing, Edge, Yahoo · Search + Audience",           auth: "OAuth",   provider: "direct",   slug: "microsoftbing", domain: "ads.microsoft.com"  },
 
-    // ── Email ────────────────────────────────────────────────────────────────
-    { id: "klaviyo",   category: "Email",      name: "Klaviyo",          desc: "Lists, flows, campaigns, segmentation",                            auth: "API key", icon: "kl" },
-    { id: "mailchimp", category: "Email",      name: "Mailchimp",        desc: "Audiences, automations, A/B tests",                                auth: "API key", icon: "mc" },
+    // ── Paid Audio ───────────────────────────────────────────────────────────
+    { id: "spotifyads", name: "Spotify Ads",      category: "Paid Audio",  group: "Ads",            desc: "Audio + video spots · Ads Manager",               auth: "OAuth",   provider: "direct",   slug: "spotify", domain: "adstudio.spotify.com"  },
 
-    // ── SMS ──────────────────────────────────────────────────────────────────
-    { id: "klaviyo_sms", category: "SMS",      name: "Klaviyo SMS",      desc: "TCPA consent, MMS, automations · same API key as Klaviyo",         auth: "API key", icon: "kl" },
-    { id: "attentive",   category: "SMS",      name: "Attentive",        desc: "Conversational SMS · enterprise & SMB",                            auth: "API key", icon: "at" },
+    // ── Paid Social ──────────────────────────────────────────────────────────
+    { id: "metaads",    name: "Meta Ads",         category: "Paid Social", group: "Ads",            desc: "Facebook + Instagram paid · Advantage+",          auth: "OAuth",   provider: "composio", slug: "meta", domain: "business.facebook.com"  },
+    { id: "liads",      name: "LinkedIn Ads",     category: "Paid Social", group: "Ads",            desc: "Sponsored content · B2B",                         auth: "OAuth",   provider: "composio", slug: "linkedin", domain: "business.linkedin.com"  },
+    { id: "ttads",      name: "TikTok Ads",       category: "Paid Social", group: "Ads",            desc: "Spark Ads, paid creator content",                 auth: "OAuth",   provider: "composio", slug: "tiktok", domain: "ads.tiktok.com"  },
+    { id: "xads",       name: "X Ads",            category: "Paid Social", group: "Ads",            desc: "Promoted posts, Amplify",                         auth: "OAuth",   provider: "composio", slug: "x", domain: "ads.x.com"  },
+    { id: "pinads",     name: "Pinterest Ads",    category: "Paid Social", group: "Ads",            desc: "Promoted pins · discovery intent",                auth: "OAuth",   provider: "pipedream",slug: "pinterest", domain: "business.pinterest.com"  },
 
-    // ── Search Ads ───────────────────────────────────────────────────────────
-    { id: "googleads", category: "Search Ads", name: "Google Ads",       desc: "Search, Performance Max, Display, YouTube",                        auth: "OAuth",   icon: "g"  },
-    { id: "msads",     category: "Search Ads", name: "Microsoft Ads",    desc: "Bing, Edge, Yahoo · Search + Audience",                            auth: "OAuth",   icon: "ms" },
-    { id: "amazonads", category: "Search Ads", name: "Amazon Ads",       desc: "Sponsored Products + Brands · search-intent",                      auth: "OAuth",   icon: "az" },
+    // ── Organic Social ───────────────────────────────────────────────────────
+    { id: "fb",         name: "Facebook",         category: "Organic Social", group: "Social",      desc: "Pages & posts",                                   auth: "OAuth",   provider: "composio", slug: "facebook", domain: "facebook.com"  },
+    { id: "ig",         name: "Instagram",        category: "Organic Social", group: "Social",      desc: "Posts, Reels, Stories",                           auth: "OAuth",   provider: "composio", slug: "instagram", domain: "instagram.com"  },
+    { id: "li",         name: "LinkedIn",         category: "Organic Social", group: "Social",      desc: "Company posts, articles",                         auth: "OAuth",   provider: "composio", slug: "linkedin", domain: "linkedin.com"  },
+    { id: "x",          name: "X",                category: "Organic Social", group: "Social",      desc: "Posts & Spaces",                                  auth: "OAuth",   provider: "composio", slug: "x", domain: "x.com"  },
+    { id: "tt",         name: "TikTok",           category: "Organic Social", group: "Social",      desc: "Videos, Photo mode",                              auth: "OAuth",   provider: "composio", slug: "tiktok", domain: "tiktok.com"  },
+    { id: "pn",         name: "Pinterest",        category: "Organic Social", group: "Social",      desc: "Pins & boards",                                   auth: "OAuth",   provider: "pipedream",slug: "pinterest", domain: "pinterest.com"  },
+    { id: "reddit",     name: "Reddit",           category: "Organic Social", group: "Social",      desc: "Subreddit posts & communities",                   auth: "OAuth",   provider: "composio", slug: "reddit", domain: "reddit.com"  },
+    { id: "yt",         name: "YouTube",          category: "Organic Social", group: "Social",      desc: "Shorts & long-form video",                        auth: "OAuth",   provider: "composio", slug: "youtube", domain: "youtube.com"  },
 
-    // ── Social Ads ───────────────────────────────────────────────────────────
-    { id: "metaads",   category: "Social Ads", name: "Meta Ads",         desc: "Facebook + IG paid · Advantage+",                                  auth: "OAuth",   icon: "m"  },
-    { id: "ttads",     category: "Social Ads", name: "TikTok Ads",       desc: "Spark Ads, paid creator content",                                  auth: "OAuth",   icon: "ta" },
-    { id: "liads",     category: "Social Ads", name: "LinkedIn Ads",     desc: "Sponsored content · B2B",                                          auth: "OAuth",   icon: "lia"},
-    { id: "pinads",    category: "Social Ads", name: "Pinterest Ads",    desc: "Promoted pins · discovery intent",                                  auth: "OAuth",   icon: "pa" },
-    { id: "xads",      category: "Social Ads", name: "X Ads",            desc: "Promoted posts, Amplify · interest + keyword targeting",            auth: "OAuth",   icon: "xa" },
-    { id: "redditads", category: "Social Ads", name: "Reddit Ads",       desc: "Promoted posts, Conversation Ads · community + interest targeting", auth: "OAuth",   icon: "ra" },
-    { id: "snapads",   category: "Social Ads", name: "Snap Ads",         desc: "Snap Ads, Story Ads, Collection Ads · Gen Z reach",                 auth: "OAuth",   icon: "sna"},
+    // ── Email Marketing ──────────────────────────────────────────────────────
+    { id: "mailchimp",      name: "Mailchimp",      category: "Email Marketing", group: "Email & SMS", desc: "Audiences, automations, A/B tests",          auth: "API key", provider: "composio", slug: "mailchimp", domain: "mailchimp.com"  },
+    { id: "klaviyo",        name: "Klaviyo",        category: "Email Marketing", group: "Email & SMS", desc: "Lists, flows, campaigns, segmentation",       auth: "API key", provider: "composio", slug: "klaviyo", domain: "klaviyo.com"  },
+    { id: "mailerlite",     name: "MailerLite",     category: "Email Marketing", group: "Email & SMS", desc: "Campaigns, automation, transactional",        auth: "API key", provider: "composio", slug: "mailerlite", domain: "mailerlite.com"  },
+    { id: "loops",          name: "Loops.so",       category: "Email Marketing", group: "Email & SMS", desc: "Lifecycle email · transactional + marketing", auth: "API key", provider: "direct",   slug: null, domain: "loops.so"  },
+    { id: "moosend",        name: "Moosend",        category: "Email Marketing", group: "Email & SMS", desc: "Campaigns, automation, landing pages",        auth: "API key", provider: "composio", slug: null, domain: "moosend.com"  },
+    { id: "sendgrid",       name: "SendGrid",       category: "Email Marketing", group: "Email & SMS", desc: "Transactional + marketing email at scale",    auth: "API key", provider: "pipedream",slug: "twilio", domain: "sendgrid.com"  },
+    { id: "activecampaign", name: "ActiveCampaign", category: "Email Marketing", group: "Email & SMS", desc: "Email + CRM + automation",                    auth: "API key", provider: "pipedream",slug: "activecampaign", domain: "activecampaign.com"  },
+    { id: "hunter",         name: "Hunter",         category: "Email Marketing", group: "Email & SMS", desc: "Email finder, verifier, outreach campaigns",  auth: "API key", provider: "composio", slug: null, domain: "hunter.io"  },
 
-    // ── Commerce ─────────────────────────────────────────────────────────────
-    { id: "shopify",   category: "Commerce",   name: "Shopify",          desc: "Products, inventory, orders, customers",                           auth: "OAuth",   icon: "sh" },
+    // ── SMS Marketing ────────────────────────────────────────────────────────
+    { id: "klaviyo_sms", name: "Klaviyo SMS",     category: "SMS Marketing", group: "Email & SMS", desc: "TCPA consent, MMS, automations · shares Klaviyo key", auth: "API key", provider: "composio", slug: "klaviyo", domain: "klaviyo.com"  },
+    { id: "attentive",   name: "Attentive",       category: "SMS Marketing", group: "Email & SMS", desc: "Conversational SMS · enterprise & SMB",               auth: "API key", provider: "direct",   slug: null, domain: "attentive.com"  },
+    { id: "twilio",      name: "Twilio",          category: "SMS Marketing", group: "Email & SMS", desc: "Programmable SMS · global reach, A2P 10DLC",          auth: "API key", provider: "pipedream",slug: "twilio", domain: "twilio.com"  },
 
-    // ── Reviews & Local ──────────────────────────────────────────────────────
-    { id: "yelp",      category: "Reviews & Local", name: "Yelp",        desc: "Business reviews, ratings, local search presence & reputation",    auth: "API key", icon: "yelp" },
+    // ── Email Verification ───────────────────────────────────────────────────
+    { id: "neverbounce", name: "NeverBounce",     category: "Email Verification", group: "Email & SMS", desc: "Real-time + bulk email verification",         auth: "API key", provider: "composio", slug: null, domain: "neverbounce.com"  },
+    { id: "kickbox",     name: "Kickbox",         category: "Email Verification", group: "Email & SMS", desc: "Email verification · syntax, MX, SMTP",       auth: "API key", provider: "composio", slug: null, domain: "kickbox.com"  },
+    { id: "listclean",   name: "Listclean",       category: "Email Verification", group: "Email & SMS", desc: "Bulk list hygiene · deliverability scoring",  auth: "API key", provider: "composio", slug: null, domain: "listclean.io"  },
+
+    // ── SEO & Search ─────────────────────────────────────────────────────────
+    { id: "gsc",         name: "Search Console",  category: "SEO & Search", group: "Analytics & Ops", desc: "Google · impressions, CTR, indexing status",     auth: "OAuth",   provider: "composio", slug: "googlesearchconsole", domain: "search.google.com"  },
+    { id: "ahrefs",      name: "Ahrefs",          category: "SEO & Search", group: "Analytics & Ops", desc: "Keyword ranks, backlinks, site audit",           auth: "API key", provider: "composio", slug: "ahrefs", domain: "ahrefs.com"  },
+    { id: "moz",         name: "Moz",             category: "SEO & Search", group: "Analytics & Ops", desc: "Domain authority, link explorer, rank tracking", auth: "API key", provider: "composio", slug: "moz", domain: "moz.com"  },
+    { id: "neuronwriter",name: "Neuronwriter",    category: "SEO & Search", group: "Analytics & Ops", desc: "Content optimisation · SERP NLP analysis",       auth: "API key", provider: "composio", slug: null, domain: "neuronwriter.com"  },
+
+    // ── E-commerce ───────────────────────────────────────────────────────────
+    { id: "shopify",     name: "Shopify",         category: "E-commerce", group: "Commerce",      desc: "Products, inventory, orders, customers",          auth: "OAuth",   provider: "composio", slug: "shopify", domain: "shopify.com"  },
+    { id: "wordpress",   name: "WordPress",       category: "E-commerce", group: "Commerce",      desc: "CMS publishing · posts, pages, media",            auth: "API key", provider: "direct",   slug: "wordpress", domain: "wordpress.com"  },
+
+    // ── A/B Testing ──────────────────────────────────────────────────────────
+    { id: "abtasty",     name: "AB Tasty",        category: "A/B Testing", group: "Analytics & Ops", desc: "A/B + personalisation · CRO",                  auth: "OAuth",   provider: "direct", slug: null, domain: "abtasty.com"  },
+    { id: "optimizely",  name: "Optimizely",      category: "A/B Testing", group: "Analytics & Ops", desc: "Experimentation + feature flags · enterprise", auth: "API key", provider: "direct", slug: "optimizely", domain: "optimizely.com"  },
+    { id: "vwo",         name: "VWO",             category: "A/B Testing", group: "Analytics & Ops", desc: "Visual editor A/B testing + heatmaps",         auth: "API key", provider: "direct", slug: null, domain: "vwo.com"  },
+
+    // ── AI Video / Image ─────────────────────────────────────────────────────
+    { id: "heygen",     name: "HeyGen",           category: "AI Video / Image", group: "Creative AI", desc: "AI avatar videos · UGC personas, voiceover", auth: "API key", provider: "composio", slug: null, domain: "heygen.com"  },
+    { id: "replicate",  name: "Replicate",        category: "AI Video / Image", group: "Creative AI", desc: "Hosted ML models · image, video, audio",     auth: "API key", provider: "direct",   slug: "replicate", domain: "replicate.com"  },
+    { id: "runware",    name: "RunWare.ai",       category: "AI Video / Image", group: "Creative AI", desc: "Ultra-fast image gen · SDXL & Flux models",  auth: "API key", provider: "pipedream",slug: null, domain: "runware.ai"  },
+    { id: "higgsfield", name: "Higgsfield.ai",    category: "AI Video / Image", group: "Creative AI", desc: "Cinematic video gen · Kling, Studio 3.0",    auth: "API key", provider: "direct",   slug: null, domain: "higgsfield.ai"  },
+    { id: "luma",       name: "Luma AI",          category: "AI Video / Image", group: "Creative AI", desc: "Dream Machine · photorealistic video gen",   auth: "API key", provider: "direct",   slug: null, domain: "lumalabs.ai"  },
+
+    // ── AI Audio / Voice ─────────────────────────────────────────────────────
+    { id: "elevenlabs", name: "ElevenLabs",       category: "AI Audio / Voice", group: "Creative AI", desc: "Voice cloning · narration, ads, captions",   auth: "API key", provider: "composio", slug: "elevenlabs", domain: "elevenlabs.io"  },
+    { id: "audiostack", name: "AudioStack",       category: "AI Audio / Voice", group: "Creative AI", desc: "End-to-end audio ad production · voice + music + mix", auth: "API key", provider: "direct", slug: null, domain: "audiostack.ai"  },
 
     // ── Analytics ────────────────────────────────────────────────────────────
-    { id: "ga4",       category: "Analytics",  name: "Google Analytics", desc: "GA4 · acquisition, behavior, conversion",                          auth: "OAuth",   icon: "ga" },
-    { id: "amplitude", category: "Analytics",  name: "Amplitude",        desc: "Product analytics · funnels, cohorts, retention",                  auth: "API key", icon: "am" },
+    { id: "ga4",        name: "Google Analytics", category: "Analytics", group: "Analytics & Ops", desc: "GA4 · acquisition, behavior, conversion",       auth: "OAuth",   provider: "composio", slug: "googleanalytics", domain: "analytics.google.com"  },
 
-    // ── SEO ──────────────────────────────────────────────────────────────────
-    { id: "ahrefs",    category: "SEO",        name: "Ahrefs",           desc: "Keyword ranks, backlinks, site audit",                             auth: "API key", icon: "ah" },
-    { id: "semrush",   category: "SEO",        name: "Semrush",          desc: "Keyword tracking, content gap, competitor intel",                  auth: "API key", icon: "sr" },
-    { id: "gsc",       category: "SEO",        name: "Search Console",   desc: "Google · impressions, CTR, indexing status",                       auth: "OAuth",   icon: "gs" },
-
-    // ── Affiliate ────────────────────────────────────────────────────────────
-    { id: "refersion", category: "Affiliate",  name: "Refersion",        desc: "Affiliate links, payouts, commission tiers",                       auth: "API key", icon: "rf" },
-    { id: "impact",    category: "Affiliate",  name: "Impact",           desc: "Partner network · enterprise affiliate",                           auth: "API key", icon: "im" },
-
-    // ── Experimentation ──────────────────────────────────────────────────────
-    { id: "growthbook", category: "Experimentation", name: "GrowthBook", desc: "Open-source A/B tests + feature flags · free cloud tier",          auth: "API key", icon: "gb" },
-
-    // ── Creative AI ──────────────────────────────────────────────────────────
-    { id: "runware",    category: "Creative AI", name: "Runware",        desc: "Ultra-fast image gen · SDXL & Flux models",                        auth: "API key", icon: "runware"    },
-    { id: "heygen",     category: "Creative AI", name: "HeyGen",         desc: "AI avatar videos · UGC personas, voiceover",                       auth: "API key", icon: "heygen"     },
-    { id: "luma",       category: "Creative AI", name: "Luma AI",        desc: "Dream Machine · photorealistic video gen",                         auth: "API key", icon: "luma"       },
-    { id: "elevenlabs", category: "Creative AI", name: "ElevenLabs",     desc: "Voice cloning · narration, ads, captions",                         auth: "API key", icon: "elevenlabs" },
-    { id: "runway",     category: "Creative AI", name: "Runway",         desc: "Gen-4 video generation · inpainting",                              auth: "API key", icon: "runway"     },
-
-    // ── MCP · Custom ─────────────────────────────────────────────────────────
-    { id: "mcp_runware",  category: "MCP · Custom", name: "Runware MCP",  desc: "Image gen via Model Context Protocol",                            auth: "MCP",     icon: "runware"    },
-    { id: "mcp_heygen",   category: "MCP · Custom", name: "HeyGen MCP",   desc: "Avatar video generation via MCP",                                auth: "MCP",     icon: "heygen"     },
-    { id: "mcp_shopify",  category: "MCP · Custom", name: "Shopify MCP",  desc: "Products, orders, inventory via MCP",                            auth: "MCP",     icon: "shopify"    },
-    { id: "mcp_klaviyo",  category: "MCP · Custom", name: "Klaviyo MCP",  desc: "Email & SMS flows, lists via MCP",                               auth: "MCP",     icon: "klaviyo"    },
-    { id: "mcp_custom",   category: "MCP · Custom", name: "Custom MCP",   desc: "Connect any MCP-compatible server by URL",                       auth: "MCP",     icon: "mcp"        },
+    // ── CRM & Marketing Ops ──────────────────────────────────────────────────
+    { id: "hubspot",    name: "HubSpot",          category: "CRM & Marketing Ops", group: "Analytics & Ops", desc: "CRM, marketing hub, sequences",       auth: "OAuth",   provider: "composio", slug: "hubspot", domain: "hubspot.com"  },
+    { id: "salesforce", name: "Salesforce",       category: "CRM & Marketing Ops", group: "Analytics & Ops", desc: "Sales Cloud, Marketing Cloud, Pardot", auth: "OAuth",  provider: "composio", slug: "salesforce", domain: "salesforce.com"  },
   ],
+  // Default per-connector status. The reducer shallow-merges patches into these.
+  // Manage modal toggles `permissions.{read,write,admin}` — defaults set by makeConnState below.
   connectorState: {
-    // Social
-    ig:        { connected: true,  status: "ok",   note: "synced 2m ago · @mvedaskincare",    syncCount: "1,284 posts", meta: { authors: [] } },
-    tt:        { connected: true,  status: "ok",   note: "synced 1m ago · @mveda",            syncCount: "412 videos" },
-    fb:        { connected: true,  status: "warn", note: "rate limited · retry 14:02",         syncCount: "904 posts", meta: { authors: [] } },
-    li:        { connected: true,  status: "ok",   note: "synced 4m ago",                     syncCount: "126 posts", meta: { authors: [] } },
-    yt:        { connected: true,  status: "ok",   note: "synced 8m ago · @mveda-co",         syncCount: "38 videos" },
-    pn:        { connected: false, status: "—",    note: "not connected",  syncCount: "—" },
-    x:         { connected: false, status: "—",    note: "not connected",  syncCount: "—", meta: { authors: [] } },
-    threads:   { connected: false, status: "—",    note: "not connected",  syncCount: "—" },
-    reddit:    { connected: false, status: "—",    note: "not connected",  syncCount: "—", meta: { authors: [] } },
-    snap:      { connected: false, status: "—",    note: "not connected",  syncCount: "—" },
-    bluesky:   { connected: false, status: "—",    note: "not connected",  syncCount: "—" },
-    mastodon:  { connected: false, status: "—",    note: "not connected",  syncCount: "—" },
-    telegram:  { connected: false, status: "—",    note: "not connected",  syncCount: "—" },
-    // Email
-    klaviyo:   { connected: true,  status: "ok",   note: "lists synced 2m ago",               syncCount: "24,118 contacts · 6 flows" },
-    mailchimp: { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
-    // SMS
-    klaviyo_sms: { connected: true, status: "ok",  note: "TCPA opt-ins synced 4m ago",        syncCount: "8,402 SMS subscribers · 3 flows" },
-    attentive:   { connected: false, status: "—",  note: "not connected",                     syncCount: "—" },
-    // Search Ads
-    googleads: { connected: true,  status: "ok",   note: "spend $4,820 MTD · 6 campaigns",   syncCount: "" },
-    msads:     { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
-    amazonads: { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
-    // Social Ads
-    metaads:   { connected: true,  status: "ok",   note: "spend $7,610 MTD · 11 ad sets",    syncCount: "" },
-    ttads:     { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
-    liads:     { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
-    pinads:    { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
-    xads:      { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
-    redditads: { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
-    snapads:   { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
-    // Commerce
-    shopify:   { connected: true,  status: "ok",   note: "32 products · 1,408 orders MTD",   syncCount: "" },
-    // Reviews & Local
-    yelp:      { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
+    // Paid Search
+    googleads:      { connected: false, status: "warn", note: "reconnect required · Composio migration", syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    msads:          { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    // Paid Audio
+    spotifyads:     { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    // Paid Social
+    metaads:        { connected: true,  status: "ok",   note: "spend $7,610 MTD · 11 ad sets",        syncCount: "", permissions: { read: true, write: true, admin: false } },
+    liads:          { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    ttads:          { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    xads:           { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    pinads:         { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    // Organic Social
+    fb:             { connected: true,  status: "warn", note: "rate limited · retry 14:02",           syncCount: "904 posts", meta: { authors: [] }, permissions: { read: true, write: true, admin: false } },
+    ig:             { connected: true,  status: "ok",   note: "synced 2m ago · @mvedaskincare",       syncCount: "1,284 posts", meta: { authors: [] }, permissions: { read: true, write: true, admin: false } },
+    li:             { connected: true,  status: "ok",   note: "synced 4m ago",                        syncCount: "126 posts",  meta: { authors: [] }, permissions: { read: true, write: true, admin: false } },
+    x:              { connected: false, status: "—",    note: "not connected",                        syncCount: "—", meta: { authors: [] }, permissions: { read: true, write: true, admin: false } },
+    tt:             { connected: true,  status: "ok",   note: "synced 1m ago · @mveda",               syncCount: "412 videos", permissions: { read: true, write: true, admin: false } },
+    pn:             { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    reddit:         { connected: false, status: "—",    note: "not connected",                        syncCount: "—", meta: { authors: [] }, permissions: { read: true, write: true, admin: false } },
+    yt:             { connected: true,  status: "ok",   note: "synced 8m ago · @mveda-co",            syncCount: "38 videos", permissions: { read: true, write: true, admin: false } },
+    // Email Marketing
+    mailchimp:      { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    klaviyo:        { connected: true,  status: "ok",   note: "lists synced 2m ago",                  syncCount: "24,118 contacts · 6 flows", permissions: { read: true, write: true, admin: false } },
+    mailerlite:     { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    loops:          { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    moosend:        { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    sendgrid:       { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    activecampaign: { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    hunter:         { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    // SMS Marketing
+    klaviyo_sms:    { connected: true,  status: "ok",   note: "TCPA opt-ins synced 4m ago",           syncCount: "8,402 SMS subscribers · 3 flows", permissions: { read: true, write: true, admin: false } },
+    attentive:      { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    twilio:         { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    // Email Verification
+    neverbounce:    { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    kickbox:        { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    listclean:      { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    // SEO & Search
+    gsc:            { connected: true,  status: "ok",   note: "synced 12m ago",                       syncCount: "26 indexed pages", permissions: { read: true, write: true, admin: false } },
+    ahrefs:         { connected: true,  status: "ok",   note: "rank crawl 6h ago · 184 tracked",      syncCount: "184 keywords", permissions: { read: true, write: true, admin: false } },
+    moz:            { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    neuronwriter:   { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    // E-commerce
+    shopify:        { connected: true,  status: "ok",   note: "32 products · 1,408 orders MTD",       syncCount: "", permissions: { read: true, write: true, admin: false } },
+    wordpress:      { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    // A/B Testing
+    abtasty:        { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    optimizely:     { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    vwo:            { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    // AI Video / Image
+    heygen:         { connected: true,  status: "ok",   note: "3 assets rendering",                   syncCount: "12 personas", permissions: { read: true, write: true, admin: false } },
+    replicate:      { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    runware:        { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    higgsfield:     { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    luma:           { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    // AI Audio / Voice
+    elevenlabs:     { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    audiostack:     { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // Analytics
-    ga4:       { connected: true,  status: "ok",   note: "last event 1m ago",                 syncCount: "" },
-    amplitude: { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
-    // SEO
-    ahrefs:    { connected: true,  status: "ok",   note: "rank crawl 6h ago · 184 tracked",  syncCount: "184 keywords" },
-    semrush:   { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
-    gsc:       { connected: true,  status: "ok",   note: "synced 12m ago",                    syncCount: "26 indexed pages" },
-    // Affiliate
-    refersion: { connected: true,  status: "ok",   note: "12 active partners · 3 pending",   syncCount: "$2,140 MTD payouts" },
-    impact:    { connected: false, status: "—",    note: "not connected",                     syncCount: "—" },
-    // Experimentation
-    growthbook: { connected: false, status: "—",   note: "not connected",                     syncCount: "—" },
-    // Creative AI
-    runware:    { connected: false, status: "—",   note: "not connected",                     syncCount: "—" },
-    heygen:     { connected: true,  status: "ok",  note: "3 assets rendering",                syncCount: "12 personas" },
-    luma:       { connected: false, status: "—",   note: "not connected",                     syncCount: "—" },
-    elevenlabs: { connected: false, status: "—",   note: "not connected",                     syncCount: "—" },
-    runway:     { connected: false, status: "—",   note: "not connected",                     syncCount: "—" },
-    // MCPs
-    mcp_runware: { connected: false, status: "—",  note: "not connected",                     syncCount: "—" },
-    mcp_heygen:  { connected: false, status: "—",  note: "not connected",                     syncCount: "—" },
-    mcp_shopify: { connected: false, status: "—",  note: "not connected",                     syncCount: "—" },
-    mcp_klaviyo: { connected: false, status: "—",  note: "not connected",                     syncCount: "—" },
-    mcp_custom:  { connected: false, status: "—",  note: "not connected",                     syncCount: "—" },
+    ga4:            { connected: true,  status: "ok",   note: "last event 1m ago",                    syncCount: "", permissions: { read: true, write: true, admin: false } },
+    // CRM & Marketing Ops
+    hubspot:        { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    salesforce:     { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
   },
 
   // Per-brand connector states — used when switching accounts
   brandConnectorStates: {
     mveda: null, // null = use default connectorState above
     erickson: {
-      ig:          { connected: false, status: "—",  note: "not connected — not a primary channel",               syncCount: "—", meta: { authors: [] } },
-      tt:          { connected: false, status: "—",  note: "not connected — not relevant for B2B commercial",     syncCount: "—" },
-      fb:          { connected: true,  status: "ok", note: "synced 6m ago · Erickson Commercial Refrigeration",   syncCount: "284 posts", meta: { authors: [] } },
-      li:          { connected: true,  status: "ok", note: "synced 18m ago · Erickson Commercial Refrigeration",  syncCount: "96 posts", meta: { authors: [] } },
-      yt:          { connected: true,  status: "ok", note: "synced 2h ago · @EricksonRefrigeration",              syncCount: "18 videos" },
-      pn:          { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      x:           { connected: false, status: "—",  note: "not connected",                                        syncCount: "—", meta: { authors: [] } },
-      threads:     { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      reddit:      { connected: false, status: "—",  note: "not connected",                                        syncCount: "—", meta: { authors: [] } },
-      snap:        { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      bluesky:     { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      mastodon:    { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      telegram:    { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      klaviyo:     { connected: true,  status: "ok", note: "synced 4m ago",                                        syncCount: "1,840 contacts · 3 flows" },
-      mailchimp:   { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      klaviyo_sms: { connected: true,  status: "ok", note: "synced 4m ago · service appointment reminders",       syncCount: "820 opted in" },
-      attentive:   { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      googleads:   { connected: true,  status: "ok", note: "synced 3m ago · $4,800 MTD",                          syncCount: "4 campaigns active" },
-      msads:       { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      amazonads:   { connected: false, status: "—",  note: "not connected — not relevant",                        syncCount: "—" },
-      metaads:     { connected: true,  status: "ok", note: "synced 10m ago · local awareness + remarketing",      syncCount: "2 campaigns active" },
-      ttads:       { connected: false, status: "—",  note: "not connected — not relevant for B2B commercial",     syncCount: "—" },
-      liads:       { connected: true,  status: "ok", note: "synced 22m ago · facility manager targeting",         syncCount: "2 campaigns active" },
-      pinads:      { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      xads:        { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      redditads:   { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      snapads:     { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      shopify:     { connected: false, status: "—",  note: "not connected — service business, no storefront",     syncCount: "—" },
-      yelp:        { connected: true,  status: "ok", note: "4.8 ★ · 142 reviews · synced 1h ago",                syncCount: "142 reviews" },
-      ga4:         { connected: true,  status: "ok", note: "synced live · ericksonrefrigeration.com",             syncCount: "62 events tracked" },
-      amplitude:   { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      ahrefs:      { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      semrush:     { connected: true,  status: "ok", note: "synced 2h ago · 84 keywords tracked",                 syncCount: "84 keywords" },
-      gsc:         { connected: true,  status: "ok", note: "synced 1h ago",                                        syncCount: "96 queries tracked" },
-      refersion:   { connected: false, status: "—",  note: "not connected — not relevant",                        syncCount: "—" },
-      impact:      { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      growthbook:  { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      runware:     { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      heygen:      { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      luma:        { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      elevenlabs:  { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      runway:      { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      mcp_runware: { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      mcp_heygen:  { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      mcp_shopify: { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      mcp_klaviyo: { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
-      mcp_custom:  { connected: false, status: "—",  note: "not connected",                                        syncCount: "—" },
+      // Paid Search
+      googleads:      { connected: false, status: "warn", note: "reconnect required · Composio migration",          syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      msads:          { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      // Paid Audio
+      spotifyads:     { connected: false, status: "—",  note: "not connected — not relevant for B2B commercial",  syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      // Paid Social
+      metaads:        { connected: true,  status: "ok", note: "synced 10m ago · local awareness + remarketing",   syncCount: "2 campaigns active", permissions: { read: true, write: true, admin: false } },
+      liads:          { connected: true,  status: "ok", note: "synced 22m ago · facility manager targeting",      syncCount: "2 campaigns active", permissions: { read: true, write: true, admin: false } },
+      ttads:          { connected: false, status: "—",  note: "not connected — not relevant for B2B commercial",  syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      xads:           { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      pinads:         { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      // Organic Social
+      fb:             { connected: true,  status: "ok", note: "synced 6m ago · Erickson Commercial Refrigeration",syncCount: "284 posts", meta: { authors: [] }, permissions: { read: true, write: true, admin: false } },
+      ig:             { connected: false, status: "—",  note: "not connected — not a primary channel",            syncCount: "—", meta: { authors: [] }, permissions: { read: true, write: true, admin: false } },
+      li:             { connected: true,  status: "ok", note: "synced 18m ago · Erickson Commercial Refrigeration",syncCount: "96 posts", meta: { authors: [] }, permissions: { read: true, write: true, admin: false } },
+      x:              { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", meta: { authors: [] }, permissions: { read: true, write: true, admin: false } },
+      tt:             { connected: false, status: "—",  note: "not connected — not relevant for B2B commercial",  syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      pn:             { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      reddit:         { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", meta: { authors: [] }, permissions: { read: true, write: true, admin: false } },
+      yt:             { connected: true,  status: "ok", note: "synced 2h ago · @EricksonRefrigeration",            syncCount: "18 videos", permissions: { read: true, write: true, admin: false } },
+      // Email Marketing
+      mailchimp:      { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      klaviyo:        { connected: true,  status: "ok", note: "synced 4m ago",                                     syncCount: "1,840 contacts · 3 flows", permissions: { read: true, write: true, admin: false } },
+      mailerlite:     { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      loops:          { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      moosend:        { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      sendgrid:       { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      activecampaign: { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      hunter:         { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      // SMS Marketing
+      klaviyo_sms:    { connected: true,  status: "ok", note: "synced 4m ago · service appointment reminders",    syncCount: "820 opted in", permissions: { read: true, write: true, admin: false } },
+      attentive:      { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      twilio:         { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      // Email Verification
+      neverbounce:    { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      kickbox:        { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      listclean:      { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      // SEO & Search
+      gsc:            { connected: true,  status: "ok", note: "synced 1h ago",                                     syncCount: "96 queries tracked", permissions: { read: true, write: true, admin: false } },
+      ahrefs:         { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      moz:            { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      neuronwriter:   { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      // E-commerce
+      shopify:        { connected: false, status: "—",  note: "not connected — service business, no storefront",  syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      wordpress:      { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      // A/B Testing
+      abtasty:        { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      optimizely:     { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      vwo:            { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      // AI Video / Image
+      heygen:         { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      replicate:      { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      runware:        { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      higgsfield:     { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      luma:           { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      // AI Audio / Voice
+      elevenlabs:     { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      audiostack:     { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      // Analytics
+      ga4:            { connected: true,  status: "ok", note: "synced live · ericksonrefrigeration.com",           syncCount: "62 events tracked", permissions: { read: true, write: true, admin: false } },
+      // CRM & Marketing Ops
+      hubspot:        { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      salesforce:     { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
     },
   },
 
