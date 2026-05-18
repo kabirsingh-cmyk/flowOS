@@ -143,7 +143,7 @@ const SEED = {
 
     // ── SMS Marketing ────────────────────────────────────────────────────────
     { id: "klaviyo_sms", name: "Klaviyo SMS",     category: "SMS Marketing", group: "Email & SMS", desc: "TCPA consent, MMS, automations · shares Klaviyo key", auth: "API key", provider: "composio", slug: "klaviyo", domain: "klaviyo.com"  },
-    { id: "attentive",   name: "Attentive",       category: "SMS Marketing", group: "Email & SMS", desc: "Conversational SMS · enterprise & SMB",               auth: "API key", provider: "direct",   slug: null, domain: "attentive.com"  },
+    { id: "attentive",   name: "Attentive",       category: "SMS Marketing", group: "Email & SMS", desc: "Conversational SMS · enterprise & SMB",               auth: "OAuth",   provider: "direct",   slug: null, domain: "attentive.com"  },
     { id: "twilio",      name: "Twilio",          category: "SMS Marketing", group: "Email & SMS", desc: "Programmable SMS · global reach, A2P 10DLC",          auth: "API key", provider: "pipedream",slug: "twilio", domain: "twilio.com"  },
 
     // ── Email Verification ───────────────────────────────────────────────────
