@@ -25,7 +25,6 @@ Recommended connector per platform, prioritised: **Composio** → **Pipedream** 
 | Email Marketing | Mailchimp | Composio | Yes |
 | Email Marketing | Klaviyo | Composio | Yes |
 | Email Marketing | MailerLite | Composio | Yes |
-| Email Marketing | Loops.so | Direct API (not in Composio's catalog — was reclassified) | |
 | Email Marketing | Moosend | Composio | Yes |
 | Email Marketing | SendGrid | Pipedream | Yes |
 | Email Marketing | ActiveCampaign | Pipedream | Yes |
@@ -43,9 +42,7 @@ Recommended connector per platform, prioritised: **Composio** → **Pipedream** 
 | E-commerce | Shopify | Composio | |
 | E-commerce | WooCommerce | ~~Pipedream~~ — dropped (not in Pipedream's catalog; out of product scope) | |
 | E-commerce | WordPress | Direct API (Application Password — site URL + username + app password) | Yes |
-| A/B Testing | AB Tasty | Direct API (Personal Access Token; full OAuth is a follow-up for write-scope tokens) | Yes |
 | A/B Testing | Optimizely | Direct API (Bearer token) | Yes |
-| A/B Testing | VWO | Direct API (API key) | Yes |
 | AI Video / Image | HeyGen | Composio | Yes |
 | AI Video / Image | Replicate | Direct API (API key) | Yes |
 | AI Video / Image | RunWare.ai | Pipedream | Yes |
@@ -59,7 +56,7 @@ Recommended connector per platform, prioritised: **Composio** → **Pipedream** 
 
 ## Summary (2026-05-18)
 
-- **40 of 49** connectors wired end-to-end (26 Composio + 6 Pipedream + 8 Direct: Replicate, Higgsfield, Luma, Optimizely, VWO, AudioStack, AB Tasty, WordPress).
+- **40 of 46** connectors wired end-to-end (26 Composio + 6 Pipedream + 6 Direct: Replicate, Higgsfield, Luma, Optimizely, AudioStack, WordPress).
 - **5 Composio toolkits need a custom OAuth app configured in the Composio dashboard**: Shopify, TikTok (Ads + Organic), Twitter/X (Ads + Organic). Composio recognises these toolkits but doesn't ship managed credentials.
-- **4 Direct API connectors** remain — all OAuth-required: Microsoft Ads (Azure AD), Spotify Ads, Attentive, plus Loops.so (API key, but not yet wired). Each needs its own `/api/<id>-auth` route to mint authorize URLs and exchange the code.
-- WooCommerce was dropped (49 total, down from 50).
+- **3 Direct API connectors** remain — all OAuth-required: Microsoft Ads (Azure AD), Spotify Ads, Attentive. Each needs its own `/api/<id>-auth` route to mint authorize URLs and exchange the code.
+- WooCommerce dropped post-verification. VWO, AB Tasty, and Loops.so dropped 2026-05-18 (scope cut — Optimizely covers A/B Testing alone; Klaviyo/Mailchimp/MailerLite/SendGrid/ActiveCampaign cover lifecycle email). 46 total, down from 50.

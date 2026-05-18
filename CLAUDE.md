@@ -356,11 +356,11 @@ Per-tenant API-key connectors that don't go through Composio or Pipedream live b
 | `higgsfield` | `/api/higgsfield` | `GET /models`                               | ✓ |
 | `luma`       | `/api/luma`       | `GET /dream-machine/v1/generations?limit=1` | ✓ |
 | `optimizely` | `/api/optimizely` | `GET /v2/projects` (Bearer PAT)             | ✓ |
-| `vwo`        | `/api/vwo`        | `GET /api/v2/account-details` (`token:` header; falls back to `/campaigns?per_page=1`) | ✓ |
 | `audiostack` | `/api/audiostack` | `GET /organisation` (`x-api-key`; falls back to `/script?limit=1`) | ✓ |
-| `abtasty`    | `/api/abtasty`    | `GET /core/me` (Bearer PAT; falls back to `/companies`). Re-classified from OAuth → PAT path. Full OAuth follow-up only if write-scope tokens turn out to be required. | ✓ |
 | `wordpress`  | `/api/wordpress`  | `GET <siteUrl>/wp-json/wp/v2/users/me?context=edit` (Basic Auth — Application Password). 3-input credential: `{siteUrl, username, appPassword}` stored as a JSON blob in `secret_value`. | ✓ |
-| `msads`, `spotifyads`, `attentive`, `loops` | — | — | pending wire-up (msads/spotifyads/attentive need OAuth; loops is single-key) |
+| `msads`, `spotifyads`, `attentive` | — | — | pending wire-up (all OAuth) |
+
+VWO, AB Tasty, and Loops.so were dropped from the catalog 2026-05-18 — scope cut, not a wiring problem. Optimizely now stands alone in the A/B Testing category; the lifecycle-email lineup (Klaviyo / Mailchimp / MailerLite / SendGrid / ActiveCampaign / Moosend) covers Loops's use case. If any of the three needs to come back, restore: a row in `seed.jsx connectorCatalog` + default `connectorState` + `brandConnectorStates.erickson`, an entry in `agents.jsx CONNECTOR_LABELS`, the id in `api/brand-import.js CONNECTOR_IDS`, and (for the two direct ones) `/api/<id>.js` + a row in `DIRECT_API_ROUTES`.
 
 All API-key routes follow the same shape: `action=initiate_connection` validates the supplied credential against the provider's REST API, persists into `connector_credentials`, and upserts a `channels` row with `status=connected`. `action=disconnect` deletes the credential and flips the channels row. Downstream API routes (e.g. `/api/generate`) can read the per-tenant key with `loadCredential({ tenantId, platform })` and fall back to the global env-var key if absent.
 

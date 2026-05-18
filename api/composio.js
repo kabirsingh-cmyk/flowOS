@@ -100,7 +100,6 @@ const APP_MAP = {
   mailchimp:    "mailchimp",
   klaviyo:      "klaviyo",
   mailerlite:   "mailerlite",
-  // loops.so is not in Composio's catalog → reclassified as provider:"direct" in seed.jsx
   moosend:      "moosend",
   hunter:       "hunter",
 

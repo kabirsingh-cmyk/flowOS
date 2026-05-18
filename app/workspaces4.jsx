@@ -31,9 +31,7 @@ const DIRECT_API_ROUTES = {
   higgsfield: "/api/higgsfield",
   luma:       "/api/luma",
   optimizely: "/api/optimizely",
-  vwo:        "/api/vwo",
   audiostack: "/api/audiostack",
-  abtasty:    "/api/abtasty",
   wordpress:  "/api/wordpress",
 };
 
