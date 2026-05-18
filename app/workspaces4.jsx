@@ -35,19 +35,21 @@ const DIRECT_API_ROUTES = {
   wordpress:  "/api/wordpress",
   // OAuth direct connectors expose action=disconnect on /api/<id>; the OAuth
   // surface (init/callback/status) lives on /api/<id>-auth — see
-  // DIRECT_OAUTH_ROUTES below. They're listed here so the shared disconnect
-  // path can call them without a second lookup table.
-  msads:      "/api/msads",
+  // DIRECT_OAUTH_ROUTES below. Add entries here when wiring a new Direct OAuth
+  // connector so the shared disconnect path can call them without a second
+  // lookup table. Empty today — Spotify Ads is the only Direct OAuth tile and
+  // it's still skipped pending a public OAuth flow.
 };
 
 // Per-provider OAuth routes for Direct connectors (provider: "direct" +
 // auth: "OAuth" in seed.jsx). Each route hosts the init / callback / status
-// surface on a single GET endpoint (see /api/msads-auth.js).
+// surface on a single GET endpoint at /api/<id>-auth.js.
 // `connection_status` poll URL: `${route}?status=1&tenantId=…`.
 // `authorize URL` mint:          `${route}?init=1&tenantId=…` returns { authorizeUrl }.
-const DIRECT_OAUTH_ROUTES = {
-  msads:     "/api/msads-auth",
-};
+// Empty today — Spotify Ads stays in the catalog as the latent consumer; the
+// `handleConnectSubmit` direct-OAuth fork + oauth-callback.html ?direct_connected=
+// handling remain wired so a future connector only needs the /api/<id>-auth route.
+const DIRECT_OAUTH_ROUTES = {};
 
 // Direct-API connectors that need more than a single apiKey field in the
 // Connect modal. Each entry lists extra `<Input>` fields rendered above the

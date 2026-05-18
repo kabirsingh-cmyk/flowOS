@@ -22,7 +22,6 @@ function mveda_initialState() {
       { name: "YouTube",    publish: "human", reply: "n/a",   ai: "review" },
       { name: "Email",      publish: "human", reply: "n/a",   ai: "n/a"    },
       { name: "Google Ads",    publish: "human", reply: "n/a",   ai: "review" },
-      { name: "Microsoft Ads", publish: "human", reply: "n/a",   ai: "review" },
       { name: "Spotify Ads",   publish: "human", reply: "n/a",   ai: "review" },
       { name: "Meta Ads",      publish: "human", reply: "n/a",   ai: "review" },
       { name: "TikTok Ads",    publish: "human", reply: "n/a",   ai: "review" },

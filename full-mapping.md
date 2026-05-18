@@ -162,16 +162,6 @@
 | YouTube in-stream (15–30s) | Claude (script) | — | Runway · HeyGen | ElevenLabs |
 | App install ad copy | Claude | Runware | — | — |
 
-### Microsoft Ads
-
-| Content Type | Text | Image | Video | Voice |
-|---|---|---|---|---|
-| Responsive Search Ad | Claude (headlines + descriptions) | — | — | — |
-| Audience ad (native display) | Claude | Runware | — | — |
-| Shopping ad product copy | Claude | — | — | — |
-
----
-
 ## Social Ads
 
 ### Meta Ads (Facebook + Instagram)

@@ -110,7 +110,6 @@ const SEED = {
   connectorCatalog: [
     // ── Paid Search ──────────────────────────────────────────────────────────
     { id: "googleads",  name: "Google Ads",       category: "Paid Search", group: "Ads",            desc: "Search, Performance Max, Display, YouTube",       auth: "OAuth",   provider: "composio", slug: "googleads", domain: "ads.google.com"  },
-    { id: "msads",      name: "Microsoft Ads",    category: "Paid Search", group: "Ads",            desc: "Bing, Edge, Yahoo · Search + Audience",           auth: "OAuth",   provider: "direct",   slug: "microsoftbing", domain: "ads.microsoft.com"  },
 
     // ── Paid Audio ───────────────────────────────────────────────────────────
     { id: "spotifyads", name: "Spotify Ads",      category: "Paid Audio",  group: "Ads",            desc: "Audio + video spots · Ads Manager",               auth: "OAuth",   provider: "direct",   slug: "spotify", domain: "adstudio.spotify.com"  },
@@ -182,7 +181,6 @@ const SEED = {
   connectorState: {
     // Paid Search
     googleads:      { connected: false, status: "warn", note: "reconnect required · Composio migration", syncCount: "—", permissions: { read: true, write: true, admin: false } },
-    msads:          { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // Paid Audio
     spotifyads:     { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // Paid Social
@@ -243,7 +241,6 @@ const SEED = {
     erickson: {
       // Paid Search
       googleads:      { connected: false, status: "warn", note: "reconnect required · Composio migration",          syncCount: "—", permissions: { read: true, write: true, admin: false } },
-      msads:          { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       // Paid Audio
       spotifyads:     { connected: false, status: "—",  note: "not connected — not relevant for B2B commercial",  syncCount: "—", permissions: { read: true, write: true, admin: false } },
       // Paid Social
