@@ -853,9 +853,9 @@ Flag content that makes claims not in the approved claims list.`,
   {
     id: "ab_testing",
     name: "A/B Testing",
-    role: "AB Tasty · experiments",
-    description: "Manages A/B tests across landing pages, email subject lines, and ad creative via AB Tasty. Monitors statistical significance and recommends winners.",
-    connectors: ["abtasty"],
+    role: "Optimizely · experiments",
+    description: "Manages A/B tests across landing pages, email subject lines, and ad creative via Optimizely. Monitors statistical significance and recommends winners.",
+    connectors: ["optimizely"],
     compound: false,
     category: "growth",
     alwaysActive: false,
@@ -881,7 +881,7 @@ When a winner is confirmed:
     name: "Growth Specialist",
     role: "★ Acquisition · referral · viral",
     description: "Combines A/B Testing and CRM with paid media to run structured growth experiments. Identifies highest-ROI acquisition levers and compounds them.",
-    connectors: ["abtasty", "hubspot", "metaads"],
+    connectors: ["optimizely", "hubspot", "metaads"],
     compound: true,
     category: "growth",
     alwaysActive: false,
@@ -917,7 +917,7 @@ const CONNECTOR_LABELS = {
   pinads: "Pinterest Ads", xads: "X Ads",
   // Email + SMS
   klaviyo: "Klaviyo", klaviyo_sms: "Klaviyo SMS", mailchimp: "Mailchimp",
-  mailerlite: "MailerLite", loops: "Loops.so", moosend: "Moosend",
+  mailerlite: "MailerLite", moosend: "Moosend",
   sendgrid: "SendGrid", activecampaign: "ActiveCampaign", hunter: "Hunter",
   attentive: "Attentive", twilio: "Twilio",
   // Email Verification
@@ -928,7 +928,7 @@ const CONNECTOR_LABELS = {
   ga4: "GA4", gsc: "Search Console", ahrefs: "Ahrefs",
   moz: "Moz", neuronwriter: "Neuronwriter",
   // A/B
-  abtasty: "AB Tasty", optimizely: "Optimizely", vwo: "VWO",
+  optimizely: "Optimizely",
   // Creative AI
   heygen: "HeyGen", runware: "RunWare", luma: "Luma AI", elevenlabs: "ElevenLabs",
   replicate: "Replicate", higgsfield: "Higgsfield", audiostack: "AudioStack",

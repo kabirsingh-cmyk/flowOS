@@ -39,7 +39,7 @@ const CONNECTOR_IDS = [
   // Analytics + SEO
   "ga4", "gsc", "ahrefs", "moz", "neuronwriter",
   // A/B Testing
-  "abtasty", "optimizely", "vwo",
+  "optimizely",
   // Creative AI
   "heygen", "runware", "luma", "elevenlabs", "replicate", "higgsfield", "audiostack",
 ];

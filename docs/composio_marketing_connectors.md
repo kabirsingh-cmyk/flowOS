@@ -7,8 +7,8 @@ Recommended connector per platform, prioritised: **Composio** → **Pipedream** 
 | Category | Platform | Connector Type | Wired |
 |----------|----------|----------------|-------|
 | Paid Search | Google Ads | Composio (also covers YouTube Ads via VIDEO campaign type) | Yes |
-| Paid Search | Microsoft Ads | Direct API (OAuth 2.0, Azure AD) | |
-| Paid Audio | Spotify Ads | Direct API (OAuth 2.0) — requires Ads Manager account | |
+| Paid Search | Microsoft Ads | Direct API (OAuth 2.0, Azure AD) | Yes |
+| Paid Audio | Spotify Ads | Direct API (OAuth 2.0) — requires Ads Manager account | Skipped (no public OAuth) |
 | Paid Social | Meta Ads (Facebook/Instagram) | Composio | Yes |
 | Paid Social | LinkedIn Ads | Composio | Yes |
 | Paid Social | TikTok Ads | Composio | |
@@ -25,13 +25,12 @@ Recommended connector per platform, prioritised: **Composio** → **Pipedream** 
 | Email Marketing | Mailchimp | Composio | Yes |
 | Email Marketing | Klaviyo | Composio | Yes |
 | Email Marketing | MailerLite | Composio | Yes |
-| Email Marketing | Loops.so | Direct API (not in Composio's catalog — was reclassified) | |
 | Email Marketing | Moosend | Composio | Yes |
 | Email Marketing | SendGrid | Pipedream | Yes |
 | Email Marketing | ActiveCampaign | Pipedream | Yes |
 | Email Marketing | Hunter | Composio | Yes |
 | SMS Marketing | Klaviyo SMS | Composio | Yes |
-| SMS Marketing | Attentive | Direct API (OAuth 2.0) | |
+| SMS Marketing | Attentive | Direct API (OAuth 2.0) | Yes |
 | SMS Marketing | Twilio | Pipedream | Yes |
 | Email Verification | NeverBounce | Composio | Yes |
 | Email Verification | Kickbox | Composio | Yes |
@@ -42,24 +41,22 @@ Recommended connector per platform, prioritised: **Composio** → **Pipedream** 
 | SEO & Search | Neuronwriter | Composio | Yes |
 | E-commerce | Shopify | Composio | |
 | E-commerce | WooCommerce | ~~Pipedream~~ — dropped (not in Pipedream's catalog; out of product scope) | |
-| E-commerce | WordPress | Direct API (not in Pipedream's catalog — reclassified) | |
-| A/B Testing | AB Tasty | Direct API (OAuth 2.0) | |
-| A/B Testing | Optimizely | Direct API (Bearer token) | |
-| A/B Testing | VWO | Direct API (API key) | |
+| E-commerce | WordPress | Direct API (Application Password — site URL + username + app password) | Yes |
+| A/B Testing | Optimizely | Direct API (Bearer token) | Yes |
 | AI Video / Image | HeyGen | Composio | Yes |
 | AI Video / Image | Replicate | Direct API (API key) | Yes |
 | AI Video / Image | RunWare.ai | Pipedream | Yes |
 | AI Video / Image | Higgsfield.ai | Direct API (API key) | Yes |
 | AI Video / Image | Luma AI | Direct API (API key) | Yes |
 | AI Audio / Voice | ElevenLabs | Composio | Yes |
-| AI Audio / Voice | AudioStack | Direct API (API key) — end-to-end audio ad production | |
+| AI Audio / Voice | AudioStack | Direct API (API key) — end-to-end audio ad production | Yes |
 | Analytics | Google Analytics | Composio | Yes |
 | CRM & Marketing Ops | HubSpot | Composio | Yes |
 | CRM & Marketing Ops | Salesforce | Composio | Yes |
 
 ## Summary (2026-05-18)
 
-- **35 of 49** connectors wired end-to-end (26 Composio + 6 Pipedream + 3 Direct: Replicate, Higgsfield, Luma).
+- **42 of 46** connectors wired end-to-end (26 Composio + 6 Pipedream + 8 Direct: Replicate, Higgsfield, Luma, Optimizely, AudioStack, WordPress, Microsoft Ads, Attentive).
 - **5 Composio toolkits need a custom OAuth app configured in the Composio dashboard**: Shopify, TikTok (Ads + Organic), Twitter/X (Ads + Organic). Composio recognises these toolkits but doesn't ship managed credentials.
-- **9 Direct API connectors** remain (Microsoft Ads, Spotify Ads, Attentive, AB Tasty, Optimizely, VWO, AudioStack, Loops.so, WordPress) — same `/api/<provider>` pattern, shared `connector_credentials` persistence.
-- WooCommerce was dropped (49 total, down from 50).
+- **1 Direct API connector skipped**: Spotify Ads. Spotify Ad Studio has no documented public OAuth flow — the API is partner-gated through `partners@spotify.com`. Tile stays in the catalog as unwired until/unless Spotify exposes a self-serve OAuth path.
+- WooCommerce dropped post-verification. VWO, AB Tasty, and Loops.so dropped 2026-05-18 (scope cut — Optimizely covers A/B Testing alone; Klaviyo/Mailchimp/MailerLite/SendGrid/ActiveCampaign cover lifecycle email). 46 total, down from 50.
