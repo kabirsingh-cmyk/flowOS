@@ -47,19 +47,19 @@ Recommended connector per platform, prioritised: **Composio** → **Pipedream** 
 | A/B Testing | Optimizely | Direct API (Bearer token) | |
 | A/B Testing | VWO | Direct API (API key) | |
 | AI Video / Image | HeyGen | Composio | Yes |
-| AI Video / Image | Replicate | Direct API (API key) | |
+| AI Video / Image | Replicate | Direct API (API key) | Yes |
 | AI Video / Image | RunWare.ai | Pipedream | Yes |
-| AI Video / Image | Higgsfield.ai | Direct API (API key) | |
-| AI Video / Image | Luma AI | Direct API (API key) | |
+| AI Video / Image | Higgsfield.ai | Direct API (API key) | Yes |
+| AI Video / Image | Luma AI | Direct API (API key) | Yes |
 | AI Audio / Voice | ElevenLabs | Composio | Yes |
 | AI Audio / Voice | AudioStack | Direct API (API key) — end-to-end audio ad production | |
 | Analytics | Google Analytics | Composio | Yes |
 | CRM & Marketing Ops | HubSpot | Composio | Yes |
 | CRM & Marketing Ops | Salesforce | Composio | Yes |
 
-## Summary (2026-05-17)
+## Summary (2026-05-18)
 
-- **32 of 49** connectors wired end-to-end (26 Composio + 6 Pipedream).
+- **35 of 49** connectors wired end-to-end (26 Composio + 6 Pipedream + 3 Direct: Replicate, Higgsfield, Luma).
 - **5 Composio toolkits need a custom OAuth app configured in the Composio dashboard**: Shopify, TikTok (Ads + Organic), Twitter/X (Ads + Organic). Composio recognises these toolkits but doesn't ship managed credentials.
-- **12 Direct API connectors** are the next phase (Microsoft Ads, Spotify Ads, Attentive, AB Tasty, Optimizely, VWO, Replicate, Higgsfield, Luma, AudioStack, Loops.so, WordPress).
+- **9 Direct API connectors** remain (Microsoft Ads, Spotify Ads, Attentive, AB Tasty, Optimizely, VWO, AudioStack, Loops.so, WordPress) — same `/api/<provider>` pattern, shared `connector_credentials` persistence.
 - WooCommerce was dropped (49 total, down from 50).

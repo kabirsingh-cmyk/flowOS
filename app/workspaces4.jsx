@@ -22,6 +22,16 @@ function providerApiPath(provider) {
   return "/api/composio";
 }
 
+// Per-provider routes for Direct-API connectors (provider: "direct" in seed.jsx).
+// Each route exposes action=initiate_connection (validates the key + persists
+// to connector_credentials) and action=disconnect. Connectors not listed here
+// fall back to the local setTimeout simulation in handleConnectSubmit.
+const DIRECT_API_ROUTES = {
+  replicate:  "/api/replicate",
+  higgsfield: "/api/higgsfield",
+  luma:       "/api/luma",
+};
+
 // ────────────────────────────── BRAND IMPORT MODAL ──────────────────────────────
 function BrandImportModal({ open, onClose, onApply }) {
   const [step, setStep]         = useState4("input");    // input | scanning | preview | error
@@ -614,8 +624,44 @@ function Connections({ state, actions }) {
         return;
       }
 
-      // Direct API-key (no Composio): keep the local simulated path for now.
-      // TODO: wire per-provider validation routes for Loops, Higgsfield, Luma, etc.
+      // Direct API-key: if a per-provider validation route exists, call it.
+      // Otherwise (still-pending direct connectors) fall back to the local
+      // simulated path so the tile flips green pre-wire-up.
+      const directRoute = DIRECT_API_ROUTES[connector.id];
+      if (directRoute) {
+        try {
+          const { data: { session } } = await sb.auth.getSession();
+          if (!session?.user) throw new Error("Not signed in");
+          const tenantId = session.user.id;
+
+          const res = await fetch(directRoute, {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ action: "initiate_connection", tenantId, apiKey }),
+          });
+          const raw = await res.text();
+          let data;
+          try { data = JSON.parse(raw); } catch { throw new Error(`Server (${res.status}): ${raw.slice(0, 120)}`); }
+          if (!data.ok) throw new Error(data.error || "Failed to validate API key");
+
+          actions.setConnector(connector.id, {
+            connected: true,
+            status:    "ok",
+            note:      "API key validated · direct",
+            syncCount: "ready",
+          }, {
+            logEvent: `connected · ${connector.name}`,
+            notify:   { tone: "ok", text: `${connector.name} connected` },
+          });
+        } catch (err) {
+          actions.notify("warn", `${connector.name} connection failed: ${err.message}`);
+        } finally {
+          setConnecting(p => { const n = { ...p }; delete n[connector.id]; return n; });
+        }
+        return;
+      }
+
+      // No /api/<provider> route yet → simulated path (placeholder until wired).
       setTimeout(() => {
         actions.setConnector(connector.id, {
           connected: true,
@@ -714,6 +760,21 @@ function Connections({ state, actions }) {
 
   const disconnect = async (connector) => {
     const apiPath = providerApiPath(connector.provider);
+
+    // Direct-API connectors with a per-provider route: server-side handler
+    // deletes the credential and flips the channels row to disconnected.
+    const directRoute = connector.provider === "direct" ? DIRECT_API_ROUTES[connector.id] : null;
+    if (directRoute) {
+      const { data: { session } } = await sb.auth.getSession();
+      if (session?.user) {
+        fetch(directRoute, {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ action: "disconnect", tenantId: session.user.id }),
+        }).catch(() => {});
+      }
+    }
+
     // Revoke at the provider for any Composio-backed connector (OAuth or API key).
     // Direct API-key connectors only need local cleanup.
     if (connector.provider === "composio" || connector.provider === "pipedream") {
