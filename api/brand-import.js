@@ -23,7 +23,7 @@ const CONNECTOR_IDS = [
   // Organic Social
   "ig", "tt", "fb", "li", "yt", "pn", "x", "reddit",
   // Paid Search + Paid Audio
-  "googleads", "msads", "spotifyads",
+  "googleads", "spotifyads",
   // Paid Social
   "metaads", "ttads", "liads", "pinads", "xads",
   // Email + SMS
