@@ -355,9 +355,16 @@ Per-tenant API-key connectors that don't go through Composio or Pipedream live b
 | `replicate`  | `/api/replicate`  | `GET /v1/account`                           | ✓ |
 | `higgsfield` | `/api/higgsfield` | `GET /models`                               | ✓ |
 | `luma`       | `/api/luma`       | `GET /dream-machine/v1/generations?limit=1` | ✓ |
-| `msads`, `spotifyads`, `attentive`, `abtasty`, `optimizely`, `vwo`, `audiostack`, `loops`, `wordpress` | — | — | pending wire-up |
+| `optimizely` | `/api/optimizely` | `GET /v2/projects` (Bearer PAT)             | ✓ |
+| `vwo`        | `/api/vwo`        | `GET /api/v2/account-details` (`token:` header; falls back to `/campaigns?per_page=1`) | ✓ |
+| `audiostack` | `/api/audiostack` | `GET /organisation` (`x-api-key`; falls back to `/script?limit=1`) | ✓ |
+| `abtasty`    | `/api/abtasty`    | `GET /core/me` (Bearer PAT; falls back to `/companies`). Re-classified from OAuth → PAT path. Full OAuth follow-up only if write-scope tokens turn out to be required. | ✓ |
+| `wordpress`  | `/api/wordpress`  | `GET <siteUrl>/wp-json/wp/v2/users/me?context=edit` (Basic Auth — Application Password). 3-input credential: `{siteUrl, username, appPassword}` stored as a JSON blob in `secret_value`. | ✓ |
+| `msads`, `spotifyads`, `attentive`, `loops` | — | — | pending wire-up (msads/spotifyads/attentive need OAuth; loops is single-key) |
 
-All three follow the same shape: `action=initiate_connection` validates the supplied apiKey against the provider's REST API, persists into `connector_credentials`, and upserts a `channels` row with `status=connected`. `action=disconnect` deletes the credential and flips the channels row. Downstream API routes (e.g. `/api/generate`) can read the per-tenant key with `loadCredential({ tenantId, platform })` and fall back to the global env-var key if absent.
+All API-key routes follow the same shape: `action=initiate_connection` validates the supplied credential against the provider's REST API, persists into `connector_credentials`, and upserts a `channels` row with `status=connected`. `action=disconnect` deletes the credential and flips the channels row. Downstream API routes (e.g. `/api/generate`) can read the per-tenant key with `loadCredential({ tenantId, platform })` and fall back to the global env-var key if absent.
+
+WordPress is the one connector whose credential isn't a single string — `secret_value` is a JSON blob `{ siteUrl, username, appPassword }`; downstream callers must `JSON.parse(secret)` and base64-encode `${username}:${appPassword}` for the `Authorization: Basic …` header. Surfaced in the Connect modal via the `DIRECT_EXTRA_FIELDS` map in [workspaces4.jsx](app/workspaces4.jsx) — any future multi-input direct connector can add an entry there instead of forking the modal.
 
 ---
 

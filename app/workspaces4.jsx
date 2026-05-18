@@ -30,6 +30,23 @@ const DIRECT_API_ROUTES = {
   replicate:  "/api/replicate",
   higgsfield: "/api/higgsfield",
   luma:       "/api/luma",
+  optimizely: "/api/optimizely",
+  vwo:        "/api/vwo",
+  audiostack: "/api/audiostack",
+  abtasty:    "/api/abtasty",
+  wordpress:  "/api/wordpress",
+};
+
+// Direct-API connectors that need more than a single apiKey field in the
+// Connect modal. Each entry lists extra `<Input>` fields rendered above the
+// API-key field; their values are merged into the POST body alongside apiKey.
+// Keys in `extraFields` map 1:1 to the body params the /api/<id> route reads.
+const DIRECT_EXTRA_FIELDS = {
+  wordpress: [
+    { key: "siteUrl",     label: "Site URL",            placeholder: "https://yourblog.com",  type: "text",     hint: "Root of your WordPress install (with or without https://)." },
+    { key: "username",    label: "Username",            placeholder: "admin",                  type: "text",     hint: "Your WP login username — not the display name." },
+    { key: "appPassword", label: "Application Password", placeholder: "xxxx xxxx xxxx xxxx",   type: "password", hint: "Users → Profile → Application Passwords. Not your login password." },
+  ],
 };
 
 // ────────────────────────────── BRAND IMPORT MODAL ──────────────────────────────
@@ -570,10 +587,15 @@ function Connections({ state, actions }) {
   // the modal's primary button then triggers either popup-OAuth or API-key validate.
   const startConnect = (connector) => setConnectStep({ connector });
 
-  const handleConnectSubmit = async ({ apiKey }) => {
+  // creds is either { apiKey } (single-input direct + Composio API-key) or a
+  // free-form bag of extras (WordPress: { siteUrl, username, appPassword }, etc.).
+  // The Composio path always pulls creds.apiKey; direct routes spread the
+  // whole bag into the POST body so each route's handler can pick what it needs.
+  const handleConnectSubmit = async (creds) => {
     const connector = connectStep?.connector;
     if (!connector) return;
     setConnectStep(null);
+    const apiKey = creds?.apiKey || "";
 
     // ── API-key connectors ──
     // Composio API-key connectors → POST credentials directly to Composio (no OAuth).
@@ -637,7 +659,7 @@ function Connections({ state, actions }) {
           const res = await fetch(directRoute, {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ action: "initiate_connection", tenantId, apiKey }),
+            body:    JSON.stringify({ action: "initiate_connection", tenantId, ...creds }),
           });
           const raw = await res.text();
           let data;
@@ -1008,11 +1030,29 @@ function Connections({ state, actions }) {
 // same paragraph + an input + button. The provider's own OAuth page shows the actual
 // scope checklist — we don't try to re-state it here.
 function ConnectorAuthModal({ step, onClose, onSubmit }) {
-  const [apiKey, setApiKey] = useState4("");
-  useEffect4(() => { if (step) setApiKey(""); }, [step]);
+  const [apiKey, setApiKey]     = useState4("");
+  const [extras, setExtras]     = useState4({});
+  const connector = step?.connector;
+  const extraFields = connector ? (DIRECT_EXTRA_FIELDS[connector.id] || []) : [];
+  const hasExtras   = extraFields.length > 0;
+
+  useEffect4(() => {
+    if (step) {
+      setApiKey("");
+      setExtras(Object.fromEntries(extraFields.map(f => [f.key, ""])));
+    }
+  }, [step]);
+
   if (!step) return null;
-  const { connector } = step;
   const isApiKey = connector.auth === "API key";
+
+  // WordPress-style multi-field connectors don't use the single apiKey input —
+  // every required field lives in extraFields, validated independently.
+  const submitDisabled = isApiKey && (
+    hasExtras
+      ? extraFields.some(f => !String(extras[f.key] || "").trim())
+      : !apiKey.trim()
+  );
 
   return (
     <Dialog open onClose={onClose} title={`Connect · ${connector.name}`} width={440}>
@@ -1034,16 +1074,32 @@ function ConnectorAuthModal({ step, onClose, onSubmit }) {
       {isApiKey && (
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55, marginBottom: 10 }}>
-            Paste your {connector.name} API key. We'll validate and store it encrypted at rest.
+            {hasExtras
+              ? `Enter the details below to connect your ${connector.name} site. We'll validate and store the credentials encrypted at rest.`
+              : `Paste your ${connector.name} API key. We'll validate and store it encrypted at rest.`}
           </div>
-          <FormRow label="API key" hint={`Found in your ${connector.name} dashboard → Settings → API.`}>
-            <Input
-              value={apiKey}
-              onChange={e => setApiKey(e.target.value)}
-              placeholder="key_xxxxxxxxxxxx"
-              type="password"
-            />
-          </FormRow>
+
+          {extraFields.map(f => (
+            <FormRow key={f.key} label={f.label} hint={f.hint}>
+              <Input
+                value={extras[f.key] || ""}
+                onChange={e => setExtras(p => ({ ...p, [f.key]: e.target.value }))}
+                placeholder={f.placeholder}
+                type={f.type || "text"}
+              />
+            </FormRow>
+          ))}
+
+          {!hasExtras && (
+            <FormRow label="API key" hint={`Found in your ${connector.name} dashboard → Settings → API.`}>
+              <Input
+                value={apiKey}
+                onChange={e => setApiKey(e.target.value)}
+                placeholder="key_xxxxxxxxxxxx"
+                type="password"
+              />
+            </FormRow>
+          )}
         </div>
       )}
 
@@ -1061,8 +1117,8 @@ function ConnectorAuthModal({ step, onClose, onSubmit }) {
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
         <Btn variant="primary"
-          onClick={() => onSubmit({ apiKey })}
-          disabled={isApiKey && !apiKey.trim()}>
+          onClick={() => onSubmit(hasExtras ? extras : { apiKey })}
+          disabled={submitDisabled}>
           <Icon name="check" size={12}/> Connect {connector.name}
         </Btn>
       </div>

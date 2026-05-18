@@ -42,24 +42,24 @@ Recommended connector per platform, prioritised: **Composio** → **Pipedream** 
 | SEO & Search | Neuronwriter | Composio | Yes |
 | E-commerce | Shopify | Composio | |
 | E-commerce | WooCommerce | ~~Pipedream~~ — dropped (not in Pipedream's catalog; out of product scope) | |
-| E-commerce | WordPress | Direct API (not in Pipedream's catalog — reclassified) | |
-| A/B Testing | AB Tasty | Direct API (OAuth 2.0) | |
-| A/B Testing | Optimizely | Direct API (Bearer token) | |
-| A/B Testing | VWO | Direct API (API key) | |
+| E-commerce | WordPress | Direct API (Application Password — site URL + username + app password) | Yes |
+| A/B Testing | AB Tasty | Direct API (Personal Access Token; full OAuth is a follow-up for write-scope tokens) | Yes |
+| A/B Testing | Optimizely | Direct API (Bearer token) | Yes |
+| A/B Testing | VWO | Direct API (API key) | Yes |
 | AI Video / Image | HeyGen | Composio | Yes |
 | AI Video / Image | Replicate | Direct API (API key) | Yes |
 | AI Video / Image | RunWare.ai | Pipedream | Yes |
 | AI Video / Image | Higgsfield.ai | Direct API (API key) | Yes |
 | AI Video / Image | Luma AI | Direct API (API key) | Yes |
 | AI Audio / Voice | ElevenLabs | Composio | Yes |
-| AI Audio / Voice | AudioStack | Direct API (API key) — end-to-end audio ad production | |
+| AI Audio / Voice | AudioStack | Direct API (API key) — end-to-end audio ad production | Yes |
 | Analytics | Google Analytics | Composio | Yes |
 | CRM & Marketing Ops | HubSpot | Composio | Yes |
 | CRM & Marketing Ops | Salesforce | Composio | Yes |
 
 ## Summary (2026-05-18)
 
-- **35 of 49** connectors wired end-to-end (26 Composio + 6 Pipedream + 3 Direct: Replicate, Higgsfield, Luma).
+- **40 of 49** connectors wired end-to-end (26 Composio + 6 Pipedream + 8 Direct: Replicate, Higgsfield, Luma, Optimizely, VWO, AudioStack, AB Tasty, WordPress).
 - **5 Composio toolkits need a custom OAuth app configured in the Composio dashboard**: Shopify, TikTok (Ads + Organic), Twitter/X (Ads + Organic). Composio recognises these toolkits but doesn't ship managed credentials.
-- **9 Direct API connectors** remain (Microsoft Ads, Spotify Ads, Attentive, AB Tasty, Optimizely, VWO, AudioStack, Loops.so, WordPress) — same `/api/<provider>` pattern, shared `connector_credentials` persistence.
+- **4 Direct API connectors** remain — all OAuth-required: Microsoft Ads (Azure AD), Spotify Ads, Attentive, plus Loops.so (API key, but not yet wired). Each needs its own `/api/<id>-auth` route to mint authorize URLs and exchange the code.
 - WooCommerce was dropped (49 total, down from 50).

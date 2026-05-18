@@ -163,7 +163,7 @@ const SEED = {
     { id: "wordpress",   name: "WordPress",       category: "E-commerce", group: "Commerce",      desc: "CMS publishing · posts, pages, media",            auth: "API key", provider: "direct",   slug: "wordpress", domain: "wordpress.com"  },
 
     // ── A/B Testing ──────────────────────────────────────────────────────────
-    { id: "abtasty",     name: "AB Tasty",        category: "A/B Testing", group: "Analytics & Ops", desc: "A/B + personalisation · CRO",                  auth: "OAuth",   provider: "direct", slug: null, domain: "abtasty.com"  },
+    { id: "abtasty",     name: "AB Tasty",        category: "A/B Testing", group: "Analytics & Ops", desc: "A/B + personalisation · CRO · Personal Access Token", auth: "API key", provider: "direct", slug: null, domain: "abtasty.com"  },
     { id: "optimizely",  name: "Optimizely",      category: "A/B Testing", group: "Analytics & Ops", desc: "Experimentation + feature flags · enterprise", auth: "API key", provider: "direct", slug: "optimizely", domain: "optimizely.com"  },
     { id: "vwo",         name: "VWO",             category: "A/B Testing", group: "Analytics & Ops", desc: "Visual editor A/B testing + heatmaps",         auth: "API key", provider: "direct", slug: null, domain: "vwo.com"  },
 
