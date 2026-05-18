@@ -113,7 +113,6 @@ const APP_MAP = {
   pn:             "pinterest",
   // Email Marketing
   sendgrid:       "sendgrid",
-  activecampaign: "activecampaign",
   // SMS
   twilio:         "twilio",
   // AI Video / Image

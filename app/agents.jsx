@@ -491,8 +491,8 @@ ALERTS
     id: "sms",
     name: "SMS",
     role: "Campaigns · flows · compliance",
-    description: "Manages SMS campaigns in Klaviyo SMS or Attentive. Enforces TCPA compliance (quiet hours, opt-in required). Writes concise, high-converting SMS copy.",
-    connectors: ["klaviyo_sms", "attentive"],
+    description: "Manages SMS campaigns in Klaviyo SMS. Enforces TCPA compliance (quiet hours, opt-in required). Writes concise, high-converting SMS copy.",
+    connectors: ["klaviyo_sms"],
     compound: false,
     category: "email",
     alwaysActive: false,
@@ -917,9 +917,7 @@ const CONNECTOR_LABELS = {
   pinads: "Pinterest Ads", xads: "X Ads",
   // Email + SMS
   klaviyo: "Klaviyo", klaviyo_sms: "Klaviyo SMS", mailchimp: "Mailchimp",
-  mailerlite: "MailerLite", moosend: "Moosend",
-  sendgrid: "SendGrid", activecampaign: "ActiveCampaign", hunter: "Hunter",
-  attentive: "Attentive", twilio: "Twilio",
+  sendgrid: "SendGrid", twilio: "Twilio",
   // Email Verification
   neverbounce: "NeverBounce", kickbox: "Kickbox", listclean: "Listclean",
   // Commerce
