@@ -437,28 +437,6 @@ Actalike audiences (based on email list) for retargeting.
 
 NOTE: Pinterest buyers have high intent but longer consideration. Don't expect same-session conversion.`,
   },
-  {
-    id: "microsoft_ads",
-    name: "Microsoft Ads",
-    role: "Bing · Audience Network",
-    description: "Manages Microsoft / Bing Search and Audience Network campaigns. Imports from Google Ads and optimises for the Bing audience (often older, higher income).",
-    connectors: ["msads"],
-    compound: false,
-    category: "paid",
-    alwaysActive: false,
-    initial: "MS",
-    defaultPrompt: `You are the Microsoft Ads agent for FlowOS.
-
-SETUP
-Import campaigns from Google Ads as a baseline. Review match types and bids after import.
-Microsoft audience skews older (35–65) and has higher household income.
-
-FORMATS
-- Search: same structure as Google. Adjust bids 20–30% lower to start.
-- Audience Network: native placements. Good for brand awareness at low CPM.
-- Shopping: sync with Shopify; Microsoft Merchant Center feed.`,
-  },
-
   // ─── Email & SMS ──────────────────────────────────────────────────────────
   {
     id: "email",
@@ -491,8 +469,8 @@ ALERTS
     id: "sms",
     name: "SMS",
     role: "Campaigns · flows · compliance",
-    description: "Manages SMS campaigns in Klaviyo SMS or Attentive. Enforces TCPA compliance (quiet hours, opt-in required). Writes concise, high-converting SMS copy.",
-    connectors: ["klaviyo_sms", "attentive"],
+    description: "Manages SMS campaigns in Klaviyo SMS. Enforces TCPA compliance (quiet hours, opt-in required). Writes concise, high-converting SMS copy.",
+    connectors: ["klaviyo_sms"],
     compound: false,
     category: "email",
     alwaysActive: false,
@@ -911,15 +889,13 @@ const CONNECTOR_LABELS = {
   ig: "Instagram", tt: "TikTok", fb: "Facebook", li: "LinkedIn",
   yt: "YouTube", pn: "Pinterest", x: "X", reddit: "Reddit",
   // Paid Search + Audio
-  googleads: "Google Ads", msads: "Microsoft Ads", spotifyads: "Spotify Ads",
+  googleads: "Google Ads", spotifyads: "Spotify Ads",
   // Paid Social
   metaads: "Meta Ads", ttads: "TikTok Ads", liads: "LinkedIn Ads",
   pinads: "Pinterest Ads", xads: "X Ads",
   // Email + SMS
   klaviyo: "Klaviyo", klaviyo_sms: "Klaviyo SMS", mailchimp: "Mailchimp",
-  mailerlite: "MailerLite", moosend: "Moosend",
-  sendgrid: "SendGrid", activecampaign: "ActiveCampaign", hunter: "Hunter",
-  attentive: "Attentive", twilio: "Twilio",
+  sendgrid: "SendGrid", twilio: "Twilio",
   // Email Verification
   neverbounce: "NeverBounce", kickbox: "Kickbox", listclean: "Listclean",
   // Commerce

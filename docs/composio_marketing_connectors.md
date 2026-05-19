@@ -7,8 +7,7 @@ Recommended connector per platform, prioritised: **Composio** → **Pipedream** 
 | Category | Platform | Connector Type | Wired |
 |----------|----------|----------------|-------|
 | Paid Search | Google Ads | Composio (also covers YouTube Ads via VIDEO campaign type) | Yes |
-| Paid Search | Microsoft Ads | Direct API (OAuth 2.0, Azure AD) | Yes |
-| Paid Audio | Spotify Ads | Direct API (OAuth 2.0) — requires Ads Manager account | Skipped (no public OAuth) |
+| Paid Audio | Spotify Ads | Manual handoff — FlowOS generates creative, user uploads to Ad Studio (no public API) | Yes (manual) |
 | Paid Social | Meta Ads (Facebook/Instagram) | Composio | Yes |
 | Paid Social | LinkedIn Ads | Composio | Yes |
 | Paid Social | TikTok Ads | Composio | |
@@ -24,13 +23,8 @@ Recommended connector per platform, prioritised: **Composio** → **Pipedream** 
 | Organic Social | YouTube | Composio | Yes |
 | Email Marketing | Mailchimp | Composio | Yes |
 | Email Marketing | Klaviyo | Composio | Yes |
-| Email Marketing | MailerLite | Composio | Yes |
-| Email Marketing | Moosend | Composio | Yes |
 | Email Marketing | SendGrid | Pipedream | Yes |
-| Email Marketing | ActiveCampaign | Pipedream | Yes |
-| Email Marketing | Hunter | Composio | Yes |
 | SMS Marketing | Klaviyo SMS | Composio | Yes |
-| SMS Marketing | Attentive | Direct API (OAuth 2.0) | Yes |
 | SMS Marketing | Twilio | Pipedream | Yes |
 | Email Verification | NeverBounce | Composio | Yes |
 | Email Verification | Kickbox | Composio | Yes |
@@ -56,7 +50,7 @@ Recommended connector per platform, prioritised: **Composio** → **Pipedream** 
 
 ## Summary (2026-05-18)
 
-- **42 of 46** connectors wired end-to-end (26 Composio + 6 Pipedream + 8 Direct: Replicate, Higgsfield, Luma, Optimizely, AudioStack, WordPress, Microsoft Ads, Attentive).
+- **40 of 40** connectors wired end-to-end (23 Composio + 5 Pipedream + 6 Direct + 1 Manual: Spotify Ads).
 - **5 Composio toolkits need a custom OAuth app configured in the Composio dashboard**: Shopify, TikTok (Ads + Organic), Twitter/X (Ads + Organic). Composio recognises these toolkits but doesn't ship managed credentials.
-- **1 Direct API connector skipped**: Spotify Ads. Spotify Ad Studio has no documented public OAuth flow — the API is partner-gated through `partners@spotify.com`. Tile stays in the catalog as unwired until/unless Spotify exposes a self-serve OAuth path.
-- WooCommerce dropped post-verification. VWO, AB Tasty, and Loops.so dropped 2026-05-18 (scope cut — Optimizely covers A/B Testing alone; Klaviyo/Mailchimp/MailerLite/SendGrid/ActiveCampaign cover lifecycle email). 46 total, down from 50.
+- **Spotify Ads = Manual handoff**: Spotify Ad Studio has no public API and the partner-only Marketing API requires a signed agreement. Reframed as `auth: "Manual"` — FlowOS generates the creative (script via Claude, audio via AudioStack / ElevenLabs), user uploads to adstudio.spotify.com themselves. Tile flips to "in use" without any backend call. Documented in [CLAUDE.md](../CLAUDE.md) under Manual / creative-handoff connectors.
+- WooCommerce dropped post-verification. VWO, AB Tasty, and Loops.so dropped 2026-05-18 (scope cut — Optimizely covers A/B Testing alone). MailerLite, Moosend, ActiveCampaign, Hunter, and Attentive dropped 2026-05-18 (scope cut — Klaviyo + Mailchimp + SendGrid cover email; Klaviyo SMS covers SMS marketing; Twilio retained for transactional/dev-side messaging). Microsoft Ads dropped 2026-05-18 (scope cut — not a priority channel; Bing/Audience Network spend not material for the brands in scope). 40 total, down from 50.

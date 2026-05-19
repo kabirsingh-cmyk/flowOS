@@ -34,7 +34,6 @@ const APP_MAP = {
   pinads:         "pinterest",
   pn:             "pinterest",
   sendgrid:       "sendgrid",
-  activecampaign: "activecampaign",
   twilio:         "twilio",
   runware:        "runware",
 };

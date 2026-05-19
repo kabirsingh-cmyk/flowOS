@@ -110,10 +110,9 @@ const SEED = {
   connectorCatalog: [
     // ── Paid Search ──────────────────────────────────────────────────────────
     { id: "googleads",  name: "Google Ads",       category: "Paid Search", group: "Ads",            desc: "Search, Performance Max, Display, YouTube",       auth: "OAuth",   provider: "composio", slug: "googleads", domain: "ads.google.com"  },
-    { id: "msads",      name: "Microsoft Ads",    category: "Paid Search", group: "Ads",            desc: "Bing, Edge, Yahoo · Search + Audience",           auth: "OAuth",   provider: "direct",   slug: "microsoftbing", domain: "ads.microsoft.com"  },
 
     // ── Paid Audio ───────────────────────────────────────────────────────────
-    { id: "spotifyads", name: "Spotify Ads",      category: "Paid Audio",  group: "Ads",            desc: "Audio + video spots · Ads Manager",               auth: "OAuth",   provider: "direct",   slug: "spotify", domain: "adstudio.spotify.com"  },
+    { id: "spotifyads", name: "Spotify Ads",      category: "Paid Audio",  group: "Ads",            desc: "Audio + video spots · creative handoff (manual upload to Ad Studio)", auth: "Manual",  provider: "direct",   slug: "spotify", domain: "adstudio.spotify.com"  },
 
     // ── Paid Social ──────────────────────────────────────────────────────────
     { id: "metaads",    name: "Meta Ads",         category: "Paid Social", group: "Ads",            desc: "Facebook + Instagram paid · Advantage+",          auth: "OAuth",   provider: "composio", slug: "meta", domain: "business.facebook.com"  },
@@ -135,15 +134,10 @@ const SEED = {
     // ── Email Marketing ──────────────────────────────────────────────────────
     { id: "mailchimp",      name: "Mailchimp",      category: "Email Marketing", group: "Email & SMS", desc: "Audiences, automations, A/B tests",          auth: "API key", provider: "composio", slug: "mailchimp", domain: "mailchimp.com"  },
     { id: "klaviyo",        name: "Klaviyo",        category: "Email Marketing", group: "Email & SMS", desc: "Lists, flows, campaigns, segmentation",       auth: "API key", provider: "composio", slug: "klaviyo", domain: "klaviyo.com"  },
-    { id: "mailerlite",     name: "MailerLite",     category: "Email Marketing", group: "Email & SMS", desc: "Campaigns, automation, transactional",        auth: "API key", provider: "composio", slug: "mailerlite", domain: "mailerlite.com"  },
-    { id: "moosend",        name: "Moosend",        category: "Email Marketing", group: "Email & SMS", desc: "Campaigns, automation, landing pages",        auth: "API key", provider: "composio", slug: null, domain: "moosend.com"  },
     { id: "sendgrid",       name: "SendGrid",       category: "Email Marketing", group: "Email & SMS", desc: "Transactional + marketing email at scale",    auth: "API key", provider: "pipedream",slug: "twilio", domain: "sendgrid.com"  },
-    { id: "activecampaign", name: "ActiveCampaign", category: "Email Marketing", group: "Email & SMS", desc: "Email + CRM + automation",                    auth: "API key", provider: "pipedream",slug: "activecampaign", domain: "activecampaign.com"  },
-    { id: "hunter",         name: "Hunter",         category: "Email Marketing", group: "Email & SMS", desc: "Email finder, verifier, outreach campaigns",  auth: "API key", provider: "composio", slug: null, domain: "hunter.io"  },
 
     // ── SMS Marketing ────────────────────────────────────────────────────────
     { id: "klaviyo_sms", name: "Klaviyo SMS",     category: "SMS Marketing", group: "Email & SMS", desc: "TCPA consent, MMS, automations · shares Klaviyo key", auth: "API key", provider: "composio", slug: "klaviyo", domain: "klaviyo.com"  },
-    { id: "attentive",   name: "Attentive",       category: "SMS Marketing", group: "Email & SMS", desc: "Conversational SMS · enterprise & SMB",               auth: "OAuth",   provider: "direct",   slug: null, domain: "attentive.com"  },
     { id: "twilio",      name: "Twilio",          category: "SMS Marketing", group: "Email & SMS", desc: "Programmable SMS · global reach, A2P 10DLC",          auth: "API key", provider: "pipedream",slug: "twilio", domain: "twilio.com"  },
 
     // ── Email Verification ───────────────────────────────────────────────────
@@ -187,7 +181,6 @@ const SEED = {
   connectorState: {
     // Paid Search
     googleads:      { connected: false, status: "warn", note: "reconnect required · Composio migration", syncCount: "—", permissions: { read: true, write: true, admin: false } },
-    msads:          { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // Paid Audio
     spotifyads:     { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // Paid Social
@@ -208,14 +201,9 @@ const SEED = {
     // Email Marketing
     mailchimp:      { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     klaviyo:        { connected: true,  status: "ok",   note: "lists synced 2m ago",                  syncCount: "24,118 contacts · 6 flows", permissions: { read: true, write: true, admin: false } },
-    mailerlite:     { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
-    moosend:        { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     sendgrid:       { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
-    activecampaign: { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
-    hunter:         { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // SMS Marketing
     klaviyo_sms:    { connected: true,  status: "ok",   note: "TCPA opt-ins synced 4m ago",           syncCount: "8,402 SMS subscribers · 3 flows", permissions: { read: true, write: true, admin: false } },
-    attentive:      { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     twilio:         { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // Email Verification
     neverbounce:    { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
@@ -253,7 +241,6 @@ const SEED = {
     erickson: {
       // Paid Search
       googleads:      { connected: false, status: "warn", note: "reconnect required · Composio migration",          syncCount: "—", permissions: { read: true, write: true, admin: false } },
-      msads:          { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       // Paid Audio
       spotifyads:     { connected: false, status: "—",  note: "not connected — not relevant for B2B commercial",  syncCount: "—", permissions: { read: true, write: true, admin: false } },
       // Paid Social
@@ -274,14 +261,9 @@ const SEED = {
       // Email Marketing
       mailchimp:      { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       klaviyo:        { connected: true,  status: "ok", note: "synced 4m ago",                                     syncCount: "1,840 contacts · 3 flows", permissions: { read: true, write: true, admin: false } },
-      mailerlite:     { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
-      moosend:        { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       sendgrid:       { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
-      activecampaign: { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
-      hunter:         { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       // SMS Marketing
       klaviyo_sms:    { connected: true,  status: "ok", note: "synced 4m ago · service appointment reminders",    syncCount: "820 opted in", permissions: { read: true, write: true, admin: false } },
-      attentive:      { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       twilio:         { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       // Email Verification
       neverbounce:    { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },

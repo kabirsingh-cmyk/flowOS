@@ -266,7 +266,7 @@ The canonical 49-connector list lives in `SEED.connectorCatalog` in [seed.jsx](a
   category,   // canonical category (Paid Search / Paid Audio / Paid Social / Organic Social / Email Marketing / SMS Marketing / Email Verification / SEO & Search / E-commerce / A/B Testing / AI Video / Image / AI Audio / Voice / Analytics / CRM & Marketing Ops)
   group,      // pill-filter bucket: "Social" | "Ads" | "Email & SMS" | "Commerce" | "Analytics & Ops" | "Creative AI"
   desc,       // short description — tooltip + setup modal
-  auth,       // "OAuth" | "API key" — drives Connect-modal fork (paragraph vs. input)
+  auth,       // "OAuth" | "API key" | "Manual" — drives Connect-modal fork (paragraph vs. input vs. handoff explanation)
   provider,   // "composio" | "pipedream" | "direct" — drives the initiate path (provider-agnostic surface)
   slug,       // Simple Icons CDN slug, or null
   domain,     // Google S2 favicon fallback host (always set)
@@ -291,7 +291,8 @@ The connect surface in [workspaces4.jsx](app/workspaces4.jsx) is provider-agnost
 2. On submit, the flow forks by `connector.auth`:
    - **OAuth** → POST `/api/<provider>` `initiate_connection` with `redirectUri`; `window.open(redirectUrl, ...)`; tile flips amber.
    - **API key (Composio)** → POST `/api/composio` `initiate_connection` with `apiKey`; Composio creates a `use_custom_auth` auth_config + connected_account synchronously. No popup. Tile flips green on success.
-   - **API key (direct)** → local `setTimeout` simulation for now (real per-provider validation routes are a follow-up).
+   - **API key (direct)** → POST `/api/<id>` `initiate_connection` with the credential bag; the route validates against the provider's REST API and persists into `connector_credentials`.
+   - **Manual** → no backend call. Modal explains the creative-handoff workflow and the button flips the local tile to "in use". Used today for Spotify Ads (no public API).
 3. OAuth popup behaviour: closes immediately on flow start; tile shows amber "Connecting…". Popup blocked → falls back to `window.location.href` + legacy `?composio_connected=` URL-param hydration.
 4. Polling: every 1.5s the host posts `connection_status` to verify. On success → write to Supabase `channels`, dispatch `setConnector`, tile flips green. 3-minute timeout; popup-closed → short grace then cancel.
 5. The OAuth popup lands on [oauth-callback.html](oauth-callback.html) (static, served at site root) which `postMessage`s `{ type: "flowos_oauth_connected", app }` to the opener as a fast-path then self-closes after 1.5s. Polling is the redundant fallback.
@@ -304,7 +305,7 @@ The connect surface in [workspaces4.jsx](app/workspaces4.jsx) is provider-agnost
 | Mode | Composio shape | Works for |
 |---|---|---|
 | **OAuth** | `auth_config: { type: "use_composio_managed_auth" }` + connected_account with `callback_url` | 13 toolkits with Composio managed credentials: googleads, ga4, gsc, hubspot, salesforce, mailchimp, reddit, youtube, fb (+ metaads), ig, li (+ liads) |
-| **API key** | `auth_config: { type: "use_custom_auth", authScheme: "API_KEY" }` + connected_account with `connection.data.apiKey` | 13 toolkits without managed credentials but supporting API-key auth: klaviyo (+ klaviyo_sms), mailerlite, moosend, hunter, ahrefs, moz, neuronwriter, neverbounce, kickbox, listclean, elevenlabs, heygen |
+| **API key** | `auth_config: { type: "use_custom_auth", authScheme: "API_KEY" }` + connected_account with `connection.data.apiKey` | 10 toolkits without managed credentials but supporting API-key auth: klaviyo (+ klaviyo_sms), ahrefs, moz, neuronwriter, neverbounce, kickbox, listclean, elevenlabs, heygen |
 | **OAuth — needs custom app** | Same OAuth shape, but Composio has no default managed credentials → returns error code 306 | 5 toolkits where you must register your own OAuth app in the Composio dashboard: shopify, tiktok (tt + ttads), twitter (x + xads) |
 
 Surface treatment of code 306: `/api/composio` returns a 409 with an actionable message — "configure a Composio auth_config for `<slug>` in the dashboard, or switch to direct provider."
@@ -325,7 +326,6 @@ Pipedream's API has one important quirk: the **`x-pd-environment` header** (valu
 |---|---|---|---|
 | `pn`, `pinads` | `pinterest` | oauth | ✓ Connect token mints, popup opens Pipedream's hosted flow |
 | `sendgrid` | `sendgrid` | keys | ✓ |
-| `activecampaign` | `activecampaign` | keys | ✓ |
 | `twilio` | `twilio` | keys | ✓ |
 | `runware` | `runware` | keys | ✓ |
 
@@ -358,15 +358,13 @@ Per-tenant API-key connectors that don't go through Composio or Pipedream live b
 | `optimizely` | `/api/optimizely` | `GET /v2/projects` (Bearer PAT)             | ✓ |
 | `audiostack` | `/api/audiostack` | `GET /organisation` (`x-api-key`; falls back to `/script?limit=1`) | ✓ |
 | `wordpress`  | `/api/wordpress`  | `GET <siteUrl>/wp-json/wp/v2/users/me?context=edit` (Basic Auth — Application Password). 3-input credential: `{siteUrl, username, appPassword}` stored as a JSON blob in `secret_value`. | ✓ |
-| `msads`      | `/api/msads` (disconnect/refresh) + `/api/msads-auth` (init/callback/status) | Azure AD v2 OAuth (`login.microsoftonline.com/common`). Scope `https://ads.microsoft.com/msads.manage offline_access`. Tokens (access + refresh + developer_token) stored as a JSON blob in `secret_value` (`secret_kind = "oauth_tokens"`); auto-refreshed at-read via `loadOAuthCredential`. | ✓ |
-| `attentive`  | `/api/attentive` (disconnect/refresh) + `/api/attentive-auth` (init/callback/status) | Attentive partner OAuth (`ui.attentivemobile.com/oauth/authorize` → `api.attentivemobile.com/v1/authorization-codes`). Token bundle stored as JSON blob; refresh tokens may be absent for long-lived partner tokens. | ✓ |
-| `spotifyads` | — | — | **Skipped** — Spotify Ad Studio has no public OAuth flow; partner-gated through partners@spotify.com. Tile stays in catalog as unwired. |
+| `spotifyads` | — (none) | Manual handoff — `auth: "Manual"` in seed.jsx. Spotify Ad Studio has no public API, and the partner-only Marketing API requires a signed agreement. FlowOS owns the creative (script via Claude, audio via AudioStack/ElevenLabs, video if needed via Higgsfield); the user uploads manually to adstudio.spotify.com. Connect flow flips the tile to "in use" via `actions.setConnector` without any backend call. No credential stored. | ✓ (manual) |
 
-VWO, AB Tasty, and Loops.so were dropped from the catalog 2026-05-18 — scope cut, not a wiring problem. Optimizely now stands alone in the A/B Testing category; the lifecycle-email lineup (Klaviyo / Mailchimp / MailerLite / SendGrid / ActiveCampaign / Moosend) covers Loops's use case. If any of the three needs to come back, restore: a row in `seed.jsx connectorCatalog` + default `connectorState` + `brandConnectorStates.erickson`, an entry in `agents.jsx CONNECTOR_LABELS`, the id in `api/brand-import.js CONNECTOR_IDS`, and (for the two direct ones) `/api/<id>.js` + a row in `DIRECT_API_ROUTES`.
+**Dropped from catalog 2026-05-18**: VWO, AB Tasty, Loops.so (scope cut — Optimizely covers A/B Testing alone). MailerLite, Moosend, ActiveCampaign, Hunter (scope cut — Klaviyo + Mailchimp + SendGrid cover email; lifecycle email use case is satisfied). Attentive (scope cut — Klaviyo SMS is sufficient for now; Twilio retained for transactional/dev-side messaging only). Microsoft Ads (scope cut — not a priority channel; Bing/Audience Network spend not material for the brands in scope). To restore any of these: row in `seed.jsx connectorCatalog` + default `connectorState` + `brandConnectorStates.erickson`, entry in `agents.jsx CONNECTOR_LABELS`, id in `api/brand-import.js CONNECTOR_IDS`, slug in `api/composio.js` or `api/pipedream.js` APP_MAP (+ matching verify script), and (for direct API-key ones) `/api/<id>.js` + a row in `DIRECT_API_ROUTES`. **Bringing back a Direct OAuth connector requires rebuilding the OAuth scaffolding that was removed alongside Microsoft Ads** — `saveOAuthCredential` / `loadOAuthCredential` / `signOAuthState` / `verifyOAuthState` helpers in `directCredentials.js`, a `DIRECT_OAUTH_ROUTES` map + handleConnectSubmit fork in `workspaces4.jsx`, and `?direct_connected=` / `?ok=0&error=` handling in `oauth-callback.html`. PR #26 has the reference implementation. Microsoft Ads also had an agent block in `agents.jsx`, a channel definition in `channel-strategy.jsx`, a channelRules row in `store.jsx`, and a section in `full-mapping.md` — all removed.
 
 All API-key routes follow the same shape: `action=initiate_connection` validates the supplied credential against the provider's REST API, persists into `connector_credentials`, and upserts a `channels` row with `status=connected`. `action=disconnect` deletes the credential and flips the channels row. Downstream API routes (e.g. `/api/generate`) can read the per-tenant key with `loadCredential({ tenantId, platform })` and fall back to the global env-var key if absent.
 
-Direct OAuth routes (msads, attentive) split the surface into two files: `/api/<id>-auth.js` hosts a single GET endpoint with three modes — `?init=1&tenantId=…` mints the authorize URL, `?code=…&state=…` is the provider's callback (exchanges + persists, then 302-redirects to `/oauth-callback.html?direct_connected=<id>`), `?status=1&tenantId=…` is the polling check. State is HMAC-signed with `OAUTH_STATE_SECRET` (falls back to a SHA-256 of `SUPABASE_SERVICE_KEY` if unset) and expires after 10 minutes. Tokens are persisted with `secret_kind = "oauth_tokens"` as a JSON blob via `saveOAuthCredential`; downstream callers go through `loadOAuthCredential({ tenantId, platform, refresh })` which auto-refreshes when expiry is within 60s. `/api/<id>.js` carries the post-connection actions (`disconnect`, `refresh`). Frontend route maps: `DIRECT_OAUTH_ROUTES` (init/status URL) and `DIRECT_API_ROUTES` (disconnect URL — same connectors appear in both, pointing at the two halves).
+**Manual / creative-handoff connectors** (`auth: "Manual"` in seed.jsx) — for channels with no public API. Today only Spotify Ads. Click "Connect" → modal explains that FlowOS owns the creative + the user uploads manually → "Mark as in use" button flips `state.connectors[id].connected = true` with `note: "Manual upload · creative handoff"`. No backend call, no credential row. Disconnect just flips the local state back. Adding more Manual connectors requires no API code; just a catalog row + brand-import inclusion if the agent should know to recommend the channel.
 
 WordPress is the one connector whose credential isn't a single string — `secret_value` is a JSON blob `{ siteUrl, username, appPassword }`; downstream callers must `JSON.parse(secret)` and base64-encode `${username}:${appPassword}` for the `Authorization: Basic …` header. Surfaced in the Connect modal via the `DIRECT_EXTRA_FIELDS` map in [workspaces4.jsx](app/workspaces4.jsx) — any future multi-input direct connector can add an entry there instead of forking the modal.
 
@@ -395,8 +393,6 @@ All in `/api/`. All use `export const config = { runtime: "edge" }`.
 | `GET  /api/cron/fire-scheduled` | Vercel Cron (`* * * * *` — **requires Pro** for guaranteed 1-min execution; Hobby cron schedules will be rejected at deploy). Calls Supabase RPC `claim_due_scheduled_posts(20)` which atomically picks due `pending` rows via `FOR UPDATE SKIP LOCKED`, transitions them to `publishing`, then POSTs `${origin}/api/<platform>` with the row's snapshot payload. PATCHes the row to `published`/`failed`. Idempotent by construction — same row can never be claimed twice concurrently. |
 | `POST /api/google-ads` | Composio-backed Google Ads wrapper. Actions: `list_customer_ids` (new — returns accessible MCC child accounts via `GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS`), `list_campaigns`, `create_campaign`, `update_budget`, `enable_campaign`, `pause_campaign`, `keyword_ideas`, `campaign_detail`, `generate_copy`. Frontend contract unchanged (`{ ok, data }`). Composio toolkit slug names live in the `TOOLS` constant at the top of the file. Pass `customerId` in params; if omitted, the user must pick one via `list_customer_ids` first. |
 | `POST /api/replicate` `POST /api/higgsfield` `POST /api/luma` | Direct-API connector routes (provider: "direct" in seed.jsx). Actions: `initiate_connection` (validates apiKey against the provider's REST API, persists to `connector_credentials`, flips `channels` to connected), `disconnect`. Shared persistence helper in [api/lib/directCredentials.js](api/lib/directCredentials.js). |
-| `GET  /api/msads-auth` `GET  /api/attentive-auth` | Direct OAuth surfaces. Single GET endpoint with three modes: `?init=1&tenantId=…` returns `{ok, authorizeUrl}`; `?code=…&state=…` is the provider's callback (exchanges code, persists tokens, 302s to `/oauth-callback.html?direct_connected=<id>`); `?status=1&tenantId=…` returns `{connected, expiresAt}` for the frontend polling loop. State is HMAC-signed. Tokens persisted with `secret_kind = "oauth_tokens"`. |
-| `POST /api/msads` `POST /api/attentive` | Post-connection actions for Direct OAuth connectors. Actions: `disconnect` (wipes tokens + flips channels), `refresh` (forces a refresh-token exchange — usually unnecessary since `loadOAuthCredential` auto-refreshes at-read). |
 | `GET/POST /api/google-ads-auth` | **REMOVED — 410 Gone tombstone.** Returns `{ error: "Google Ads OAuth has moved to Composio…", code: "GONE_USE_COMPOSIO" }`. Connect flow now goes through `/api/composio` like every other OAuth connector. The old `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET` env vars are no longer read at runtime. |
 
 ### Auth pattern (every /api/* handler)
@@ -560,13 +556,6 @@ SUPABASE_JWT_SECRET      Verifies user JWTs in requireAuth (Supabase project set
 OAUTH_STATE_SECRET       HMAC for google-ads-auth OAuth state — any high-entropy string
 RUNWARE_API_KEY          Runware image + video generation
 HIGGSFIELD_API_KEY       Higgsfield video (cinematic_studio_3_0, kling3_0)
-MS_ADS_CLIENT_ID         Microsoft Ads — Azure AD app registration App (client) ID
-MS_ADS_CLIENT_SECRET     Microsoft Ads — Azure AD client secret
-MS_ADS_DEVELOPER_TOKEN   Microsoft Ads — DeveloperToken header (required for Bing Ads API calls, stashed with the OAuth bundle)
-ATTENTIVE_CLIENT_ID      Attentive — partner app client ID
-ATTENTIVE_CLIENT_SECRET  Attentive — partner app client secret
-ATTENTIVE_SCOPES         Attentive — optional space-separated scope override (defaults to subscribers + campaigns read/write)
-OAUTH_STATE_SECRET       Optional HMAC secret for Direct OAuth state params (falls back to SHA-256 of SUPABASE_SERVICE_KEY if unset)
 GOOGLE_ADS_DEVELOPER_TOKEN  DEPRECATED — no longer read (Composio cutover 2026-05-17)
 GOOGLE_ADS_CLIENT_ID        DEPRECATED — no longer read (Composio cutover 2026-05-17)
 GOOGLE_ADS_CLIENT_SECRET    DEPRECATED — no longer read (Composio cutover 2026-05-17)
