@@ -221,6 +221,7 @@ DELEGATE TO SPECIALISTS when:
 - Checking copy compliance → delegate_to "brand_guard"
 - Customer message triage → delegate_to "inbox"
 - If the user wants to plan a campaign, build a campaign brief, create a marketing plan, or map out a product launch → delegate to campaign_planner
+- If the user asks for a drip campaign, nurture sequence, onboarding emails, re-engagement series, win-back campaign, email automation, or any multi-email flow → delegate to drafter with intent to call create_email_sequence
 
 Otherwise act directly using available tools.
 
@@ -322,7 +323,62 @@ AD COPY
 - Google: 3 headlines (30 chars each) + 2 descriptions (90 chars each).
 - Meta: Primary text (125 chars) + Headline (40 chars) + Description (30 chars).
 - Every ad needs one clear CTA.
-- Never use unsubstantiated superlatives like "best" or "world-class."`,
+- Never use unsubstantiated superlatives like "best" or "world-class."
+
+## Email Sequence Rules
+
+When create_email_sequence is called, use these as your starting templates:
+
+ONBOARDING — 5-7 emails over 14-21 days:
+Email 1 (Day 0): Welcome, set expectations, one quick win action
+Email 2 (Day 2): Guide to first value moment
+Email 3 (Day 5): Core feature deep dive
+Email 4 (Day 9): Advanced tip or integration
+Email 5 (Day 14): Social proof or case study
+Email 6 (Day 18): Check-in, surface help resources
+Email 7 (Day 21): Upgrade or next step prompt
+
+LEAD NURTURE — 4-6 emails over 3-4 weeks:
+Email 1 (Day 0): Value-first educational content, no pitch
+Email 2 (Day 5): Name the pain point specifically
+Email 3 (Day 10): Solution positioning with proof
+Email 4 (Day 16): Social proof, results
+Email 5 (Day 21): Soft CTA — trial, demo, resource
+Email 6 (Day 28): Direct CTA — buy, book, sign up
+
+RE-ENGAGEMENT — 3-4 emails over 10-14 days:
+Email 1 (Day 0): "We miss you" with a compelling reason to return
+Email 2 (Day 4): Value reminder — what they're missing
+Email 3 (Day 8): Incentive or exclusive offer
+Email 4 (Day 12): Last chance with a clear deadline
+
+WIN-BACK — 3-5 emails over 30 days:
+Email 1 (Day 0): Friendly check-in, ask what went wrong
+Email 2 (Day 7): What's new since they left
+Email 3 (Day 14): Special offer or incentive
+Email 4 (Day 21): Feedback request
+Email 5 (Day 30): Final goodbye with door open
+
+PRODUCT LAUNCH — 4-6 emails over 2-3 weeks:
+Email 1 (Day -7): Teaser or pre-announcement
+Email 2 (Day 0): Launch announcement with full details
+Email 3 (Day 3): Feature spotlight or use case
+Email 4 (Day 7): Social proof and early results
+Email 5 (Day 12): Limited-time offer
+Email 6 (Day 14): Last chance reminder
+
+Performance benchmarks:
+- Onboarding: 50-70% open, 10-20% CTR, 15-30% conversion
+- Lead nurture: 20-30% open, 3-7% CTR, 2-5% conversion
+- Re-engagement: 15-25% open, 2-5% CTR, 3-8% conversion
+- Win-back: 15-20% open, 2-4% CTR, 1-3% conversion
+
+Rules for every email in a sequence:
+- 3 subject line options per email: label as Benefit-driven / Curiosity / Direct
+- Preview text 40-90 chars, must not repeat the subject line
+- Short paragraphs, 2-3 sentences max, one primary CTA
+- Define what happens if they open but don't click
+- Define what action triggers early exit from the sequence`,
 
     analyst: (() => {
       let analyticsBlock = "";
@@ -569,6 +625,51 @@ INTERNAL_TOOLS.push({
 });
 
 INTERNAL_TOOLS.push({
+  name: "create_email_sequence",
+  description: "Create a complete multi-email sequence. Use when the user asks for a drip campaign, nurture sequence, onboarding flow, re-engagement series, win-back campaign, or any multi-email automation.",
+  input_schema: {
+    type: "object",
+    properties: {
+      sequenceType: {
+        type: "string",
+        enum: ["onboarding", "lead_nurture", "re_engagement", "win_back", "product_launch", "event_followup", "upsell", "educational_drip"]
+      },
+      goal: { type: "string" },
+      audience: { type: "string" },
+      emails: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            emailNumber: { type: "number" },
+            subjectLines: { type: "array", items: { type: "string" }, description: "Exactly 3 options: benefit-driven, curiosity, direct" },
+            previewText: { type: "string" },
+            purpose: { type: "string", description: "One sentence: why this email exists" },
+            body: { type: "string", description: "Full ready-to-use email body" },
+            ctaText: { type: "string" },
+            timingDays: { type: "number", description: "Days after trigger or previous email" },
+            segmentCondition: { type: "string", description: "Who gets this vs who skips it" }
+          },
+          required: ["emailNumber", "subjectLines", "previewText", "purpose", "body", "ctaText", "timingDays"]
+        }
+      },
+      branchingLogic: { type: "string", description: "Plain English: branching paths and exit conditions" },
+      exitCondition: { type: "string" },
+      abTestSuggestions: { type: "array", items: { type: "string" } },
+      benchmarks: {
+        type: "object",
+        properties: {
+          openRate: { type: "string" },
+          clickRate: { type: "string" },
+          conversionRate: { type: "string" }
+        }
+      }
+    },
+    required: ["sequenceType", "goal", "audience", "emails", "exitCondition"]
+  }
+});
+
+INTERNAL_TOOLS.push({
   name: "create_campaign_plan",
   description: "Persist the campaign brief to the CampaignPlanner canvas and surface a campaign-plan summary card inline in the chat. Call this ONCE after writing the full nine-section brief. Pass the full markdown brief in the `brief` field — the planner canvas renders it.",
   input_schema: {
@@ -589,7 +690,7 @@ INTERNAL_TOOLS.push({
 });
 
 // Tools available to the Drafter specialist
-const DRAFTER_TOOLS = INTERNAL_TOOLS.filter(t => t.name === "create_draft" || t.name === "create_email_draft" || t.name === "create_sms_draft");
+const DRAFTER_TOOLS = INTERNAL_TOOLS.filter(t => t.name === "create_draft" || t.name === "create_email_draft" || t.name === "create_sms_draft" || t.name === "create_email_sequence");
 
 // Tools available to the Campaign Planner specialist
 const PLANNER_TOOLS = INTERNAL_TOOLS.filter(t => t.name === "create_campaign_plan" || t.name === "open_workspace");

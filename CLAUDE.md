@@ -228,6 +228,7 @@ User sends message
 | `draft_created` | `DraftCreatedCard` — copy with platform badge, char count, "Send to queue" |
 | `email_draft` | `EmailDraftCard` — subject/preheader/body + "Push to Klaviyo" → POST `/api/klaviyo` `create_draft_campaign` |
 | `sms_draft` | `SmsDraftCard` — body + char counter, STOP-footer warning + "Push to Klaviyo SMS" → POST `/api/klaviyo` `create_draft_sms` |
+| `email_sequence` | `EmailSequenceCard` — multi-email drip (onboarding/nurture/re-engagement/win-back/launch/etc.). Collapsed email list (number/day/purpose) expanding to subject options, preview, body, CTA, segment. Footer surfaces branching, exit condition, A/B tests, benchmarks. "Open in Email Studio" → `onOpen({ kind: "open_emailstudio" })` |
 | `drafts` | Simple list preview → "Open all in canvas" |
 | `metric` | Big number card |
 | `strategy` | Channel mix bar chart |
@@ -258,6 +259,7 @@ if (hasCreateVerb && hasContentNoun) { return makeDraftArtifact(t); }
 | `create_draft` | **Drafter** | Produces `draft_created` artifact in chat |
 | `create_email_draft` | **Drafter** | Produces `email_draft` artifact (subject/preheader/body) |
 | `create_sms_draft` | **Drafter** | Produces `sms_draft` artifact (body ≤160, audienceHint, includeStopFooter) |
+| `create_email_sequence` | **Drafter** | Produces `email_sequence` artifact — sequenceType, goal, audience, emails[], branchingLogic, exitCondition, abTestSuggestions, benchmarks. Triggered by drip/nurture/onboarding/re-engagement/win-back/launch language. Supervisor delegates to drafter for these. |
 | `create_campaign_plan` | **Campaign Planner** | Produces `campaign-plan` artifact (title, summary, itemCount, goal, audience, timeline, channels) — usually paired with `open_workspace("planner")` |
 
 ---
