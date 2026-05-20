@@ -421,6 +421,219 @@ function SmsDraftCard({ artifact, onOpen }) {
   );
 }
 
+const SEQUENCE_TYPE_LABEL = {
+  onboarding:       "Onboarding",
+  lead_nurture:     "Lead nurture",
+  re_engagement:    "Re-engagement",
+  win_back:         "Win-back",
+  product_launch:   "Product launch",
+  event_followup:   "Event follow-up",
+  upsell:           "Upsell",
+  educational_drip: "Educational drip",
+};
+
+function EmailSequenceCard({ artifact, onOpen }) {
+  const [openIdx, setOpenIdx] = useStateChat(null);
+  const accent = PLATFORM_ACCENT.email;
+  const emails = Array.isArray(artifact.emails) ? artifact.emails : [];
+  const typeLabel = SEQUENCE_TYPE_LABEL[artifact.sequenceType] || artifact.sequenceType || "Sequence";
+
+  const subjectLabels = ["Benefit", "Curiosity", "Direct"];
+
+  return (
+    <div data-testid="email-sequence-card" style={{
+      marginTop: 10,
+      border: "1px solid var(--rule-strong)",
+      borderRadius: 6,
+      background: "var(--paper)",
+      overflow: "hidden",
+    }}>
+      {/* Header */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "9px 12px",
+        borderBottom: "1px solid var(--rule)",
+        background: "var(--paper-2)",
+      }}>
+        <Icon name="mail" size={12}/>
+        <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", flex: 1 }}>
+          Email sequence · {typeLabel}
+        </span>
+        <Chip tone="accent">{emails.length} emails</Chip>
+      </div>
+
+      {/* Goal + audience */}
+      {(artifact.goal || artifact.audience) && (
+        <div style={{
+          padding: "10px 14px 8px 17px",
+          borderLeft: `3px solid ${accent}`,
+          fontSize: 12, color: "var(--ink-2)", lineHeight: 1.55,
+        }}>
+          {artifact.goal && (
+            <div><span style={{ color: "var(--muted)", fontWeight: 600 }}>Goal · </span>{artifact.goal}</div>
+          )}
+          {artifact.audience && (
+            <div style={{ marginTop: 3 }}><span style={{ color: "var(--muted)", fontWeight: 600 }}>Audience · </span>{artifact.audience}</div>
+          )}
+        </div>
+      )}
+
+      {/* Email list */}
+      <div style={{ borderTop: "1px solid var(--rule)" }}>
+        {emails.map((em, i) => {
+          const isOpen = openIdx === i;
+          return (
+            <div key={i} style={{ borderBottom: i < emails.length - 1 ? "1px solid var(--rule)" : "none" }}>
+              <button
+                onClick={() => setOpenIdx(isOpen ? null : i)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  width: "100%", padding: "10px 14px",
+                  background: isOpen ? "var(--paper-2)" : "transparent",
+                  border: "none", cursor: "pointer", textAlign: "left",
+                }}
+              >
+                <span className="mono" style={{
+                  fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.06em",
+                  minWidth: 22,
+                }}>
+                  #{em.emailNumber ?? i + 1}
+                </span>
+                <span className="mono" style={{
+                  fontSize: 10.5, color: "var(--ink-2)", minWidth: 54,
+                }}>
+                  Day {em.timingDays ?? 0}
+                </span>
+                <span style={{
+                  fontSize: 12.5, color: "var(--ink)", flex: 1,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}>
+                  {em.purpose || (Array.isArray(em.subjectLines) ? em.subjectLines[0] : "")}
+                </span>
+                <Icon name={isOpen ? "chevron-up" : "chevron-down"} size={11}/>
+              </button>
+
+              {isOpen && (
+                <div style={{
+                  padding: "8px 14px 14px 17px",
+                  borderLeft: `3px solid ${accent}`,
+                  background: "var(--paper)",
+                  fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6,
+                }}>
+                  {Array.isArray(em.subjectLines) && em.subjectLines.length > 0 && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
+                        Subject options
+                      </div>
+                      {em.subjectLines.map((s, j) => (
+                        <div key={j} style={{ display: "flex", gap: 8, marginTop: 3 }}>
+                          <span className="mono" style={{ fontSize: 10.5, color: "var(--muted-2)", minWidth: 60 }}>
+                            {subjectLabels[j] || `Option ${j + 1}`}
+                          </span>
+                          <span style={{ fontSize: 12.5, color: "var(--ink)" }}>{s}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {em.previewText && (
+                    <div style={{ marginBottom: 8 }}>
+                      <span style={{ color: "var(--muted)", fontWeight: 600 }}>Preview · </span>
+                      <span>{em.previewText}</span>
+                    </div>
+                  )}
+
+                  {em.body && (
+                    <div style={{
+                      padding: "8px 10px",
+                      background: "var(--paper-2)",
+                      borderRadius: 4,
+                      whiteSpace: "pre-wrap",
+                      fontSize: 12.5, color: "var(--ink)",
+                      marginBottom: 8,
+                    }}>
+                      {em.body}
+                    </div>
+                  )}
+
+                  {em.ctaText && (
+                    <div style={{ marginBottom: 6 }}>
+                      <span style={{ color: "var(--muted)", fontWeight: 600 }}>CTA · </span>
+                      <span>{em.ctaText}</span>
+                    </div>
+                  )}
+
+                  {em.segmentCondition && (
+                    <div>
+                      <span style={{ color: "var(--muted)", fontWeight: 600 }}>Segment · </span>
+                      <span>{em.segmentCondition}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Footer */}
+      {(artifact.branchingLogic || artifact.exitCondition || (Array.isArray(artifact.abTestSuggestions) && artifact.abTestSuggestions.length > 0) || artifact.benchmarks) && (
+        <div style={{
+          padding: "10px 14px",
+          borderTop: "1px solid var(--rule)",
+          background: "var(--paper-2)",
+          fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.6,
+        }}>
+          {artifact.branchingLogic && (
+            <div style={{ marginBottom: 6 }}>
+              <span style={{ color: "var(--muted)", fontWeight: 600 }}>Branching · </span>
+              <span>{artifact.branchingLogic}</span>
+            </div>
+          )}
+          {artifact.exitCondition && (
+            <div style={{ marginBottom: 6 }}>
+              <span style={{ color: "var(--muted)", fontWeight: 600 }}>Exit · </span>
+              <span>{artifact.exitCondition}</span>
+            </div>
+          )}
+          {Array.isArray(artifact.abTestSuggestions) && artifact.abTestSuggestions.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              <div style={{ color: "var(--muted)", fontWeight: 600, marginBottom: 2 }}>A/B tests</div>
+              {artifact.abTestSuggestions.map((s, i) => (
+                <div key={i} style={{ paddingLeft: 8 }}>· {s}</div>
+              ))}
+            </div>
+          )}
+          {artifact.benchmarks && (
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 4 }}>
+              {artifact.benchmarks.openRate && (
+                <span><span style={{ color: "var(--muted)" }}>Open </span>{artifact.benchmarks.openRate}</span>
+              )}
+              {artifact.benchmarks.clickRate && (
+                <span><span style={{ color: "var(--muted)" }}>CTR </span>{artifact.benchmarks.clickRate}</span>
+              )}
+              {artifact.benchmarks.conversionRate && (
+                <span><span style={{ color: "var(--muted)" }}>Conv </span>{artifact.benchmarks.conversionRate}</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div style={{
+        padding: "10px 12px",
+        borderTop: "1px solid var(--rule)",
+        display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap",
+      }}>
+        <Btn size="sm" variant="primary" onClick={() => onOpen({ kind: "open_emailstudio", data: artifact })}>
+          <Icon name="external-link" size={11}/> Open in Email Studio
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
 function ArtifactCard({ artifact, onOpen }) {
   if (!artifact) return null;
   const t = artifact.type;
@@ -431,6 +644,10 @@ function ArtifactCard({ artifact, onOpen }) {
 
   if (t === "sms_draft") {
     return <SmsDraftCard artifact={artifact} onOpen={onOpen}/>;
+  }
+
+  if (t === "email_sequence") {
+    return <EmailSequenceCard artifact={artifact} onOpen={onOpen}/>;
   }
 
   if (t === "email") {

@@ -149,13 +149,24 @@ async function sendAIMessage({
       brand,
     });
 
-    // Detect create_draft / create_email_draft / create_sms_draft / create_campaign_plan tool calls — attach as inline artifact.
+    // Detect create_draft / create_email_draft / create_sms_draft / create_email_sequence / create_campaign_plan tool calls — attach as inline artifact.
     // Channel-specific tools win over the generic create_draft when both are present.
+    const sequenceTool = spec.tools.find(t => t.name === "create_email_sequence");
     const emailTool   = spec.tools.find(t => t.name === "create_email_draft");
     const smsTool     = spec.tools.find(t => t.name === "create_sms_draft");
     const draftTool   = spec.tools.find(t => t.name === "create_draft");
     const planTool    = spec.tools.find(t => t.name === "create_campaign_plan");
-    const draftArtifact = emailTool ? {
+    const draftArtifact = sequenceTool ? {
+      type:              "email_sequence",
+      sequenceType:      sequenceTool.input.sequenceType,
+      goal:              sequenceTool.input.goal || "",
+      audience:          sequenceTool.input.audience || "",
+      emails:            Array.isArray(sequenceTool.input.emails) ? sequenceTool.input.emails : [],
+      branchingLogic:    sequenceTool.input.branchingLogic || "",
+      exitCondition:     sequenceTool.input.exitCondition || "",
+      abTestSuggestions: Array.isArray(sequenceTool.input.abTestSuggestions) ? sequenceTool.input.abTestSuggestions : [],
+      benchmarks:        sequenceTool.input.benchmarks || null,
+    } : emailTool ? {
       type:         "email_draft",
       subject:      emailTool.input.subject,
       preheader:    emailTool.input.preheader || "",
