@@ -73,6 +73,12 @@ function mveda_initialState() {
       // shape: { id, rule, ruleLabel, subject, preheader, body, audienceHint, reason, source, status, klaviyoUrl, klaviyoCampaignId, audience, error, createdAt }
       proactiveEmails: [],
     },
+
+    // Chat-authored campaign brief from the campaign_planner specialist.
+    // CampaignPlanner workspace renders this when present; falls back to its
+    // default grid view when null.
+    // Shape: { title, summary, itemCount, goal, audience, timeline, budget, channels[], brief (markdown), createdAt }
+    activePlan: null,
   };
 }
 
@@ -311,21 +317,22 @@ function mveda_reducer(s, a) {
     }
     case "QUEUE_ADD_DRAFT": {
       const item = {
-        id:          a.id || ("d_" + Math.random().toString(36).slice(2,8)),
-        platform:    a.platform,
-        kind:        a.contentType,
-        title:       (a.copy || "").slice(0, 80),
-        body:        a.copy,
-        imagePrompt: a.imagePrompt || null,
-        imageUrl:    null,
-        imageStatus: a.imagePrompt ? "pending" : "none",
-        status:      "draft",
-        scheduledAt: null,
-        fromChat:    true,
-        day:         null,
-        channel:     a.platform,
-        tone:        "Chat draft",
-        createdAt:   new Date().toISOString(),
+        id:            a.id || ("d_" + Math.random().toString(36).slice(2,8)),
+        platform:      a.platform,
+        kind:          a.contentType,
+        title:         (a.copy || "").slice(0, 80),
+        body:          a.copy,
+        imagePrompt:   a.imagePrompt || null,
+        imageUrl:      null,
+        imageStatus:   a.imagePrompt ? "pending" : "none",
+        status:        "draft",
+        scheduledAt:   null,
+        fromChat:      true,
+        day:           null,
+        channel:       a.platform,
+        tone:          "Chat draft",
+        sourceBriefId: a.sourceBriefId || null,
+        createdAt:     new Date().toISOString(),
       };
       return { ...s,
         calendar: [item, ...s.calendar],
@@ -417,6 +424,22 @@ function mveda_reducer(s, a) {
       if (a.notify) next.notifications = [notify(a.notify.tone, a.notify.text), ...s.notifications];
       return next;
     }
+    case "ACTIVE_PLAN_SET": {
+      return {
+        ...s,
+        activePlan: a.plan ? {
+          ...a.plan,
+          id:        a.plan.id || ("br_" + Math.random().toString(36).slice(2, 10)),
+          createdAt: a.plan.createdAt || new Date().toISOString(),
+        } : null,
+        notifications: a.plan
+          ? [notify("ok", `Campaign brief ready: ${a.plan.title || "Untitled"}`), ...s.notifications]
+          : s.notifications,
+      };
+    }
+    case "ACTIVE_PLAN_CLEAR": {
+      return { ...s, activePlan: null };
+    }
     default: return s;
   }
 }
@@ -466,8 +489,8 @@ function useMvedaStore() {
     updateGuest:      (id, patch) => dispatch({ type: "GUEST_UPDATE", id, patch }),
     updateDiscount:   (id, patch) => dispatch({ type: "DISCOUNT_UPDATE", id, patch }),
     toggleSeasonal:   (id) => dispatch({ type: "SEASONAL_TOGGLE", id }),
-    addDraft: (platform, contentType, copy, imagePrompt, id) =>
-      dispatch({ type: "QUEUE_ADD_DRAFT", platform, contentType, copy, imagePrompt, id }),
+    addDraft: (platform, contentType, copy, imagePrompt, id, sourceBriefId) =>
+      dispatch({ type: "QUEUE_ADD_DRAFT", platform, contentType, copy, imagePrompt, id, sourceBriefId }),
     loadProactiveDrafts: (items) =>
       dispatch({ type: "QUEUE_LOAD_PROACTIVE", items }),
     addOutboundEmail: (payload) =>
@@ -484,6 +507,8 @@ function useMvedaStore() {
       dispatch({ type: "PROACTIVE_EMAIL_UPDATE", id, patch, notify: opts.notify }),
     removeProactiveEmail: (id, opts = {}) =>
       dispatch({ type: "PROACTIVE_EMAIL_REMOVE", id, notify: opts.notify }),
+    setActivePlan: (plan) => dispatch({ type: "ACTIVE_PLAN_SET", plan }),
+    clearActivePlan: () => dispatch({ type: "ACTIVE_PLAN_CLEAR" }),
   };
   return [state, actions];
 }

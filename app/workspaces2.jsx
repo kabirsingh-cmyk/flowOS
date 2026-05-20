@@ -14,6 +14,204 @@ function colorForCampaign(name) {
   return `oklch(64% 0.12 ${h})`;
 }
 
+// ────────────────────────────── BRIEF MARKDOWN RENDERER ──────────────────────
+// Minimal renderer for the campaign brief format produced by the campaign_planner
+// specialist. Handles only the subset of markdown the brief actually uses:
+//   **bold inline**
+//   **N. Section Heading** on its own line → h2
+//   - bullet point
+//   | table | row | with | pipes |   (separator row `|---|---|` is dropped)
+//   blank line → paragraph break
+// Anything else is rendered as a plain paragraph.
+function renderInline(text) {
+  // Split on **...** to bold the wrapped runs, leaving everything else as text.
+  const parts = String(text).split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((p, i) => {
+    const m = p.match(/^\*\*([^*]+)\*\*$/);
+    return m
+      ? <strong key={i} style={{ fontWeight: 600 }}>{m[1]}</strong>
+      : <React.Fragment key={i}>{p}</React.Fragment>;
+  });
+}
+function BriefMarkdown({ source }) {
+  if (!source) return null;
+  const lines = source.replace(/\r\n/g, "\n").split("\n");
+  const blocks = [];
+  let i = 0;
+  let key = 0;
+  const sectionHeading = /^\*\*\d+\.\s+(.+)\*\*\s*$/;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (!line.trim()) { i++; continue; }
+
+    // Section heading: **1. Campaign Overview**
+    const h = line.match(sectionHeading);
+    if (h) {
+      blocks.push(
+        <h2 key={key++} style={{
+          fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em",
+          margin: "22px 0 8px", color: "var(--ink)",
+          paddingBottom: 6, borderBottom: "1px solid var(--rule)",
+        }}>{h[1]}</h2>
+      );
+      i++; continue;
+    }
+
+    // Other bold-only standalone lines → h3
+    const subH = line.match(/^\*\*([^*]+)\*\*\s*$/);
+    if (subH) {
+      blocks.push(
+        <h3 key={key++} style={{ fontSize: 13, fontWeight: 600, margin: "14px 0 4px", color: "var(--ink)" }}>
+          {subH[1]}
+        </h3>
+      );
+      i++; continue;
+    }
+
+    // Table: a line starting with |, and the next line is the separator
+    if (line.trim().startsWith("|")) {
+      const rows = [];
+      while (i < lines.length && lines[i].trim().startsWith("|")) {
+        rows.push(lines[i]); i++;
+      }
+      // Drop separator rows (e.g. |---|---|)
+      const cleaned = rows.filter(r => !/^\|[\s:|-]+\|\s*$/.test(r.trim()));
+      if (cleaned.length > 0) {
+        const cells = cleaned.map(r => r.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim()));
+        const [header, ...body] = cells;
+        blocks.push(
+          <div key={key++} style={{ overflowX: "auto", margin: "8px 0 14px" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
+              <thead>
+                <tr>{header.map((c, ci) => (
+                  <th key={ci} style={{
+                    textAlign: "left", padding: "8px 10px",
+                    background: "var(--paper-2)", borderBottom: "1px solid var(--rule-strong)",
+                    fontWeight: 600, color: "var(--ink)", fontSize: 11.5,
+                    textTransform: "uppercase", letterSpacing: "0.04em",
+                  }}>{c}</th>
+                ))}</tr>
+              </thead>
+              <tbody>
+                {body.map((row, ri) => (
+                  <tr key={ri}>{row.map((c, ci) => (
+                    <td key={ci} style={{
+                      padding: "8px 10px", borderBottom: "1px solid var(--rule)",
+                      color: "var(--ink-2)", verticalAlign: "top",
+                    }}>{renderInline(c)}</td>
+                  ))}</tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+        continue;
+      }
+    }
+
+    // Bullet list
+    if (/^\s*[-*]\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*[-*]\s+/, ""));
+        i++;
+      }
+      blocks.push(
+        <ul key={key++} style={{ margin: "4px 0 12px 18px", padding: 0, color: "var(--ink-2)" }}>
+          {items.map((it, ii) => (
+            <li key={ii} style={{ marginBottom: 4, lineHeight: 1.5, fontSize: 13 }}>
+              {renderInline(it)}
+            </li>
+          ))}
+        </ul>
+      );
+      continue;
+    }
+
+    // Plain paragraph (gather consecutive non-empty, non-special lines)
+    const para = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() &&
+      !sectionHeading.test(lines[i]) &&
+      !/^\*\*([^*]+)\*\*\s*$/.test(lines[i]) &&
+      !lines[i].trim().startsWith("|") &&
+      !/^\s*[-*]\s+/.test(lines[i])
+    ) {
+      para.push(lines[i]); i++;
+    }
+    if (para.length > 0) {
+      blocks.push(
+        <p key={key++} style={{ margin: "6px 0 10px", lineHeight: 1.55, fontSize: 13, color: "var(--ink-2)" }}>
+          {renderInline(para.join(" "))}
+        </p>
+      );
+    }
+  }
+
+  return <div>{blocks}</div>;
+}
+
+// ────────────────────────────── ACTIVE PLAN VIEW ──────────────────────────────
+function ActivePlanView({ plan, actions, go }) {
+  const channelList = Array.isArray(plan.channels) && plan.channels.length
+    ? plan.channels.join(" · ")
+    : "—";
+  return (
+    <div className="anim-fade" style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: 16, height: "100%", overflow: "hidden" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>03 · Plan · Campaign brief</div>
+          <h1 style={{ fontSize: 26, fontWeight: 500, letterSpacing: "-0.025em", margin: "6px 0 0" }}>{plan.title || "Untitled campaign"}</h1>
+          {plan.summary && (
+            <div style={{ color: "var(--muted)", marginTop: 4, fontSize: 13 }}>{plan.summary}</div>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+          <Btn size="sm" variant="ghost" onClick={() => go("publish")}>
+            <Icon name="calendar" size={12}/> Publishing queue
+          </Btn>
+          <Btn size="sm" variant="ghost" onClick={() => actions.clearActivePlan()}>
+            <Icon name="x" size={12}/> Dismiss
+          </Btn>
+        </div>
+      </div>
+
+      <div style={{
+        display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+        gap: 8, padding: "12px 14px",
+        background: "var(--paper-2)", border: "1px solid var(--rule)", borderRadius: 6,
+      }}>
+        {[
+          { label: "Goal",     value: plan.goal },
+          { label: "Audience", value: plan.audience },
+          { label: "Timeline", value: plan.timeline },
+          { label: "Budget",   value: plan.budget || "—" },
+          { label: "Channels", value: channelList },
+          { label: "Items",    value: plan.itemCount ? String(plan.itemCount) : "—" },
+        ].map(f => (
+          <div key={f.label} style={{ minWidth: 0 }}>
+            <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase" }}>{f.label}</div>
+            <div style={{ fontSize: 12.5, color: "var(--ink)", marginTop: 3, lineHeight: 1.4, wordBreak: "break-word" }}>{f.value || "—"}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{
+        flex: 1, minHeight: 0, overflowY: "auto",
+        background: "var(--paper)", border: "1px solid var(--rule)", borderRadius: 6,
+        padding: "20px 28px",
+      }}>
+        {plan.brief
+          ? <BriefMarkdown source={plan.brief}/>
+          : <div style={{ color: "var(--muted)", fontSize: 13 }}>This brief has no body content. Ask Flow to regenerate the campaign plan.</div>}
+      </div>
+    </div>
+  );
+}
+
 // ────────────────────────────── CAMPAIGN PLANNER ──────────────────────────────
 function CampaignPlanner({ state, actions, payload, go }) {
   const [dialogOpen, setDialogOpen] = useState2(false);
@@ -61,6 +259,12 @@ function CampaignPlanner({ state, actions, payload, go }) {
     filtered.forEach(ci => g[ci.day].push(ci));
     return g;
   }, [filtered]);
+
+  // If the chat has authored a campaign brief, render it instead of the default grid.
+  // Hooks above run unconditionally so React's hooks order stays stable as activePlan toggles.
+  if (state.activePlan) {
+    return <ActivePlanView plan={state.activePlan} actions={actions} go={go}/>;
+  }
 
   return (
     <div className="anim-fade" style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: 20, height: "100%" }}>

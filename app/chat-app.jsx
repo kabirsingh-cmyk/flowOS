@@ -1145,6 +1145,7 @@ function ChatOSAuthed({ auth, onLogout }) {
       t,
       onFallback: simulateFallback,
       brand:      state.brandPreset || null,
+      setActivePlan: actions.setActivePlan,
     });
   };
 
