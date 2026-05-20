@@ -448,7 +448,7 @@ CRON_SECRET           — already required; now fail-closed (no longer optional)
 
 All public-schema tables have RLS enabled (see [db/migrations/007_core_schema_and_rls.sql](db/migrations/007_core_schema_and_rls.sql)). Service-role (server-side) writes bypass RLS; the anon key + user JWT path is row-filtered by `tenant_id = auth.uid()::text` (or `user_id = auth.uid()::text` for the legacy-named tables).
 
-- `brands` — brand profiles, one per tenant. Primary key: `user_id` (text).
+- `brands` — brand profiles, one per tenant. Primary key: `user_id` (text). Columns include `voice` jsonb (`{tone, personality, bannedPhrases, attributes, antiAttributes}`), `values` jsonb, `claims` jsonb, `prohibited_topics` jsonb, `messaging` jsonb (`{valuePropositions}`), `terminology` jsonb (`{approved, prohibited}`), `palette` / `palette_vars`, plus the full Claude analysis blob in `brand_analysis`. The `messaging` and `terminology` columns power `buildBrandVoiceBlock` in [api/chat.js](api/chat.js) — added 2026-05-19 (see [supabase/migrations/2026-05-19-brand-voice-fields.sql](supabase/migrations/2026-05-19-brand-voice-fields.sql)).
 - `channels` — per-tenant connected platform records. `(user_id, platform)` unique. Stores `composio_connection_id`, `account_handle`, `followers_count`, `status`.
 - `posts` — per-tenant social-post drafts and history. Written by Organic Social Studio.
 - `analytics_snapshots` — raw per-channel metrics. Keys: `tenant_id`, `channel`, `period`.

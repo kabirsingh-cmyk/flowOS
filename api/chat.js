@@ -18,6 +18,78 @@ export const config = { runtime: "edge" };
 
 const ANTHROPIC_BASE = "https://api.anthropic.com/v1";
 
+// ─── Brand voice block (appended to supervisor + drafter prompts) ─────────────
+
+function buildBrandVoiceBlock(brand) {
+  if (!brand) return '';
+  const name = brand.name || 'this brand';
+  const voice = brand.voice || {};
+  const messaging = brand.messaging || {};
+  const terminology = brand.terminology || {};
+
+  // attributes: prefer new structured field; fall back to comma-splitting voice.tone
+  const attributes = Array.isArray(voice.attributes) && voice.attributes.length
+    ? voice.attributes
+    : (typeof voice.tone === 'string' && voice.tone.trim()
+        ? voice.tone.split(',').map(s => s.trim()).filter(Boolean)
+        : []);
+
+  // anti-attributes: only the new structured field — no clean fallback in current schema
+  const antiAttributes = Array.isArray(voice.antiAttributes) && voice.antiAttributes.length
+    ? voice.antiAttributes
+    : [];
+
+  // approved terminology: only the new structured field
+  const approvedTerms = Array.isArray(terminology.approved) && terminology.approved.length
+    ? terminology.approved
+    : [];
+
+  // prohibited terminology: prefer new structured field; fall back to voice.bannedPhrases
+  // (both snake_case and camelCase, since Supabase row is snake_case at the top level
+  // but the voice jsonb is camelCase as written by brand-import.js)
+  const prohibitedTerms = Array.isArray(terminology.prohibited) && terminology.prohibited.length
+    ? terminology.prohibited
+    : (Array.isArray(voice.bannedPhrases) && voice.bannedPhrases.length
+        ? voice.bannedPhrases
+        : (Array.isArray(voice.banned_phrases) && voice.banned_phrases.length
+            ? voice.banned_phrases
+            : []));
+
+  // value propositions: prefer new structured field; fall back to top-level `values`
+  const propositions = Array.isArray(messaging.valuePropositions) && messaging.valuePropositions.length
+    ? messaging.valuePropositions
+    : (Array.isArray(brand.values) && brand.values.length ? brand.values : []);
+
+  const weAre = attributes.length ? attributes.join(', ') : null;
+  const weAreNot = antiAttributes.length ? antiAttributes.join(', ') : null;
+  const approved = approvedTerms.length ? approvedTerms.join(', ') : null;
+  const prohibited = prohibitedTerms.length ? prohibitedTerms.join(', ') : null;
+  const valueProps = propositions.length ? propositions.map((v, i) => `  ${i + 1}. ${v}`).join('\n') : null;
+  const lines = [
+    `## Brand Voice — ${name}`,
+    `Voice is this brand's constant personality. It must not change regardless of channel or content type.`,
+    ``,
+  ];
+  if (weAre) lines.push(`**We are:** ${weAre}`);
+  if (weAreNot) lines.push(`**We are not:** ${weAreNot}`);
+  lines.push(``, `**Tone flexes by content type:**`);
+  lines.push(`- LinkedIn: professional, paragraph-broken, no "I'm excited to share"`);
+  lines.push(`- Instagram: visual-first, story-driven, conversational`);
+  lines.push(`- X/Twitter: punchy, one idea, under 240 chars`);
+  lines.push(`- Email: warm and direct, one CTA, short paragraphs`);
+  lines.push(`- Ad copy: benefit-led, outcome first, no filler`);
+  lines.push(`- SMS: under 130 chars, one action`);
+  lines.push(``);
+  if (approved) lines.push(`**Approved terms:** ${approved}`);
+  if (prohibited) lines.push(`**Prohibited terms:** ${prohibited} — never use these even if the user asks`);
+  if (valueProps) { lines.push(``, `**Value propositions (weave in naturally):**`, valueProps); }
+  lines.push(``, `**Rules:**`);
+  lines.push(`- Every draft must feel unmistakably like ${name}, not generic AI copy`);
+  lines.push(`- If the user's request conflicts with brand voice, flag it and offer both a brand-compliant version and what they asked for`);
+  lines.push(`- After every draft, add one line: "Brand note: [which voice attributes you applied]"`);
+  return lines.join('\n');
+}
+
 // ─── Composio helpers ─────────────────────────────────────────────────────────
 
 /**
@@ -127,6 +199,8 @@ ${claims.length ? `\nVERIFIED CLAIMS (use these — do not invent others)\n${cla
 ${prohibited.length ? `\nPROHIBITED TOPICS\n${prohibited.map(p => `- ${p}`).join("\n")}` : ""}
 `.trim() : "";
 
+  const brandVoiceBlock = buildBrandVoiceBlock(brand);
+
   const toolBlock = connectedApps.length > 0
     ? `You have live tools to act on: ${connectedApps.join(", ")}. When asked to create, update, or report on campaigns — use the tools. Don't describe what to do, do it. Summarise results in plain English.`
     : `No platforms connected yet. If asked to take action on a platform, tell the tenant to connect it in Settings → Connections.`;
@@ -153,7 +227,9 @@ BEHAVIOUR
 - Lead with action. If you have tools and the task is clear, use them immediately.
 - Summarise tool results in plain English — never show raw JSON.
 - One clarifying question max if the request is ambiguous.
-- Use open_workspace when a canvas view would help the tenant.`,
+- Use open_workspace when a canvas view would help the tenant.
+
+${brandVoiceBlock}`,
 
     drafter: `You are Drafter — the content AI for FlowOS.
 ${brandBlock}
@@ -180,7 +256,9 @@ Formats:
 
 For create_draft: always include an imagePrompt for visual formats (post, reel, story, carousel, pin). Leave it empty for SMS.
 For create_email_draft: write a concrete subject line (≤ 60 chars), a preheader (≤ 110 chars) that complements (not repeats) the subject, and a full body in plain text with paragraph breaks. Infer the audienceHint from the user's request ("new subscribers", "VIPs", "lapsed 90d+", etc.) — leave blank if no audience was implied.
-For create_sms_draft: body must be ≤ 160 chars (hard cap — count carefully, GSM-7). Be concrete and on-brand. Do NOT auto-append "Reply STOP to opt out" unless the user explicitly asks — the brand/legal team decides whether the STOP footer is added at send. Infer audienceHint same as email. Avoid emoji unless the user asks (emoji silently halves the SMS char budget to 70).`,
+For create_sms_draft: body must be ≤ 160 chars (hard cap — count carefully, GSM-7). Be concrete and on-brand. Do NOT auto-append "Reply STOP to opt out" unless the user explicitly asks — the brand/legal team decides whether the STOP footer is added at send. Infer audienceHint same as email. Avoid emoji unless the user asks (emoji silently halves the SMS char budget to 70).
+
+${brandVoiceBlock}`,
 
     analyst: (() => {
       let analyticsBlock = "";
