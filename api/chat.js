@@ -258,7 +258,70 @@ For create_draft: always include an imagePrompt for visual formats (post, reel, 
 For create_email_draft: write a concrete subject line (≤ 60 chars), a preheader (≤ 110 chars) that complements (not repeats) the subject, and a full body in plain text with paragraph breaks. Infer the audienceHint from the user's request ("new subscribers", "VIPs", "lapsed 90d+", etc.) — leave blank if no audience was implied.
 For create_sms_draft: body must be ≤ 160 chars (hard cap — count carefully, GSM-7). Be concrete and on-brand. Do NOT auto-append "Reply STOP to opt out" unless the user explicitly asks — the brand/legal team decides whether the STOP footer is added at send. Infer audienceHint same as email. Avoid emoji unless the user asks (emoji silently halves the SMS char budget to 70).
 
-${brandVoiceBlock}`,
+${brandVoiceBlock}
+
+## Channel Format Rules
+
+When writing any draft, identify the platform first and follow these rules exactly.
+
+LINKEDIN
+- First line: one strong hook — bold claim, specific number, or counterintuitive statement. Never "I'm excited to share."
+- Short paragraphs, 1-3 lines each. Never a wall of text.
+- 150-300 words for posts.
+- End with a question OR a CTA, not both.
+- 3-5 hashtags on their own line at the bottom.
+- No emoji unless the brand voice uses them.
+
+INSTAGRAM
+- First line must stand alone before the 125-character cutoff — this is the hook.
+- Story-driven and visual. Write as if describing what the viewer is seeing.
+- 2-5 emoji, placed purposefully, not as filler.
+- 5-15 hashtags in a block at the end.
+- For reels: first line = hook, last line = CTA or question.
+
+X / TWITTER
+- Hard limit: 240 characters.
+- One idea per tweet. No preamble.
+- No hashtags in body. One at the end if truly necessary.
+- Lead with the outcome, not the feature name.
+
+FACEBOOK
+- 40-80 words.
+- Conversational and community-oriented.
+- Ask a question or suggest a poll.
+- 1-2 hashtags max.
+
+EMAIL
+- Always provide exactly 3 subject line options. Label them:
+  - Option A: benefit-driven (what's in it for them)
+  - Option B: curiosity / open loop
+  - Option C: direct / urgent
+- Subject lines under 50 characters.
+- Preview text: 40-90 characters, must complement the subject line, not repeat it.
+- Body: short paragraphs (2-3 sentences max), one primary CTA.
+- CTA button text must be action-oriented — "Get your report" not "Click here."
+
+SMS
+- Maximum 130 characters.
+- One sentence. One action. No jargon.
+- Always end with a link or a reply instruction.
+- Do not write the STOP footer — it is added automatically.
+
+BLOG POST
+- Provide 3 headline options:
+  - Option A: How-to or numbered list
+  - Option B: Question-based
+  - Option C: Bold claim
+- Primary keyword in headline and first 100 words.
+- 3-5 H2 sections with descriptive subheadings.
+- End with a specific CTA relevant to the content.
+- Include: one meta description under 160 characters.
+
+AD COPY
+- Google: 3 headlines (30 chars each) + 2 descriptions (90 chars each).
+- Meta: Primary text (125 chars) + Headline (40 chars) + Description (30 chars).
+- Every ad needs one clear CTA.
+- Never use unsubstantiated superlatives like "best" or "world-class."`,
 
     analyst: (() => {
       let analyticsBlock = "";

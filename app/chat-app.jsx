@@ -74,20 +74,26 @@ function chatReducer(s, a) {
 }
 
 // ────────────────────────────── AI RESPONSE LOGIC ──────────────────────────────
+// ── Shared platform detector — used by makeDraftArtifact + inferResponse ───────
+const PLATFORM_HINTS = {
+  instagram: /\binstagram\b|\big\b|\breel\b|\bstory\b|\bcarousel\b/i,
+  tiktok:    /\btiktok\b|\btt\b/i,
+  linkedin:  /\blinkedin\b|\bli\b/i,
+  facebook:  /\bfacebook\b|\bfb\b/i,
+  x:         /\btwitter\b|\btweet\b|\bx post\b|\bx\.com\b/i,
+  youtube:   /\byoutube\b/i,
+  pinterest: /\bpinterest\b|\bpin\b/i,
+  reddit:    /\breddit\b/i,
+  email:     /\bemail\b|\bnewsletter\b|\bsubject line\b/i,
+  sms:       /\bsms\b|\btext message\b/i,
+};
+function detectPlatform(t) {
+  return Object.entries(PLATFORM_HINTS).find(([_, re]) => re.test(t))?.[0] || "instagram";
+}
+
 // ── Draft helper — platform-aware copy for fallback simulation ─────────────────
 function makeDraftArtifact(t) {
-  const platform =
-    /instagram|ig\b/.test(t) ? "instagram" :
-    /tiktok|tt\b/.test(t)    ? "tiktok"    :
-    /linkedin|li\b/.test(t)  ? "linkedin"  :
-    /facebook|fb\b/.test(t)  ? "facebook"  :
-    /\bx\b|twitter|tweet/.test(t) ? "x"   :
-    /youtube/.test(t)        ? "youtube"   :
-    /pinterest|pin\b/.test(t) ? "pinterest" :
-    /reddit/.test(t)         ? "reddit"    :
-    /email/.test(t)          ? "email"     :
-    /\bsms\b|text message/.test(t) ? "sms" :
-    "instagram";
+  const platform = detectPlatform(t);
 
   const contentType =
     /reel/.test(t)         ? "Reel"      :
