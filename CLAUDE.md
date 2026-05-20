@@ -124,9 +124,14 @@ state.connectors      // { [connectorId]: { connected, status, note, syncCount }
 state.brandPreset     // currently active brand object (null = default MVEDA)
 state.notifications   // toast array
 state.activity        // audit log
+state.activePlan      // chat-authored campaign brief (set by campaign_planner specialist)
+                      // null when no plan; { title, summary, itemCount, goal, audience,
+                      // timeline, budget, channels[], brief (markdown), createdAt }
+                      // CampaignPlanner workspace renders this when present; falls back
+                      // to default grid when null. Actions: setActivePlan, clearActivePlan.
 state.calendar items shape:
   { id, platform, kind, title, body, imagePrompt, imageUrl, imageStatus,
-    status, scheduledAt, scheduledDate, day, channel, tone, campaign, fromChat, createdAt,
+    status, scheduledAt, scheduledDate, day, channel, tone, campaign, fromChat, sourceBriefId, createdAt,
     // After Schedule (publishable platform — row queued in scheduled_posts):
     scheduledPostId, fireAtUtc,
     // After publish (per platform — only the matching set is populated):
@@ -142,8 +147,11 @@ state.calendar items shape:
     — patched via actions.updateItem(id, { imageUrl, imageStatus }) once
       /api/generate returns. Rendered as a 36×36 thumbnail in the queue
       Drafts strip and as a full preview in the draft drawer.
-  actions.addDraft(platform, contentType, copy, imagePrompt, id?) — id is
+  actions.addDraft(platform, contentType, copy, imagePrompt, id?, sourceBriefId?) — id is
     optional; pass one if you need to patch the row later (chat-to-create does).
+    sourceBriefId is optional and only set when the draft was spawned from a
+    campaign brief (state.activePlan.id). No UI consumes it yet — see WORKLOG.md
+    2026-05-19 and BACKLOG.md "Campaign brief persistence + cross-feature wiring".
 ```
 
 **Adding a new action — always touch both places:**
@@ -243,13 +251,14 @@ if (hasCreateVerb && hasContentNoun) { return makeDraftArtifact(t); }
 
 | Tool | Available to | Effect |
 |---|---|---|
-| `delegate_to` | Supervisor | Routes to specialist |
-| `open_workspace` | Supervisor | Opens a workspace panel |
+| `delegate_to` | Supervisor | Routes to specialist (enum: drafter, analyst, brand_guard, inbox, campaign_planner) |
+| `open_workspace` | Supervisor, **Campaign Planner** | Opens a workspace panel |
 | `show_drafts` | Supervisor | Opens drafts canvas |
 | `show_metric` | Supervisor | Shows metric card |
 | `create_draft` | **Drafter** | Produces `draft_created` artifact in chat |
 | `create_email_draft` | **Drafter** | Produces `email_draft` artifact (subject/preheader/body) |
 | `create_sms_draft` | **Drafter** | Produces `sms_draft` artifact (body ≤160, audienceHint, includeStopFooter) |
+| `create_campaign_plan` | **Campaign Planner** | Produces `campaign-plan` artifact (title, summary, itemCount, goal, audience, timeline, channels) — usually paired with `open_workspace("planner")` |
 
 ---
 

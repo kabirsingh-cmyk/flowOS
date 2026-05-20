@@ -146,6 +146,7 @@ DELEGATE TO SPECIALISTS when:
 - Interpreting metrics → delegate_to "analyst"
 - Checking copy compliance → delegate_to "brand_guard"
 - Customer message triage → delegate_to "inbox"
+- If the user wants to plan a campaign, build a campaign brief, create a marketing plan, or map out a product launch → delegate to campaign_planner
 
 Otherwise act directly using available tools.
 
@@ -221,6 +222,86 @@ ${brandBlock}
 
 Triage: Urgent / Standard / Low.
 Output: classification → suggested reply → flag if human review needed.`,
+
+    campaign_planner: `You are FlowOS's campaign planning specialist. Generate complete, structured marketing campaign briefs that a solo marketer or small team can execute immediately.
+
+${brandBlock}
+
+When activated, first check if the user has provided:
+- Campaign goal (required)
+- Target audience (required)
+- Timeline (required)
+- Budget (optional)
+- Product or service being promoted (optional)
+
+If any required field is missing, ask for all missing fields in a single message before generating anything.
+
+Once you have the inputs, generate a campaign brief with these exact sections:
+
+**1. Campaign Overview**
+- Suggested campaign name
+- One-sentence summary
+- Primary objective — must be specific and measurable (use SMART framework)
+- Secondary objectives if applicable
+
+**2. Target Audience**
+Write the primary audience profile in this exact format:
+"[Role] at [company type] who is struggling with [pain point] and looking for [desired outcome]. They discover solutions through [channels] and care most about [priorities]."
+Also note buying stage: awareness / consideration / decision.
+
+**3. Key Messages**
+- Core campaign message (one sentence)
+- 3 supporting messages tied to specific audience pain points
+- One proof point per supporting message (data, case study, or placeholder)
+- Message hierarchy: Why care → What is it → Why us → What to do
+
+**4. Channel Strategy**
+Pick 3-5 channels that actually fit this audience and goal. For each:
+- Why this channel fits
+- What content format to use
+- Effort level: low / medium / high
+- Budget % if budget was provided
+Explain briefly why you excluded other channels.
+
+Consider: email, blog, LinkedIn, Instagram, X, paid search, paid social, PR, community, influencer, events.
+
+**5. Content Calendar**
+Week-by-week table in this exact format:
+| Week | Content Piece | Channel | Priority | Dependencies | Status |
+Mark priorities as Must-have or Nice-to-have. Call out dependencies explicitly (e.g. "Landing page must be live before paid ads launch").
+
+**6. Content Assets Needed**
+Every asset required for the campaign:
+- Asset name and type
+- One-line description of what it must contain
+- Priority: must-have or nice-to-have
+- Effort estimate
+
+**7. Success Metrics**
+- Primary KPI with a target number
+- 3-5 secondary KPIs
+- How each is tracked
+- Reporting cadence
+
+Benchmarks by campaign type to inform targets:
+- Awareness: reach, impressions, brand mentions, direct traffic lift
+- Lead gen: total leads, MQLs, CPL, lead-to-MQL rate
+- Product launch: signups, activation rate, media coverage, social buzz
+- Retention: churn change, NPS, upsell revenue
+
+**8. Risks and Mitigations**
+2-3 realistic risks with a mitigation for each.
+
+**9. Next Steps**
+Immediate actions to start this week. Approvals needed. Key decision points.
+
+After generating the brief, you MUST do both of the following, in this order:
+1. Call create_campaign_plan with title, summary, itemCount, goal, audience, timeline, budget (or ""), channels (array), and brief — where the brief field carries the COMPLETE markdown brief you just wrote (all nine sections, in the exact format above). The canvas renders this; if you abbreviate, the canvas will be empty.
+2. Call open_workspace with target "planner" to open the CampaignPlanner canvas.
+
+End every brief with: "Would you like me to draft specific content pieces from the calendar, adjust for a different budget, or build the email sequence for this campaign?"
+
+${brandVoiceBlock}`,
   };
 
   const defaultPrompt = prompts[specialist] || prompts.supervisor;
@@ -243,7 +324,7 @@ const INTERNAL_TOOLS = [
     input_schema: {
       type: "object",
       properties: {
-        specialist: { type: "string", enum: ["drafter", "analyst", "brand_guard", "inbox"] },
+        specialist: { type: "string", enum: ["drafter", "analyst", "brand_guard", "inbox", "campaign_planner"] },
         context:    { type: "string", description: "What to pass to the specialist" },
       },
       required: ["specialist", "context"],
@@ -346,8 +427,31 @@ INTERNAL_TOOLS.push({
   },
 });
 
+INTERNAL_TOOLS.push({
+  name: "create_campaign_plan",
+  description: "Persist the campaign brief to the CampaignPlanner canvas and surface a campaign-plan summary card inline in the chat. Call this ONCE after writing the full nine-section brief. Pass the full markdown brief in the `brief` field — the planner canvas renders it.",
+  input_schema: {
+    type: "object",
+    properties: {
+      title:        { type: "string", description: "Suggested campaign name from section 1 of the brief." },
+      summary:      { type: "string", description: "One-line summary: '<N items> · <N channels> · <date range or timeline>'. Mirrors the brief's overview." },
+      itemCount:    { type: "number", description: "Total number of content pieces planned across the calendar (count of rows in the section 5 table)." },
+      goal:         { type: "string", description: "Primary objective from section 1 (SMART)." },
+      audience:     { type: "string", description: "Primary audience profile from section 2." },
+      timeline:     { type: "string", description: "Campaign timeline as supplied by the user (e.g. '4 weeks: May 19 → Jun 16')." },
+      budget:       { type: "string", description: "Budget if supplied by the user; empty string otherwise." },
+      channels:     { type: "array", items: { type: "string" }, description: "Channel names picked in section 4 (e.g. ['LinkedIn','Email','Paid Search'])." },
+      brief:        { type: "string", description: "The COMPLETE nine-section campaign brief, in markdown. Include every section the user reads in chat — overview, audience, key messages, channel strategy, the full content calendar table, content assets, success metrics, risks, next steps. This is what the canvas renders. Do not abbreviate." },
+    },
+    required: ["title", "summary", "brief"],
+  },
+});
+
 // Tools available to the Drafter specialist
 const DRAFTER_TOOLS = INTERNAL_TOOLS.filter(t => t.name === "create_draft" || t.name === "create_email_draft" || t.name === "create_sms_draft");
+
+// Tools available to the Campaign Planner specialist
+const PLANNER_TOOLS = INTERNAL_TOOLS.filter(t => t.name === "create_campaign_plan" || t.name === "open_workspace");
 
 // ─── Tool execution loop ──────────────────────────────────────────────────────
 
@@ -465,11 +569,13 @@ export default async function handler(req) {
     // Prefer full Supabase profile; fall back to lightweight client-side brand
     const brand = brandProfile || brandFromClient || null;
 
-    // Supervisor gets all tools; Drafter gets create_draft; others get none
+    // Supervisor gets all tools; Drafter gets create_draft; Planner gets create_campaign_plan + open_workspace; others get none
     const tools = specialist === "supervisor"
       ? [...INTERNAL_TOOLS, ...composioTools]
       : specialist === "drafter"
       ? DRAFTER_TOOLS
+      : specialist === "campaign_planner"
+      ? PLANNER_TOOLS
       : [];
 
     // Build system prompt — agent override replaces the specialist-specific section
