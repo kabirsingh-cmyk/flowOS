@@ -9,7 +9,13 @@
  * Returns:
  *   { ok: true, brand: { name, url, industry, voice, values, claims,
  *     prohibitedTopics, targetAudience, recommendedConnectors,
- *     competitors, palette } }
+ *     competitors, palette, messaging, terminology } }
+ *
+ * voice now includes attributes[] and antiAttributes[] alongside tone /
+ * personality / bannedPhrases. messaging.valuePropositions[] and
+ * terminology.{approved,prohibited}[] are read by api/chat.js
+ * buildBrandVoiceBlock to render the brand voice section in the supervisor
+ * and drafter system prompts.
  */
 
 import { requireAuth } from "./lib/auth.js";
@@ -139,6 +145,8 @@ async function upsertBrand(tenantId, brand) {
       target_audience:        brand.targetAudience,
       recommended_connectors: brand.recommendedConnectors,
       competitors:            brand.competitors,
+      messaging:              brand.messaging,
+      terminology:            brand.terminology,
       brand_analysis:         brand,
       updated_at:             new Date().toISOString(),
     }),
@@ -214,11 +222,20 @@ Return ONLY valid JSON — no markdown fences, no commentary, no extra text. Use
   "voice": {
     "tone": "3–5 word voice descriptor (e.g. 'Ritualistic, opulent, quietly confident' or 'Direct, data-driven, no-fluff')",
     "personality": "2–3 sentence description of brand personality and how it communicates",
-    "bannedPhrases": ["cliché or phrase this brand would never say", "another banned phrase"]
+    "bannedPhrases": ["cliché or phrase this brand would never say", "another banned phrase"],
+    "attributes": ["single-word or short-phrase voice traits the brand IS — e.g. 'warm', 'authoritative', 'playful', 'precise'. 3–6 items.", "another attribute"],
+    "antiAttributes": ["voice traits the brand IS NOT — opposites or pitfalls to avoid, e.g. 'corporate', 'pushy', 'jargon-heavy', 'overly casual'. 2–5 items.", "another anti-attribute"]
   },
   "values": ["core brand value — specific, not generic", "another value", "another value"],
   "claims": ["specific verifiable claim from the site", "another factual claim"],
   "prohibitedTopics": ["topic this brand must never discuss", "another prohibited topic"],
+  "messaging": {
+    "valuePropositions": ["concrete benefit the brand delivers, phrased as the customer would hear it — e.g. 'Same-day commercial refrigeration repair across the Pacific Northwest'. 2–4 items.", "another value proposition"]
+  },
+  "terminology": {
+    "approved": ["preferred terms the brand uses for its own concepts — e.g. 'ritual' instead of 'routine', 'guests' instead of 'customers'. Empty array if no signal.", "another approved term"],
+    "prohibited": ["specific words/phrases the brand must never use in copy — different from bannedPhrases (which can be longer clichés). Single words or short phrases. Empty array if no signal.", "another prohibited term"]
+  },
   "summary": "2–3 sentence brand brief. Lead with who they are and what they do. Note 2–3 key facts pulled from the site. Close with a channel or guardrail observation. Factual and direct — no flowery language, no adjectives about quality or passion. Example: 'Erickson is a locally-owned commercial refrigeration and HVAC business that's been operating across the Pacific Northwest since 1977. Key facts we picked up: union-certified technicians, EPA certified, 24-hour emergency service across WA, OR and ID. For channels, we're recommending Facebook, LinkedIn, Google Ads, Yelp and Google Search Console — the right mix for a B2B service business where local search and reputation drive decisions.'",
   "recommendedConnectors": ["connector_id_1", "connector_id_2"],
   "competitors": [
