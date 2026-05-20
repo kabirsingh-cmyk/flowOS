@@ -4,11 +4,12 @@
 // + live Composio platform tools).  Specialists get plain text back.
 
 const SPECIALIST_LABEL = {
-  supervisor:  "Flow",
-  drafter:     "Drafter",
-  analyst:     "Analyst",
-  brand_guard: "Brand Guard",
-  inbox:       "Inbox",
+  supervisor:       "Flow",
+  drafter:          "Drafter",
+  analyst:          "Analyst",
+  brand_guard:      "Brand Guard",
+  inbox:            "Inbox",
+  campaign_planner: "Planner",
 };
 
 // ─── Format thread history for Anthropic messages array ───────────────────
@@ -83,6 +84,7 @@ async function sendAIMessage({
   t,
   onFallback,
   brand,
+  setActivePlan,
 }) {
   const messages = buildMessages(threadMessages, userText);
 
@@ -147,11 +149,12 @@ async function sendAIMessage({
       brand,
     });
 
-    // Detect create_draft / create_email_draft / create_sms_draft tool calls — attach as inline artifact.
+    // Detect create_draft / create_email_draft / create_sms_draft / create_campaign_plan tool calls — attach as inline artifact.
     // Channel-specific tools win over the generic create_draft when both are present.
-    const emailTool = spec.tools.find(t => t.name === "create_email_draft");
-    const smsTool   = spec.tools.find(t => t.name === "create_sms_draft");
-    const draftTool = spec.tools.find(t => t.name === "create_draft");
+    const emailTool   = spec.tools.find(t => t.name === "create_email_draft");
+    const smsTool     = spec.tools.find(t => t.name === "create_sms_draft");
+    const draftTool   = spec.tools.find(t => t.name === "create_draft");
+    const planTool    = spec.tools.find(t => t.name === "create_campaign_plan");
     const draftArtifact = emailTool ? {
       type:         "email_draft",
       subject:      emailTool.input.subject,
@@ -171,7 +174,33 @@ async function sendAIMessage({
       contentType: draftTool.input.contentType,
       copy:        draftTool.input.copy,
       imagePrompt: draftTool.input.imagePrompt || null,
+    } : planTool ? {
+      type:      "campaign-plan",
+      title:     planTool.input.title,
+      summary:   planTool.input.summary,
+      itemCount: planTool.input.itemCount,
+      goal:      planTool.input.goal || "",
+      audience:  planTool.input.audience || "",
+      timeline:  planTool.input.timeline || "",
+      budget:    planTool.input.budget || "",
+      channels:  planTool.input.channels || [],
     } : undefined;
+
+    // Persist the full brief to the store so CampaignPlanner can render it.
+    // Done before STREAM_DONE so the canvas is ready by the time open_workspace fires.
+    if (planTool && typeof setActivePlan === "function") {
+      setActivePlan({
+        title:     planTool.input.title || "Untitled campaign",
+        summary:   planTool.input.summary || "",
+        itemCount: planTool.input.itemCount || 0,
+        goal:      planTool.input.goal || "",
+        audience:  planTool.input.audience || "",
+        timeline:  planTool.input.timeline || "",
+        budget:    planTool.input.budget || "",
+        channels:  Array.isArray(planTool.input.channels) ? planTool.input.channels : [],
+        brief:     planTool.input.brief || "",
+      });
+    }
 
     if (spec.text) {
       dispatch({ type: "STREAM_TOKEN", channel: channelId, token: spec.text });

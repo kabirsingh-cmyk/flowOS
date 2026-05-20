@@ -451,3 +451,29 @@ Local stash on `feat/klaviyo-sms`: `api/proactive-sms.js`, `api/cron/proactive-s
 Mirrors the proactive-emails design: cron reads `analytics_insights.recommended_actions`, classifies into SMS-friendly rules, Claude drafts ≤160-char body in brand voice, lands in `state.outbound.proactiveSms` for review in `SmsCenter`.
 
 ---
+
+## Campaign brief persistence + cross-feature wiring
+
+**Status:** Open · noted 2026-05-19
+**Priority:** Low — speculative until one of these use cases lands
+
+Today the `campaign_planner` specialist writes the brief into `state.activePlan` (client-only). Brief lives in chat thread text + ephemeral store; refresh wipes the canvas rendering, though the markdown is recoverable from chat history. Persisting it gets justified by either of:
+
+- **Analyst cross-campaign comparison.** Let the Analyst specialist reference past campaign briefs when interpreting metrics — "how did our last launch perform vs this one." Needs briefs in a queryable store the chat backend can read at delegation time.
+- **Campaign history tab on CampaignPlanner.** A second view in the planner workspace listing every brief ever generated for the tenant, with click-to-restore into `state.activePlan`. Today's "Dismiss" is one-way.
+
+**Likely shape if/when built:** `campaign_plans` Supabase table (`id`, `tenant_id`, `title`, `summary`, `goal`, `audience`, `timeline`, `budget`, `channels jsonb`, `brief_md`, `created_at`); persist in `/api/chat.js` when `create_campaign_plan` fires; GET endpoint for history hydration; foreign key from `calendar` items or `scheduled_posts` rows back to `campaign_plans.id`.
+
+---
+
+## sourceBriefId not enforced on CAL_ADD path
+
+**Status:** Open · noted 2026-05-19
+**Priority:** Low — no risk until brief→queue conversion exists
+
+The `sourceBriefId` field is in the calendar item schema (see [WORKLOG.md](WORKLOG.md) 2026-05-19), but only the `QUEUE_ADD_DRAFT` reducer guarantees it gets written — that reducer constructs items field-by-field. The other path into `state.calendar` is `CAL_ADD`, which just spreads pre-built items from the caller (`[...s.calendar, ...a.items]`) — `sourceBriefId` only lands on the row if the caller remembered to put it there.
+
+Today the only `CAL_ADD` caller is `NewCampaignDialog` (no brief involved → correctly leaves the field unset). The risk surfaces when the brief→queue conversion is built: if that future code uses `actions.addCampaign(items, name)` and forgets to stamp `sourceBriefId: state.activePlan.id` onto every item before dispatching, rows will silently lose their back-reference and no error fires.
+
+**Fix when it bites:** either (a) extend `CAL_ADD` to accept a top-level `sourceBriefId` arg and stamp it onto every item in the reducer, or (b) add a dedicated `CAL_ADD_FROM_BRIEF` action that requires the id. (a) is cheaper; (b) is more explicit.
+
