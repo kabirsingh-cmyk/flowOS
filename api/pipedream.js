@@ -30,6 +30,8 @@
  *   PIPEDREAM_ENVIRONMENT   "development" | "production" (default "production")
  */
 
+import { requireAuth } from "./lib/auth.js";
+
 export const config = { runtime: "edge" };
 
 const PD_BASE = "https://api.pipedream.com/v1";
@@ -244,13 +246,25 @@ async function handleListConnections({ tenantId }) {
 
 /**
  * disconnect
- * Remove a Pipedream account.
+ * Remove a Pipedream account. Verifies the accountId belongs to the caller's
+ * tenant before deleting — without this any authenticated user could revoke
+ * any other tenant's connections by enumerating accountIds.
  */
-async function handleDisconnect({ accountId }) {
+async function handleDisconnect({ tenantId, accountId }) {
+  if (!tenantId)  return err("tenantId required");
   if (!accountId) return err("accountId required");
 
   const env = requireEnv();
   const accessToken = await getAccessToken(env);
+
+  const accountsRes = await pdFetch(
+    `/connect/${encodeURIComponent(env.projectId)}/accounts?external_user_id=${encodeURIComponent(tenantId)}`,
+    { method: "GET", headers: { "x-pd-environment": env.environment } },
+    accessToken,
+  );
+  const accounts = accountsRes?.data || accountsRes?.accounts || accountsRes?.items || [];
+  const owns = accounts.some(a => a.id === accountId);
+  if (!owns) return err("account not found for this tenant", 404);
 
   await pdFetch(
     `/connect/${encodeURIComponent(env.projectId)}/accounts/${encodeURIComponent(accountId)}`,
@@ -314,10 +328,15 @@ export default async function handler(req) {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   if (req.method !== "POST")    return err("POST required", 405);
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+
   let body;
   try { body = await req.json(); }
   catch { return err("Invalid JSON body", 400); }
 
+  // Server-trusted tenantId — overrides any client-supplied value.
+  body = { ...body, tenantId: auth.tenantId };
   const { action } = body;
 
   try {
