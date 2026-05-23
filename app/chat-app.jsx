@@ -1028,6 +1028,10 @@ function ChatOSAuthed({ auth, onLogout }) {
       openWorkspace("sms");
       return;
     }
+    if (args.kind === "open_seostudio") {
+      openWorkspace("seo");
+      return;
+    }
     if (args.kind === "push_klaviyo_sms") {
       const d = args.data;
       const smsId = "os_" + Math.random().toString(36).slice(2, 8);

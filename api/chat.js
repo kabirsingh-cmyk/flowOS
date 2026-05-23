@@ -222,6 +222,7 @@ DELEGATE TO SPECIALISTS when:
 - Customer message triage → delegate_to "inbox"
 - If the user wants to plan a campaign, build a campaign brief, create a marketing plan, or map out a product launch → delegate to campaign_planner
 - If the user asks for a drip campaign, nurture sequence, onboarding emails, re-engagement series, win-back campaign, email automation, or any multi-email flow → delegate to drafter with intent to call create_email_sequence
+- If the user asks for an SEO audit, keyword research, content gap analysis, technical SEO check, or competitor SEO comparison → delegate to seo_auditor
 
 Otherwise act directly using available tools.
 
@@ -499,6 +500,40 @@ After generating the brief, you MUST do both of the following, in this order:
 End every brief with: "Would you like me to draft specific content pieces from the calendar, adjust for a different budget, or build the email sequence for this campaign?"
 
 ${brandVoiceBlock}`,
+
+    seo_auditor: `You are FlowOS's SEO specialist. You conduct SEO audits, keyword research, content gap analysis, and competitor comparisons.
+
+${brandBlock}
+
+When activated, ask for:
+- URL or domain to audit (required)
+- Audit type if specified: full_audit / keyword_research / content_gap / technical_check / competitor_comparison (default to full_audit)
+- Target keywords if they have them (optional)
+- Competitors to compare against (optional — if not provided, find 2-3 via web search)
+
+Use web search throughout to research the actual keyword landscape, competitor content, and technical signals. Do not make up data — if web_search returns nothing for a section, leave that section's array empty rather than inventing rows.
+
+OUTPUT CONTRACT
+Do NOT write the audit as markdown in the chat. Instead, call create_seo_audit with the full structured payload — the FlowOS chat renders it as a first-class SeoAuditCard artifact with collapsible tables.
+
+Required call sequence at the end of every audit:
+1. create_seo_audit — fill every applicable field. Required: url, executiveSummary, overallAssessment, keywords, quickWins. Pass [] for sections that genuinely don't apply (e.g. competitors when none were named and none were discovered).
+2. open_workspace target="seo" — opens SEO Studio so the tenant can drill in.
+
+Field expectations:
+- overallAssessment: one of strong_foundation / needs_work / critical_issues
+- executiveSummary: 3-5 sentences, prose — biggest strength, top 3 priorities, headline verdict
+- keywords: 15-25 rows sorted by opportunity high → low. Intent ∈ {informational, commercial, transactional, navigational}. Difficulty ∈ {easy, moderate, hard}.
+- onPageIssues: severity ∈ {Critical, High, Medium, Low}. Critical = blocks indexation or directly hurts rankings.
+- contentGaps: priority ∈ {high, medium, low}. effort ∈ {quick_win, moderate, substantial}.
+- technicalChecks: cover page speed, mobile, structured data, robots.txt, sitemap, canonical tags, HTTPS, broken links, Core Web Vitals signals, duplicate content. Status ∈ {Pass, Fail, Warning}.
+- competitors + competitorNames: omit / empty array if no competitors. competitorNames is the ordered display names (e.g. ["Competitor A","Competitor B"] mapped to actual brand names).
+- quickWins: actions under 2 hours with immediate impact. Each needs action + expectedImpact + effort.
+- strategicInvestments: higher-effort quarterly work. Each needs action + expectedImpact + effort + (optional) dependencies.
+
+After both tool calls, write one short paragraph (2-3 sentences max) in chat introducing the audit and asking: "Would you like me to draft content briefs for the top keyword opportunities, write optimized title tags and meta descriptions, or build a content calendar from the gap analysis?" The card carries the detail — do not restate the sections in prose.
+
+${brandVoiceBlock}`,
   };
 
   const defaultPrompt = prompts[specialist] || prompts.supervisor;
@@ -521,7 +556,7 @@ const INTERNAL_TOOLS = [
     input_schema: {
       type: "object",
       properties: {
-        specialist: { type: "string", enum: ["drafter", "analyst", "brand_guard", "inbox", "campaign_planner"] },
+        specialist: { type: "string", enum: ["drafter", "analyst", "brand_guard", "inbox", "campaign_planner", "seo_auditor"] },
         context:    { type: "string", description: "What to pass to the specialist" },
       },
       required: ["specialist", "context"],
@@ -535,7 +570,7 @@ const INTERNAL_TOOLS = [
       properties: {
         target: {
           type: "string",
-          enum: ["command","studio","emailstudio","searchstudio","organic","planner","inbox","insights","connections","memory","autonomy"],
+          enum: ["command","studio","emailstudio","searchstudio","organic","planner","inbox","insights","connections","memory","autonomy","seo"],
         },
       },
       required: ["target"],
@@ -670,6 +705,126 @@ INTERNAL_TOOLS.push({
 });
 
 INTERNAL_TOOLS.push({
+  name: "create_seo_audit",
+  description: "Persist a complete, structured SEO audit as a first-class artifact and surface it inline in the chat. Call this ONCE at the end of an SEO audit instead of dumping the audit as markdown. Every section must be populated from real research (use web_search). Pair with open_workspace target=\"seo\" so the tenant can drill in.",
+  input_schema: {
+    type: "object",
+    properties: {
+      url:              { type: "string", description: "Domain or URL audited (e.g. 'mveda.com', 'https://example.com/pricing')." },
+      auditType:        { type: "string", enum: ["full_audit", "keyword_research", "content_gap", "technical_check", "competitor_comparison"], description: "Audit scope. Defaults to full_audit." },
+      overallAssessment:{ type: "string", enum: ["strong_foundation", "needs_work", "critical_issues"], description: "Headline verdict for the executive summary." },
+      executiveSummary: { type: "string", description: "3-5 sentence executive summary: biggest strength, top 3 priorities, overall assessment in prose." },
+      keywords: {
+        type: "array",
+        description: "15-25 keyword rows sorted by opportunity (high → low). Pull from real research, not invented data.",
+        items: {
+          type: "object",
+          properties: {
+            keyword:              { type: "string" },
+            difficulty:           { type: "string", enum: ["easy", "moderate", "hard"] },
+            opportunity:          { type: "string", enum: ["high", "medium", "low"] },
+            currentRanking:       { type: "string", description: "Current SERP position if known (e.g. '#7', 'not ranked', 'page 2')." },
+            intent:               { type: "string", enum: ["informational", "commercial", "transactional", "navigational"] },
+            recommendedContentType:{ type: "string", description: "What format to publish (e.g. 'long-form guide', 'comparison page', 'product page')." },
+          },
+          required: ["keyword", "difficulty", "opportunity", "intent"],
+        },
+      },
+      onPageIssues: {
+        type: "array",
+        description: "Pages with concrete on-page SEO problems. Critical = blocks indexation or directly hurts rankings.",
+        items: {
+          type: "object",
+          properties: {
+            page:             { type: "string", description: "URL or page name." },
+            issue:            { type: "string" },
+            severity:         { type: "string", enum: ["Critical", "High", "Medium", "Low"] },
+            recommendedFix:   { type: "string" },
+          },
+          required: ["page", "issue", "severity", "recommendedFix"],
+        },
+      },
+      contentGaps: {
+        type: "array",
+        description: "Topics the site doesn't cover but should, based on demand and competitor coverage.",
+        items: {
+          type: "object",
+          properties: {
+            topic:    { type: "string" },
+            why:      { type: "string", description: "Demand, competitor coverage, funnel position — why this gap matters." },
+            format:   { type: "string", description: "Blog, landing page, guide, comparison, etc." },
+            priority: { type: "string", enum: ["high", "medium", "low"] },
+            effort:   { type: "string", enum: ["quick_win", "moderate", "substantial"], description: "quick_win 1-2h · moderate half-day · substantial multi-day." },
+          },
+          required: ["topic", "why", "priority"],
+        },
+      },
+      technicalChecks: {
+        type: "array",
+        description: "Technical SEO checklist. Cover: page speed, mobile, structured data, robots.txt, sitemap, canonical tags, HTTPS, broken links, Core Web Vitals, duplicate content risk.",
+        items: {
+          type: "object",
+          properties: {
+            check:   { type: "string", description: "What was checked (e.g. 'XML sitemap', 'Core Web Vitals — LCP')." },
+            status:  { type: "string", enum: ["Pass", "Fail", "Warning"] },
+            details: { type: "string", description: "Findings and recommended action." },
+          },
+          required: ["check", "status", "details"],
+        },
+      },
+      competitors: {
+        type: "array",
+        description: "Optional competitor comparison rows. Omit or leave empty if no competitors were provided or discoverable.",
+        items: {
+          type: "object",
+          properties: {
+            dimension:    { type: "string", description: "Row name (e.g. 'Keyword coverage', 'Content depth', 'Backlink signals')." },
+            yourSite:     { type: "string" },
+            competitorA:  { type: "string" },
+            competitorB:  { type: "string" },
+            winner:       { type: "string", description: "'You', 'Competitor A', 'Competitor B', or 'Tie'." },
+          },
+          required: ["dimension", "yourSite"],
+        },
+      },
+      competitorNames: {
+        type: "array",
+        items: { type: "string" },
+        description: "Display names for competitor A/B columns, in order. Empty if no competitors.",
+      },
+      quickWins: {
+        type: "array",
+        description: "Actions under 2 hours with immediate impact — do this week.",
+        items: {
+          type: "object",
+          properties: {
+            action:         { type: "string", description: "Specific action to take." },
+            expectedImpact: { type: "string" },
+            effort:         { type: "string", description: "e.g. '30 min', '1-2 hours'." },
+          },
+          required: ["action", "expectedImpact"],
+        },
+      },
+      strategicInvestments: {
+        type: "array",
+        description: "Higher-effort actions for long-term growth — do this quarter.",
+        items: {
+          type: "object",
+          properties: {
+            action:         { type: "string" },
+            expectedImpact: { type: "string" },
+            effort:         { type: "string", description: "e.g. '1 week', '2 sprints'." },
+            dependencies:   { type: "string", description: "Anything that must happen first. Empty if none." },
+          },
+          required: ["action", "expectedImpact"],
+        },
+      },
+    },
+    required: ["url", "executiveSummary", "overallAssessment", "keywords", "quickWins"],
+  },
+});
+
+INTERNAL_TOOLS.push({
   name: "create_campaign_plan",
   description: "Persist the campaign brief to the CampaignPlanner canvas and surface a campaign-plan summary card inline in the chat. Call this ONCE after writing the full nine-section brief. Pass the full markdown brief in the `brief` field — the planner canvas renders it.",
   input_schema: {
@@ -694,6 +849,21 @@ const DRAFTER_TOOLS = INTERNAL_TOOLS.filter(t => t.name === "create_draft" || t.
 
 // Tools available to the Campaign Planner specialist
 const PLANNER_TOOLS = INTERNAL_TOOLS.filter(t => t.name === "create_campaign_plan" || t.name === "open_workspace");
+
+// Anthropic server tool — web search. Anthropic executes it server-side and
+// returns server_tool_use + web_search_tool_result blocks in the same response;
+// we do not execute it ourselves. Cap usage per audit to control cost/latency.
+const WEB_SEARCH_TOOL = {
+  type:     "web_search_20250305",
+  name:     "web_search",
+  max_uses: 10,
+};
+
+// Tools available to the SEO Auditor specialist
+const SEO_AUDITOR_TOOLS = [
+  ...INTERNAL_TOOLS.filter(t => t.name === "open_workspace" || t.name === "create_seo_audit"),
+  WEB_SEARCH_TOOL,
+];
 
 // ─── Tool execution loop ──────────────────────────────────────────────────────
 
@@ -818,6 +988,8 @@ export default async function handler(req) {
       ? DRAFTER_TOOLS
       : specialist === "campaign_planner"
       ? PLANNER_TOOLS
+      : specialist === "seo_auditor"
+      ? SEO_AUDITOR_TOOLS
       : [];
 
     // Build system prompt — agent override replaces the specialist-specific section

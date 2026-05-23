@@ -10,6 +10,7 @@ const SPECIALIST_LABEL = {
   brand_guard:      "Brand Guard",
   inbox:            "Inbox",
   campaign_planner: "Planner",
+  seo_auditor:      "SEO Auditor",
 };
 
 // ─── Format thread history for Anthropic messages array ───────────────────
@@ -149,14 +150,29 @@ async function sendAIMessage({
       brand,
     });
 
-    // Detect create_draft / create_email_draft / create_sms_draft / create_email_sequence / create_campaign_plan tool calls — attach as inline artifact.
+    // Detect create_draft / create_email_draft / create_sms_draft / create_email_sequence / create_campaign_plan / create_seo_audit tool calls — attach as inline artifact.
     // Channel-specific tools win over the generic create_draft when both are present.
     const sequenceTool = spec.tools.find(t => t.name === "create_email_sequence");
     const emailTool   = spec.tools.find(t => t.name === "create_email_draft");
     const smsTool     = spec.tools.find(t => t.name === "create_sms_draft");
     const draftTool   = spec.tools.find(t => t.name === "create_draft");
     const planTool    = spec.tools.find(t => t.name === "create_campaign_plan");
-    const draftArtifact = sequenceTool ? {
+    const auditTool   = spec.tools.find(t => t.name === "create_seo_audit");
+    const draftArtifact = auditTool ? {
+      type:                 "seo_audit",
+      url:                  auditTool.input.url || "",
+      auditType:            auditTool.input.auditType || "full_audit",
+      overallAssessment:    auditTool.input.overallAssessment || "needs_work",
+      executiveSummary:     auditTool.input.executiveSummary || "",
+      keywords:             Array.isArray(auditTool.input.keywords) ? auditTool.input.keywords : [],
+      onPageIssues:         Array.isArray(auditTool.input.onPageIssues) ? auditTool.input.onPageIssues : [],
+      contentGaps:          Array.isArray(auditTool.input.contentGaps) ? auditTool.input.contentGaps : [],
+      technicalChecks:      Array.isArray(auditTool.input.technicalChecks) ? auditTool.input.technicalChecks : [],
+      competitors:          Array.isArray(auditTool.input.competitors) ? auditTool.input.competitors : [],
+      competitorNames:      Array.isArray(auditTool.input.competitorNames) ? auditTool.input.competitorNames : [],
+      quickWins:            Array.isArray(auditTool.input.quickWins) ? auditTool.input.quickWins : [],
+      strategicInvestments: Array.isArray(auditTool.input.strategicInvestments) ? auditTool.input.strategicInvestments : [],
+    } : sequenceTool ? {
       type:              "email_sequence",
       sequenceType:      sequenceTool.input.sequenceType,
       goal:              sequenceTool.input.goal || "",

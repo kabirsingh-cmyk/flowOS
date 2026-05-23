@@ -634,6 +634,283 @@ function EmailSequenceCard({ artifact, onOpen }) {
   );
 }
 
+const ASSESSMENT_META = {
+  strong_foundation: { label: "Strong foundation", tone: "ok",     color: "var(--success)" },
+  needs_work:        { label: "Needs work",        tone: "warn",   color: "oklch(62% 0.14 70)" },
+  critical_issues:   { label: "Critical issues",   tone: "danger", color: "oklch(48% 0.16 25)" },
+};
+
+const SEVERITY_COLOR = {
+  Critical: "oklch(48% 0.16 25)",
+  High:     "oklch(54% 0.15 40)",
+  Medium:   "oklch(62% 0.14 70)",
+  Low:      "var(--muted)",
+};
+
+const STATUS_COLOR = {
+  Pass:    "var(--success)",
+  Fail:    "oklch(48% 0.16 25)",
+  Warning: "oklch(62% 0.14 70)",
+};
+
+const OPPORTUNITY_COLOR = {
+  high:   "var(--success)",
+  medium: "oklch(62% 0.14 70)",
+  low:    "var(--muted)",
+};
+
+const AUDIT_TYPE_LABEL = {
+  full_audit:            "Full audit",
+  keyword_research:      "Keyword research",
+  content_gap:           "Content gap",
+  technical_check:       "Technical check",
+  competitor_comparison: "Competitor comparison",
+};
+
+const EFFORT_LABEL = {
+  quick_win:   "Quick win",
+  moderate:    "Moderate",
+  substantial: "Substantial",
+};
+
+function SeoAuditCard({ artifact, onOpen }) {
+  const [openSection, setOpenSection] = useStateChat("keywords");
+  const accent = "oklch(54% 0.13 200)";
+
+  const assessment = ASSESSMENT_META[artifact.overallAssessment] || ASSESSMENT_META.needs_work;
+  const typeLabel  = AUDIT_TYPE_LABEL[artifact.auditType] || "SEO audit";
+  const compNames  = Array.isArray(artifact.competitorNames) && artifact.competitorNames.length
+    ? artifact.competitorNames
+    : ["Competitor A", "Competitor B"];
+
+  const sections = [
+    { id: "keywords",    label: "Keyword opportunities", count: artifact.keywords.length },
+    { id: "onpage",      label: "On-page issues",        count: artifact.onPageIssues.length },
+    { id: "gaps",        label: "Content gaps",          count: artifact.contentGaps.length },
+    { id: "technical",   label: "Technical checks",      count: artifact.technicalChecks.length },
+    { id: "competitors", label: "Competitor comparison", count: artifact.competitors.length },
+    { id: "actions",     label: "Action plan",           count: artifact.quickWins.length + artifact.strategicInvestments.length },
+  ].filter(s => s.count > 0);
+
+  const cell = { fontSize: 12, color: "var(--ink-2)", padding: "6px 8px", borderTop: "1px solid var(--rule)" };
+  const headerCell = { ...cell, color: "var(--muted)", fontWeight: 500, borderTop: "none", letterSpacing: "0.04em", textTransform: "uppercase", fontSize: 10 };
+
+  return (
+    <div data-testid="seo-audit-card" style={{
+      marginTop: 10,
+      border: "1px solid var(--rule-strong)",
+      borderRadius: 6,
+      background: "var(--paper)",
+      overflow: "hidden",
+    }}>
+      {/* Header */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "9px 12px",
+        borderBottom: "1px solid var(--rule)",
+        background: "var(--paper-2)",
+      }}>
+        <Icon name="search" size={12}/>
+        <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", flex: 1 }}>
+          SEO audit · {typeLabel}
+        </span>
+        <Chip tone={assessment.tone}>{assessment.label}</Chip>
+      </div>
+
+      {/* URL + summary */}
+      <div style={{
+        padding: "10px 14px 12px 17px",
+        borderLeft: `3px solid ${accent}`,
+        fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55,
+      }}>
+        {artifact.url && (
+          <div className="mono" style={{ fontSize: 11, color: "var(--ink)", marginBottom: 6, wordBreak: "break-all" }}>{artifact.url}</div>
+        )}
+        {artifact.executiveSummary && (
+          <div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>{artifact.executiveSummary}</div>
+        )}
+      </div>
+
+      {/* Collapsible sections */}
+      <div style={{ borderTop: "1px solid var(--rule)" }}>
+        {sections.map((sec, i) => {
+          const isOpen = openSection === sec.id;
+          return (
+            <div key={sec.id} style={{ borderBottom: i < sections.length - 1 ? "1px solid var(--rule)" : "none" }}>
+              <button
+                onClick={() => setOpenSection(isOpen ? null : sec.id)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  width: "100%", padding: "10px 14px",
+                  background: isOpen ? "var(--paper-2)" : "transparent",
+                  border: "none", cursor: "pointer", textAlign: "left",
+                }}
+              >
+                <span style={{ fontSize: 12.5, color: "var(--ink)", flex: 1, fontWeight: 500 }}>
+                  {sec.label}
+                </span>
+                <span className="mono" style={{ fontSize: 10.5, color: "var(--muted-2)" }}>
+                  {sec.count}
+                </span>
+                <Icon name={isOpen ? "chevron-up" : "chevron-down"} size={11}/>
+              </button>
+
+              {isOpen && sec.id === "keywords" && (
+                <div style={{ padding: "0 14px 12px", overflowX: "auto" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(140px,2fr) 90px 110px 100px 110px minmax(140px,1.6fr)" }}>
+                    <div style={headerCell}>Keyword</div>
+                    <div style={headerCell}>Difficulty</div>
+                    <div style={headerCell}>Opportunity</div>
+                    <div style={headerCell}>Ranking</div>
+                    <div style={headerCell}>Intent</div>
+                    <div style={headerCell}>Content type</div>
+                    {artifact.keywords.map((k, j) => (
+                      <React.Fragment key={j}>
+                        <div style={{ ...cell, color: "var(--ink)", fontWeight: 500 }}>{k.keyword}</div>
+                        <div style={cell}>{k.difficulty}</div>
+                        <div style={{ ...cell, color: OPPORTUNITY_COLOR[k.opportunity] || "var(--ink-2)", fontWeight: 500 }}>{k.opportunity}</div>
+                        <div style={{ ...cell, fontFamily: "var(--font-mono)" }}>{k.currentRanking || "—"}</div>
+                        <div style={cell}>{k.intent}</div>
+                        <div style={cell}>{k.recommendedContentType || "—"}</div>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {isOpen && sec.id === "onpage" && (
+                <div style={{ padding: "0 14px 12px", overflowX: "auto" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(140px,1.4fr) minmax(160px,2fr) 90px minmax(160px,2fr)" }}>
+                    <div style={headerCell}>Page</div>
+                    <div style={headerCell}>Issue</div>
+                    <div style={headerCell}>Severity</div>
+                    <div style={headerCell}>Fix</div>
+                    {artifact.onPageIssues.map((p, j) => (
+                      <React.Fragment key={j}>
+                        <div style={{ ...cell, fontFamily: "var(--font-mono)", fontSize: 11.5, wordBreak: "break-all" }}>{p.page}</div>
+                        <div style={cell}>{p.issue}</div>
+                        <div style={{ ...cell, color: SEVERITY_COLOR[p.severity] || "var(--ink-2)", fontWeight: 500 }}>{p.severity}</div>
+                        <div style={cell}>{p.recommendedFix}</div>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {isOpen && sec.id === "gaps" && (
+                <div style={{ padding: "0 14px 12px" }}>
+                  {artifact.contentGaps.map((g, j) => (
+                    <div key={j} style={{
+                      padding: "10px 0",
+                      borderTop: j ? "1px solid var(--rule)" : "1px solid var(--rule)",
+                      fontSize: 12.5, lineHeight: 1.55,
+                    }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                        <span style={{ fontWeight: 500, color: "var(--ink)" }}>{g.topic}</span>
+                        <Chip tone={g.priority === "high" ? "accent" : "neutral"}>{g.priority}</Chip>
+                        {g.effort && <span className="mono" style={{ fontSize: 10.5, color: "var(--muted)" }}>{EFFORT_LABEL[g.effort] || g.effort}</span>}
+                        {g.format && <span className="mono" style={{ fontSize: 10.5, color: "var(--muted-2)" }}>· {g.format}</span>}
+                      </div>
+                      <div style={{ marginTop: 4, color: "var(--ink-2)" }}>{g.why}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {isOpen && sec.id === "technical" && (
+                <div style={{ padding: "0 14px 12px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(140px,1.4fr) 90px minmax(180px,2.4fr)" }}>
+                    <div style={headerCell}>Check</div>
+                    <div style={headerCell}>Status</div>
+                    <div style={headerCell}>Details</div>
+                    {artifact.technicalChecks.map((c, j) => (
+                      <React.Fragment key={j}>
+                        <div style={{ ...cell, color: "var(--ink)" }}>{c.check}</div>
+                        <div style={{ ...cell, color: STATUS_COLOR[c.status] || "var(--ink-2)", fontWeight: 500 }}>{c.status}</div>
+                        <div style={cell}>{c.details}</div>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {isOpen && sec.id === "competitors" && (
+                <div style={{ padding: "0 14px 12px", overflowX: "auto" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(120px,1.2fr) 1fr 1fr 1fr 90px" }}>
+                    <div style={headerCell}>Dimension</div>
+                    <div style={headerCell}>Your site</div>
+                    <div style={headerCell}>{compNames[0] || "Competitor A"}</div>
+                    <div style={headerCell}>{compNames[1] || "Competitor B"}</div>
+                    <div style={headerCell}>Winner</div>
+                    {artifact.competitors.map((c, j) => (
+                      <React.Fragment key={j}>
+                        <div style={{ ...cell, color: "var(--ink)", fontWeight: 500 }}>{c.dimension}</div>
+                        <div style={cell}>{c.yourSite || "—"}</div>
+                        <div style={cell}>{c.competitorA || "—"}</div>
+                        <div style={cell}>{c.competitorB || "—"}</div>
+                        <div style={{ ...cell, fontWeight: 500, color: c.winner === "You" ? "var(--success)" : "var(--ink-2)" }}>{c.winner || "—"}</div>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {isOpen && sec.id === "actions" && (
+                <div style={{ padding: "0 14px 12px", fontSize: 12.5, lineHeight: 1.55 }}>
+                  {artifact.quickWins.length > 0 && (
+                    <div style={{ paddingTop: 8 }}>
+                      <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>
+                        Quick wins · this week
+                      </div>
+                      {artifact.quickWins.map((q, j) => (
+                        <div key={j} style={{ padding: "6px 0", borderTop: j ? "1px dashed var(--rule)" : "none" }}>
+                          <div style={{ color: "var(--ink)", fontWeight: 500 }}>{q.action}</div>
+                          <div style={{ display: "flex", gap: 12, marginTop: 2, color: "var(--muted-2)" }}>
+                            <span><span style={{ color: "var(--muted)" }}>Impact · </span>{q.expectedImpact}</span>
+                            {q.effort && <span><span style={{ color: "var(--muted)" }}>Effort · </span>{q.effort}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {artifact.strategicInvestments.length > 0 && (
+                    <div style={{ paddingTop: 12 }}>
+                      <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>
+                        Strategic investments · this quarter
+                      </div>
+                      {artifact.strategicInvestments.map((s, j) => (
+                        <div key={j} style={{ padding: "6px 0", borderTop: j ? "1px dashed var(--rule)" : "none" }}>
+                          <div style={{ color: "var(--ink)", fontWeight: 500 }}>{s.action}</div>
+                          <div style={{ display: "flex", gap: 12, marginTop: 2, color: "var(--muted-2)", flexWrap: "wrap" }}>
+                            <span><span style={{ color: "var(--muted)" }}>Impact · </span>{s.expectedImpact}</span>
+                            {s.effort && <span><span style={{ color: "var(--muted)" }}>Effort · </span>{s.effort}</span>}
+                            {s.dependencies && <span><span style={{ color: "var(--muted)" }}>Depends · </span>{s.dependencies}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Actions */}
+      <div style={{
+        padding: "10px 12px",
+        borderTop: "1px solid var(--rule)",
+        display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap",
+      }}>
+        <Btn size="sm" variant="primary" onClick={() => onOpen({ kind: "open_seostudio", data: artifact })}>
+          <Icon name="external-link" size={11}/> Open in SEO Studio
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
 function ArtifactCard({ artifact, onOpen }) {
   if (!artifact) return null;
   const t = artifact.type;
@@ -648,6 +925,10 @@ function ArtifactCard({ artifact, onOpen }) {
 
   if (t === "email_sequence") {
     return <EmailSequenceCard artifact={artifact} onOpen={onOpen}/>;
+  }
+
+  if (t === "seo_audit") {
+    return <SeoAuditCard artifact={artifact} onOpen={onOpen}/>;
   }
 
   if (t === "email") {
