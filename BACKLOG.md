@@ -7,8 +7,8 @@ Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` ar
 | id | title | status | last-touched |
 |---|---|---|---|
 | b_8cad | Audit and wire remaining social platform publishers via Composio | in-progress | 2026-05-22 |
-| b_0c94 | Server-side JWT verification on every /api/* endpoint | in-progress | 2026-05-22 |
-| b_9d59 | Enable Row Level Security on every table | in-progress | 2026-05-22 |
+| b_0c94 | Server-side JWT verification on every /api/* endpoint | done | 2026-05-22 |
+| b_9d59 | Enable Row Level Security on every table | done | 2026-05-22 |
 | b_cc01 | Add missing migrations: brands, channels, posts, google_ads_tokens, proactive_drafts | in-progress | 2026-05-22 |
 | b_3037 | Proactive SMS feature (analogue to proactive-emails) | in-progress | 2026-05-22 |
 | b_43d9 | Reddit native image posts (bypass Composio) | backlog | 2026-05-22 |
@@ -94,42 +94,51 @@ Partial · updated 2026-05-14. Priority: Medium — five platforms now publish (
 
 ## b_0c94 · Server-side JWT verification on every /api/* endpoint
 
-- **status**: in-progress
+- **status**: done
 - **created**: 2026-05-22
 - **last-touched**: 2026-05-22
 - **effort**: unsized
 - **source**: bootstrap (from Server-side auth: JWT verification on every /api/* endpoint  `[in progress]`)
 - **depends-on**: []
-- **touches**: api/lib/auth.js, api/chat.js, api/generate.js, api/composio.js, api/brand-import.js, api/analytics-ingest.js, api/linkedin.js, api/facebook.js, api/x.js, api/instagram.js, api/reddit.js, api/klaviyo.js, api/proactive-drafts.js, api/proactive-emails.js, api/scheduled-posts.js, api/google-ads.js, api/google-ads-auth.js, api/cron/, app/supabase.jsx
+- **touches**: api/lib/auth.js, api/chat.js, api/generate.js, api/composio.js, api/brand-import.js, api/analytics-ingest.js, api/linkedin.js, api/facebook.js, api/x.js, api/instagram.js, api/reddit.js, api/klaviyo.js, api/proactive-drafts.js, api/proactive-emails.js, api/scheduled-posts.js, api/google-ads.js, api/google-ads-auth.js, api/cron/, app/supabase.jsx, api/replicate.js, api/higgsfield.js, api/luma.js, api/optimizely.js, api/wordpress.js, api/audiostack.js, api/pipedream.js
 
 ### Why
 In progress on `feat/auth-and-rls` · added 2026-05-14. Priority: Critical — gates every other security control. Every `/api/*.js` reads `tenantId` from the request body or query and trusts it. `api/scheduled-posts.js:14` even explicitly documents "tenantId is trusted from the request body … RLS is intentionally not used." With the anon key shipped in `app/supabase.jsx`, any caller can impersonate any tenant and publish/read/write on their behalf.
 
 ### Notes
-Plan:
-- Add `api/lib/auth.js` exporting `requireAuth(req)` (verifies Supabase JWT against `SUPABASE_JWT_SECRET`, returns `{ tenantId, claims }`) and `requireCron(req)` (verifies `Authorization: Bearer ${CRON_SECRET}`, fail closed if env var unset).
-- Apply `requireAuth` to: chat, generate, composio, brand-import, analytics-ingest, linkedin, facebook, x, instagram, reddit, klaviyo, proactive-drafts, proactive-emails, scheduled-posts, google-ads, google-ads-auth.
-- Apply `requireCron` to all `/api/cron/*` handlers (currently `if (cronSecret)` → fails open when env unset).
-- Frontend: every `fetch("/api/...")` in `app/*.jsx` must send `Authorization: Bearer ${session.access_token}` from the existing Supabase session.
+Shipped 2026-05-22. The bulk landed earlier on `main` (api/lib/auth.js + requireAuth/requireCron/requireAuthOrCron applied to chat, generate, composio, brand-import, analytics-ingest, the five social platform handlers, klaviyo, proactive-* POST, scheduled-posts, google-ads, all cron handlers — May 18 work). Final gap closed on `chore/auth-rls-audit` (commit `b21f69d`): an audit of every `/api/*` route found seven still trusting `body.tenantId`:
+- `api/replicate.js`, `api/higgsfield.js`, `api/luma.js`, `api/optimizely.js`, `api/wordpress.js`, `api/audiostack.js` — Direct-API connector routes that persisted credentials per-tenant
+- `api/pipedream.js` — Pipedream Connect token minting + account list/disconnect
+
+All seven now call `requireAuth(req)` and override `body.tenantId` with the verified `auth.tenantId` (canonical pattern from `api/composio.js`). Pipedream's disconnect also gained a tenant-ownership preflight (was: any authenticated user could revoke any tenant's accounts by enumerating accountIds).
+
+Intentionally left without auth, both verified safe:
+- `api/google-ads-auth.js` — 410 tombstone since the Composio cutover
+- `api/dev/mint-token.js` — hard-gated on `VERCEL_ENV !== "production"`
+
+The two follow-up items b_6c61 (verify Composio status/list_connections post-JWT) and b_d25a (verify brand-import scoping post-JWT) remain open — they were carved out specifically as "do this once b_0c94 lands."
 
 ## b_9d59 · Enable Row Level Security on every table
 
-- **status**: in-progress
+- **status**: done
 - **created**: 2026-05-22
 - **last-touched**: 2026-05-22
 - **effort**: unsized
 - **source**: bootstrap (from Row Level Security on every table  `[in progress]`)
 - **depends-on**: []
-- **touches**: db/migrations/001_*.sql, db/migrations/002_agent_overrides.sql, db/migrations/003_*.sql, db/migrations/004_*.sql, db/migrations/005_scheduled_posts.sql, app/supabase.jsx
+- **touches**: db/migrations/007_core_schema_and_rls.sql, supabase/migrations/2026-05-18-connector-credentials.sql, app/supabase.jsx, app/insights.jsx
 
 ### Why
 In progress on `feat/auth-and-rls` · added 2026-05-14. Priority: Critical — companion to JWT auth. `app/supabase.jsx` ships the public anon key in client code; the comment claims "all data is protected by Row Level Security" but RLS is off everywhere. 001 and 002 migrations have RLS lines commented out. 003 / 004 / 005 ship with no RLS clauses at all. Tables: `generation_jobs`, `media_uploads`, `agent_overrides`, `analytics_snapshots`, `analytics_insights`, `proactive_emails`, `scheduled_posts`.
 
 ### Notes
-Plan:
-- `alter table … enable row level security` on every public-schema table.
-- Per-table policy: `using (tenant_id = auth.uid()::text)` for select/insert/update/delete. Confirm text vs uuid cast per table.
-- Service-role paths in `/api` continue to work because service-role bypasses RLS.
+Shipped 2026-05-22. Implementation landed earlier on `main` in `db/migrations/007_core_schema_and_rls.sql` (May 18): defines the missing brands/channels/posts/google_ads_tokens/proactive_drafts tables and enables RLS + tenant-isolation select+modify policies on all 12 public-schema tables (`generation_jobs`, `media_uploads`, `agent_overrides`, `analytics_snapshots`, `analytics_insights`, `proactive_emails`, `scheduled_posts`, `brands`, `channels`, `posts`, `google_ads_tokens`, `proactive_drafts`). `supabase/migrations/2026-05-18-connector-credentials.sql` enables RLS on the 13th table (`connector_credentials`) with no policies — service-role only, intentional.
+
+Audit on `chore/auth-rls-audit` (2026-05-22) cross-referenced every table in `CREATE TABLE` migrations against tables actually referenced via `/rest/v1/<table>` in api code — every reference matches a table with RLS, no orphans. Frontend direct-REST reads in `app/insights.jsx` send the user JWT as `Authorization: Bearer ${access_token}` alongside the anon key; without the JWT the read returns zero rows.
+
+Service-role writes from `/api/*` (including all six Direct-API connector routes via `api/lib/directCredentials.js` and the cron-fired publishers) continue to work because the service-role key bypasses RLS — which is correct, since those paths now identify the tenant via `requireAuth(req)` (b_0c94) before writing.
+
+This closes b_9d59. Outstanding hardening followups stay open as their own items: b_b826 (Google Ads OAuth state HMAC — moot post-Composio cutover but the item is still on the board), b_8f1f (don't trust client-supplied brand in chat prompts — separate from tenant id).
 
 ## b_cc01 · Add missing migrations: brands, channels, posts, google_ads_tokens, proactive_drafts
 
