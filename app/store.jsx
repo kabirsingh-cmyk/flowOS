@@ -2,6 +2,10 @@
 // All workspaces read from `state` and mutate via `actions`.
 const { useReducer: useReducerStore, useCallback: useCallbackStore } = React;
 
+// Platforms that have a working publish path (via PLATFORM_PUBLISHERS in workspaces3.jsx).
+// Keep in sync with that map.
+const PLATFORM_PUBLISHERS = new Set(["linkedin", "facebook", "x", "instagram", "reddit"]);
+
 function mveda_initialState() {
   return {
     calendar: SEED.calendar.map(c => ({ ...c })),
@@ -30,6 +34,13 @@ function mveda_initialState() {
       { name: "X Ads",         publish: "human", reply: "n/a",   ai: "review" },
       { name: "X",             publish: "auto",  reply: "human", ai: "review" },
       { name: "Pinterest",     publish: "auto",  reply: "n/a",   ai: "review" },
+      { name: "Threads",       publish: "auto",  reply: "human", ai: "review" },
+      { name: "Bluesky",       publish: "auto",  reply: "human", ai: "review" },
+      { name: "WhatsApp",      publish: "human", reply: "human", ai: "review" },
+      { name: "Telegram",      publish: "human", reply: "human", ai: "review" },
+      { name: "Snapchat",      publish: "auto",  reply: "n/a",   ai: "review" },
+      { name: "Discord",       publish: "human", reply: "human", ai: "review" },
+      { name: "Google Business", publish: "human", reply: "human", ai: "review" },
     ],
     thresholds: { confidence: 85, dailyCap: 12, sla: 90 },
     activity: SEED.audit.map(a => ({ ...a, id: "e_" + Math.random().toString(36).slice(2,8) })),
@@ -320,6 +331,7 @@ function mveda_reducer(s, a) {
       };
     }
     case "QUEUE_ADD_DRAFT": {
+      const platformKey = (a.platform || "").toLowerCase();
       const item = {
         id:            a.id || ("d_" + Math.random().toString(36).slice(2,8)),
         platform:      a.platform,
@@ -336,6 +348,7 @@ function mveda_reducer(s, a) {
         channel:       a.platform,
         tone:          "Chat draft",
         sourceBriefId: a.sourceBriefId || null,
+        noPublishPath: !PLATFORM_PUBLISHERS.has(platformKey),
         createdAt:     new Date().toISOString(),
       };
       return { ...s,

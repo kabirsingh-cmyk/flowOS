@@ -475,13 +475,22 @@ function PublishingQueue({ state, actions }) {
                     ) : (
                       <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }}/>
                     )}
-                    <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: 3 }}>
                       <div style={{ fontSize: 11, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {(item.body || item.title || "").slice(0, 50)}
                       </div>
                       <div style={{ fontSize: 10, color: "var(--muted)" }}>
                         {abbr} · {item.kind || item.contentType || "Post"} · draft
                       </div>
+                      {item.noPublishPath && (
+                        <div style={{
+                          fontSize: 10, padding: "3px 6px", borderRadius: 3,
+                          background: "oklch(96% 0.04 340)", border: "1px solid oklch(82% 0.12 340)",
+                          color: "oklch(35% 0.14 340)", fontWeight: 500,
+                        }}>
+                          No publisher — export or post manually
+                        </div>
+                      )}
                     </div>
                     <Icon name="edit" size={11} style={{ color: "var(--muted)", flexShrink: 0 }}/>
                   </div>
@@ -971,6 +980,18 @@ function PublishingQueue({ state, actions }) {
                 {editItem.publishStatus === "published" && <Chip tone="ok">published</Chip>}
                 {editItem.publishStatus === "failed" && <Chip tone="warn">publish failed</Chip>}
               </div>
+
+              {/* No-publish-path callout — shown for platforms without a working publisher */}
+              {editItem.noPublishPath && (
+                <div style={{
+                  padding: "10px 14px", borderRadius: 5, fontSize: 12.5,
+                  display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+                  background: "oklch(96% 0.04 340)", border: "1px solid oklch(82% 0.12 340)",
+                  color: "oklch(35% 0.14 340)",
+                }}>
+                  No publish path — {platformLabel} isn't connected to a publisher yet. Export or post manually.
+                </div>
+              )}
 
               {/* Image-required callout — shown for IG drafts without a completed image */}
               {needsImageGuard && (
