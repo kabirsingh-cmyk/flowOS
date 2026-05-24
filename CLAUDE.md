@@ -252,8 +252,8 @@ if (hasCreateVerb && hasContentNoun) { return makeDraftArtifact(t); }
 
 | Tool | Available to | Effect |
 |---|---|---|
-| `delegate_to` | Supervisor | Routes to specialist (enum: drafter, analyst, brand_guard, inbox, campaign_planner) |
-| `open_workspace` | Supervisor, **Campaign Planner** | Opens a workspace panel |
+| `delegate_to` | Supervisor | Routes to specialist (enum: drafter, analyst, brand_guard, inbox, campaign_planner, seo_auditor) |
+| `open_workspace` | Supervisor, **Campaign Planner**, **SEO Auditor** | Opens a workspace panel. SEO Auditor calls it with target `"seo"` after producing an audit. |
 | `show_drafts` | Supervisor | Opens drafts canvas |
 | `show_metric` | Supervisor | Shows metric card |
 | `create_draft` | **Drafter** | Produces `draft_created` artifact in chat |
@@ -261,6 +261,8 @@ if (hasCreateVerb && hasContentNoun) { return makeDraftArtifact(t); }
 | `create_sms_draft` | **Drafter** | Produces `sms_draft` artifact (body ≤160, audienceHint, includeStopFooter) |
 | `create_email_sequence` | **Drafter** | Produces `email_sequence` artifact — sequenceType, goal, audience, emails[], branchingLogic, exitCondition, abTestSuggestions, benchmarks. Triggered by drip/nurture/onboarding/re-engagement/win-back/launch language. Supervisor delegates to drafter for these. |
 | `create_campaign_plan` | **Campaign Planner** | Produces `campaign-plan` artifact (title, summary, itemCount, goal, audience, timeline, channels) — usually paired with `open_workspace("planner")` |
+| `create_seo_audit` | **SEO Auditor** | Produces `seo_audit` artifact — url, auditType, overallAssessment (strong_foundation/needs_work/critical_issues), executiveSummary, keywords[], onPageIssues[], contentGaps[], technicalChecks[], competitors[]/competitorNames[], quickWins[], strategicInvestments[]. Replaces the legacy markdown dump. Rendered by `SeoAuditCard` in [chat-ui.jsx](app/chat-ui.jsx) with one collapsible section per table; "Open in SEO Studio" action dispatches `open_seostudio` → `openWorkspace("seo")`. Paired with `open_workspace("seo")`. |
+| `web_search` (Anthropic server tool, `web_search_20250305`) | **SEO Auditor** | Anthropic-executed web search. Capped at `max_uses: 10` per audit. Returns `server_tool_use` + `web_search_tool_result` blocks inline — we don't execute or post results back; our `tool_use` filter in `runToolLoop` naturally ignores server-tool blocks. Defined as `WEB_SEARCH_TOOL` constant in [api/chat.js](api/chat.js). |
 
 ---
 
