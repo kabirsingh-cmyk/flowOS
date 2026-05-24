@@ -30,8 +30,8 @@ Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` ar
 | b_9eda | Replace MVEDA-specific fallback drafts with tenant-aware generation | backlog | 2026-05-22 |
 | b_c91d | Replace simulateImageGen with real generation or label as demo-only | backlog | 2026-05-22 |
 | b_0f34 | Reduce Klaviyo response logging to structured minimum | backlog | 2026-05-22 |
-| b_6c61 | Verify Composio connection_status / list_connections after JWT auth lands | backlog | 2026-05-22 |
-| b_d25a | Verify /api/brand-import tenant scoping after JWT auth lands | backlog | 2026-05-22 |
+| b_6c61 | Verify Composio connection_status / list_connections after JWT auth lands | done | 2026-05-23 |
+| b_d25a | Verify /api/brand-import tenant scoping after JWT auth lands | done | 2026-05-23 |
 | b_6c24 | Centralise Claude model selection via env var + shared helper | backlog | 2026-05-22 |
 | b_47d0 | Add InsightsCenter to CLAUDE.md hook-alias table and rename bare hooks | backlog | 2026-05-22 |
 | b_8ff1 | Require explicit APP_ORIGIN or derive from VERCEL_URL with https | backlog | 2026-05-22 |
@@ -116,7 +116,7 @@ Intentionally left without auth, both verified safe:
 - `api/google-ads-auth.js` — 410 tombstone since the Composio cutover
 - `api/dev/mint-token.js` — hard-gated on `VERCEL_ENV !== "production"`
 
-The two follow-up items b_6c61 (verify Composio status/list_connections post-JWT) and b_d25a (verify brand-import scoping post-JWT) remain open — they were carved out specifically as "do this once b_0c94 lands."
+The two follow-up items b_6c61 (verify Composio status/list_connections post-JWT) and b_d25a (verify brand-import scoping post-JWT) were closed on 2026-05-23 — verified clean on `chore/jwt-followups`. See their individual sections below for the audit notes.
 
 ## b_9d59 · Enable Row Level Security on every table
 
@@ -522,9 +522,9 @@ Fix: structured log of `{ campaignId, status }` only.
 
 ## b_6c61 · Verify Composio connection_status / list_connections after JWT auth lands
 
-- **status**: backlog
+- **status**: done
 - **created**: 2026-05-22
-- **last-touched**: 2026-05-22
+- **last-touched**: 2026-05-23
 - **effort**: unsized
 - **source**: bootstrap (from Composio connection_status / list_connections leak)
 - **depends-on**: []
@@ -533,11 +533,20 @@ Fix: structured log of `{ campaignId, status }` only.
 ### Why
 Open · added 2026-05-14. Priority: Needs attention. `api/composio.js:179-217` `connection_status` and `list_connections` accept `tenantId` from the body. Without JWT auth, any caller can enumerate which connectors any tenant has linked. Subsumed by the JWT work but worth verifying explicitly when that lands.
 
+### Notes
+Verified clean on `chore/jwt-followups` 2026-05-23. The main handler at `api/composio.js:444` calls `requireAuth(req)` and at `:452` rewrites the body with the server-trusted `tenantId` (`body = { ...body, tenantId: auth.tenantId }`) before dispatch. Both audited handlers destructure `tenantId` from that overridden body:
+- `handleConnectionStatus` (`:318-341`) — uses `tenantId` only at `:325` in `?user_ids=${encodeURIComponent(tenantId)}&statuses=ACTIVE` against Composio's `/connected_accounts`. Composio's v3 API filters by `user_id` (the external user identifier — see file header line 7), so the response is scoped to the verified tenant.
+- `handleListConnections` (`:347-362`) — same pattern at `:351`, `?user_ids=${encodeURIComponent(tenantId)}&statuses=ACTIVE&limit=100`.
+
+A client supplying `tenantId: "victim"` in the body has it overwritten at `:452` before any handler reads it. No path returns rows for another tenant.
+
+Adjacent finding (out of audit scope, not fixed here): `handleDisconnect` (`:368-373`) accepts `accountId` from the body and calls `DELETE /connected_accounts/${accountId}` with the global server `COMPOSIO_API_KEY2` — there is no check that `accountId` belongs to `auth.tenantId`. An authed tenant who learns another tenant's accountId (e.g. via leak or guess) could disconnect them. Worth a new backlog row.
+
 ## b_d25a · Verify /api/brand-import tenant scoping after JWT auth lands
 
-- **status**: backlog
+- **status**: done
 - **created**: 2026-05-22
-- **last-touched**: 2026-05-22
+- **last-touched**: 2026-05-23
 - **effort**: unsized
 - **source**: bootstrap (from /api/brand-import overwrites any tenant's brand profile)
 - **depends-on**: []
@@ -545,6 +554,17 @@ Open · added 2026-05-14. Priority: Needs attention. `api/composio.js:179-217` `
 
 ### Why
 Open · added 2026-05-14. Priority: Needs attention. `api/brand-import.js:148` takes `tenantId` from body and upserts the brand row. Same root as the JWT gap — but specifically, an attacker can rewrite another tenant's brand voice / palette / messaging by posting their own URL with the victim's tenantId. Verify after JWT work lands.
+
+### Notes
+Verified clean on `chore/jwt-followups` 2026-05-23. The handler:
+- Calls `requireAuth(req)` at `:168` and pins `const tenantId = auth.tenantId` at `:170`.
+- Parses the body at `:173-176` extracting only `url`. Any `tenantId` / `userId` / `user_id` keys a caller adds to the body are never read.
+- Calls `upsertBrand(tenantId, brand)` at `:347` with the verified value (not from body).
+- `upsertBrand` is local to this file (`:121-154`) — `user_id: tenantId` at `:135` comes from the function parameter. Writes use `SUPABASE_SERVICE_KEY` (RLS-bypassing) directly to `/rest/v1/brands`, which is the right pattern since the row identity is server-derived.
+
+A request body of `{ url: "x", userId: "victim", tenantId: "victim", user_id: "victim" }` would still upsert into the authenticated caller's own brand row. No body-supplied identity reaches the SQL.
+
+CLAUDE.md mentions `api/lib/supabase.js upsertBrand` but that helper does not exist there — only `fetchBrandProfile`. The upsert lives inline in brand-import.js. Doc nit, not a code gap.
 
 ## b_6c24 · Centralise Claude model selection via env var + shared helper
 
