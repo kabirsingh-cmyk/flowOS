@@ -526,8 +526,8 @@ function Step2({ data, onChange, onNext, onBack }) {
           </label>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button disabled={!data.website.includes(".")} onClick={startScan} style={{
-              padding: "11px 20px", borderRadius: 6, background: data.website.includes(".") ? "var(--ink)" : "var(--rule)",
-              color: data.website.includes(".") ? "var(--paper)" : "var(--muted)",
+              padding: "11px 20px", borderRadius: 6, background: data.website.includes(".") ? "var(--accent)" : "var(--rule)",
+              color: data.website.includes(".") ? "var(--accent-ink)" : "var(--muted)",
               border: "none", fontWeight: 500, fontSize: 13.5, fontFamily: "var(--font-sans)", cursor: data.website.includes(".") ? "pointer" : "not-allowed",
             }}>Scan website</button>
             <button onClick={() => { onChange({ website: "" }); setScanState("done"); setChosen(BRAND_PALETTES[0]); applyPalette(BRAND_PALETTES[0]); }}
@@ -718,7 +718,7 @@ function Step4({ data, onChange, onFinish, onBack }) {
           </p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button onClick={() => setPhase("channels")} style={{
-              padding: "11px 20px", borderRadius: 6, background: "var(--ink)", color: "var(--paper)",
+              padding: "11px 20px", borderRadius: 6, background: "var(--accent)", color: "var(--accent-ink)",
               border: "none", fontWeight: 500, fontSize: 13.5, fontFamily: "var(--font-sans)", cursor: "pointer",
             }}>Connect a channel →</button>
             <button onClick={() => onFinish({ connectedChannels: [] })} style={{
@@ -755,8 +755,8 @@ function Step4({ data, onChange, onFinish, onBack }) {
                   ) : (
                     <button onClick={() => connect(ch.id)} disabled={!!connecting} style={{
                       padding: "6px 14px", borderRadius: 5,
-                      background: isConnecting ? "var(--rule)" : "var(--ink)",
-                      color: "var(--paper)", border: "none", fontSize: 12,
+                      background: isConnecting ? "var(--rule)" : "var(--accent)",
+                      color: isConnecting ? "var(--muted)" : "var(--accent-ink)", border: "none", fontSize: 12,
                       fontFamily: "var(--font-sans)", cursor: connecting ? "not-allowed" : "pointer",
                     }}>{isConnecting ? "…" : "Connect"}</button>
                   )}
@@ -848,13 +848,13 @@ function OnboardingWizard({ auth, onComplete }) {
     }}>
       {/* Left — brand panel */}
       <div style={{
-        background: "var(--ink)", color: "var(--paper)",
+        background: "var(--paper-3)", color: "var(--ink)",
         padding: "60px 56px", display: "flex", flexDirection: "column", justifyContent: "space-between",
         position: "relative", overflow: "hidden",
       }}>
         {/* Logo */}
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 6, background: "var(--paper)", color: "var(--ink)", display: "grid", placeItems: "center", fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: 22 }}>F</div>
+          <div style={{ width: 36, height: 36, borderRadius: 6, background: "var(--accent)", color: "var(--accent-ink)", display: "grid", placeItems: "center", fontFamily: "var(--font-sans)", fontWeight: 700, fontSize: 16, letterSpacing: "-0.02em" }}>F</div>
           <div>
             <div style={{ fontSize: 14, fontWeight: 500, letterSpacing: "-0.01em" }}>FlowOS</div>
             <div className="mono" style={{ fontSize: 10, opacity: 0.6, letterSpacing: "0.14em", textTransform: "uppercase" }}>AI Marketing OS</div>
@@ -878,8 +878,8 @@ function OnboardingWizard({ auth, onComplete }) {
             }}>
               <div style={{
                 width: 22, height: 22, borderRadius: "50%", flexShrink: 0, marginTop: 1,
-                background: i < step ? "var(--accent)" : i === step ? "var(--paper)" : "rgba(255,255,255,.15)",
-                color: i < step ? "var(--paper)" : i === step ? "var(--ink)" : "rgba(255,255,255,.5)",
+                background: i < step ? "var(--accent)" : i === step ? "var(--ink)" : "rgba(255,255,255,.15)",
+                color: i < step ? "var(--accent-ink)" : i === step ? "var(--paper)" : "rgba(255,255,255,.5)",
                 display: "grid", placeItems: "center",
                 fontSize: i < step ? 12 : 11, fontWeight: 600,
               }}>
@@ -898,7 +898,7 @@ function OnboardingWizard({ auth, onComplete }) {
         </div>
 
         {/* Decorative glyph */}
-        <div aria-hidden="true" style={{ position: "absolute", right: -60, bottom: -100, fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: 480, lineHeight: 1, color: "var(--paper)", opacity: 0.04, pointerEvents: "none", userSelect: "none" }}>F</div>
+        <div aria-hidden="true" style={{ position: "absolute", right: -60, bottom: -100, fontFamily: "var(--font-sans)", fontWeight: 700, fontSize: 480, lineHeight: 1, color: "var(--ink)", opacity: 0.04, pointerEvents: "none", userSelect: "none" }}>F</div>
       </div>
 
       {/* Right — form pane */}

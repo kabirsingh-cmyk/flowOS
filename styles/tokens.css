@@ -1,116 +1,119 @@
-/* MVEDA — design tokens, tuned to mveda.co brand language
-   Cream paper · deep umber ink · copper accent · sage support
-   Editorial display serif (Cormorant Garamond) + clean sans (Jost)
-   Reflects the site's "experience the ritual" aesthetic */
+/* FlowOS — Design Tokens v2
+   Pure black canvas · electric lime accent · Inter Tight + JetBrains Mono
+   Vapi-inspired dev-tool aesthetic */
+
 :root {
-  /* Color — warm cream world, not neutral grey */
-  --paper: oklch(97% 0.012 75);          /* warm cream */
-  --paper-2: oklch(94.5% 0.016 75);      /* sand wash */
-  --paper-3: oklch(91% 0.020 75);        /* deeper khaki */
-  --ink: oklch(22% 0.022 55);            /* deep umber, never pure black */
-  --ink-2: oklch(34% 0.020 55);
-  --muted: oklch(50% 0.018 55);
-  --muted-2: oklch(64% 0.014 60);
-  --rule: oklch(88% 0.014 70);
-  --rule-strong: oklch(78% 0.018 65);
+  /* Backgrounds — darkest to surface */
+  --paper:   oklch(0% 0 0);              /* #000000 — absolute black */
+  --paper-2: oklch(9% 0 0);             /* #111111 — primary app bg */
+  --paper-3: oklch(14% 0 0);            /* #1a1a1a — surface / panel */
 
-  /* Copper — pulled from MVEDA's product photography & CTAs */
-  --accent: oklch(58% 0.13 45);
-  --accent-ink: oklch(38% 0.10 45);
-  --accent-wash: oklch(94% 0.028 50);
+  /* Ink — light on dark */
+  --ink:     oklch(96% 0 0);            /* #f4f4f4 */
+  --ink-2:   oklch(85% 0 0);            /* #d4d4d4 */
 
-  /* Sage — secondary brand color from leaf/herbal imagery */
-  --sage: oklch(52% 0.06 145);
-  --sage-wash: oklch(93% 0.025 145);
+  /* Muted */
+  --muted:   oklch(57% 0 0);            /* #888888 */
+  --muted-2: oklch(39% 0 0);            /* #555555 */
 
-  --success: oklch(52% 0.07 145);
-  --success-wash: oklch(93% 0.025 145);
-  --warn: oklch(68% 0.13 70);
-  --warn-wash: oklch(94% 0.04 70);
-  --danger: oklch(54% 0.16 30);
-  --danger-wash: oklch(94% 0.03 30);
+  /* Borders */
+  --rule:        oklch(17% 0 0);        /* #232323 */
+  --rule-strong: oklch(23% 0 0);        /* #2e2e2e */
 
-  /* Type — editorial serif for display, humanist sans for UI */
-  --font-sans: 'Jost', 'Inter Tight', ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
-  --font-serif: 'Cormorant Garamond', 'Instrument Serif', ui-serif, Georgia, serif;
+  /* Accent — electric lime */
+  --accent:      oklch(95% 0.22 134);   /* #c8ff5a */
+  --accent-ink:  oklch(4% 0.03 134);    /* #0a0f00 — dark ink on lime */
+  --accent-wash: oklch(14% 0.05 134);   /* lime tint bg */
+  --accent-glow: oklch(95% 0.22 134 / 50%);
+  --accent-soft: oklch(95% 0.22 134 / 8%);
 
-  /* Density — overridden by [data-density] */
-  --u: 4px;                /* base unit */
-  --fs-xs: 11px;
-  --fs-sm: 12.5px;
+  /* Signals */
+  --success:      oklch(82% 0.20 134);
+  --success-wash: oklch(14% 0.06 134);
+  --warn:         oklch(82% 0.17 69);   /* #ffb84d */
+  --warn-wash:    oklch(14% 0.06 69);
+  --danger:       oklch(65% 0.22 28);   /* #ff6464 */
+  --danger-wash:  oklch(14% 0.06 28);
+
+  /* Typography */
+  --font-sans:  'Inter Tight', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono:  'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-serif: 'Inter Tight', 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+  /* Density scale */
+  --u: 4px;
+  --fs-xs:   11px;
+  --fs-sm:   12.5px;
   --fs-base: 13.5px;
-  --fs-md: 15px;
-  --fs-lg: 18px;
-  --fs-xl: 24px;
-  --fs-2xl: 34px;
-  --fs-3xl: 52px;
-  --fs-4xl: 84px;
+  --fs-md:   15px;
+  --fs-lg:   18px;
+  --fs-xl:   24px;
+  --fs-2xl:  34px;
+  --fs-3xl:  52px;
+  --fs-4xl:  84px;
 
-  --pad-row: 10px;
-  --pad-card: 16px;
+  --pad-row:   10px;
+  --pad-card:  16px;
   --pad-panel: 20px;
-  --row-h: 34px;
-  --gap: 12px;
+  --row-h:     34px;
+  --gap:       12px;
 
   --radius-sm: 4px;
-  --radius: 6px;
+  --radius:    6px;
   --radius-lg: 10px;
 }
 
 [data-density="comfortable"] {
-  --fs-xs: 12px;
-  --fs-sm: 13px;
+  --fs-xs:   12px;
+  --fs-sm:   13px;
   --fs-base: 14.5px;
-  --fs-md: 16px;
-  --fs-lg: 20px;
-  --pad-row: 14px;
-  --pad-card: 22px;
+  --fs-md:   16px;
+  --fs-lg:   20px;
+  --pad-row:   14px;
+  --pad-card:  22px;
   --pad-panel: 28px;
-  --row-h: 44px;
-  --gap: 16px;
+  --row-h:     44px;
+  --gap:       16px;
 }
 
-* { box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
-  background: var(--paper);
+  background: var(--paper-2);
   color: var(--ink);
   font-family: var(--font-sans);
   font-size: var(--fs-base);
   line-height: 1.45;
   font-weight: 400;
-  letter-spacing: 0.005em;
+  letter-spacing: -0.005em;
   font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* Editorial defaults — Cormorant likes a touch more leading + tight tracking
-   to feel native to mveda.co's product titles. */
+/* Headings — tight sans in dark theme */
 .serif, h1, h2, h3, h4 {
-  font-family: var(--font-serif);
-  letter-spacing: -0.012em;
-  font-weight: 500;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 .serif em, h1 em, h2 em, h3 em { font-style: italic; font-weight: 400; }
 
-::selection { background: var(--accent); color: var(--paper); }
+::selection { background: var(--accent); color: var(--accent-ink); }
 
 a { color: inherit; }
-
 button { font-family: inherit; font-size: inherit; }
 
 .mono { font-family: var(--font-mono); font-feature-settings: "zero", "ss01"; }
-.serif { font-family: var(--font-serif); }
+.serif { font-family: var(--font-sans); }
 
-.muted { color: var(--muted); }
+.muted   { color: var(--muted); }
 .muted-2 { color: var(--muted-2); }
 
 .hr { height: 1px; background: var(--rule); border: 0; }
 
-/* Scrollbar — subtle */
+/* Scrollbar */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--rule-strong); border-radius: 10px; border: 2px solid var(--paper); }
+::-webkit-scrollbar-thumb { background: var(--rule-strong); border-radius: 10px; border: 2px solid var(--paper-2); }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted-2); }

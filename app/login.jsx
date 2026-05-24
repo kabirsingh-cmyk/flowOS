@@ -59,12 +59,12 @@ function LoginScreen() {
 
   const leftPanel = (headline) => (
     <div style={{
-      background: "var(--ink)", color: "var(--paper)",
+      background: "var(--paper-3)", color: "var(--ink)",
       padding: "60px 56px", display: "flex", flexDirection: "column", justifyContent: "space-between",
       position: "relative", overflow: "hidden",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 6, background: "var(--paper)", color: "var(--ink)", display: "grid", placeItems: "center", fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: 22 }}>F</div>
+        <div style={{ width: 36, height: 36, borderRadius: 6, background: "var(--accent)", color: "var(--accent-ink)", display: "grid", placeItems: "center", fontFamily: "var(--font-sans)", fontWeight: 700, fontSize: 16, letterSpacing: "-0.02em" }}>F</div>
         <div>
           <div style={{ fontSize: 14, fontWeight: 500, letterSpacing: "-0.01em" }}>FlowOS</div>
           <div className="mono" style={{ fontSize: 10, opacity: 0.6, letterSpacing: "0.14em", textTransform: "uppercase" }}>AI Marketing OS</div>
@@ -72,7 +72,7 @@ function LoginScreen() {
       </div>
       <div>
         <div className="mono" style={{ fontSize: 10.5, opacity: 0.55, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 18 }}>{headline}</div>
-        <h1 className="serif" style={{ fontSize: 52, lineHeight: 1.05, letterSpacing: "-0.025em", fontWeight: 400, margin: 0, fontStyle: "italic" }}>
+        <h1 style={{ fontSize: 52, lineHeight: 1.05, letterSpacing: "-0.03em", fontWeight: 600, margin: 0 }}>
           Every channel.<br/>In full flow.
         </h1>
         <p style={{ marginTop: 22, fontSize: 14.5, lineHeight: 1.65, opacity: 0.75, maxWidth: 380 }}>
@@ -82,7 +82,7 @@ function LoginScreen() {
       <div style={{ display: "flex", gap: 14, fontSize: 11, opacity: 0.55, letterSpacing: "0.04em" }}>
         <span>SOC 2 Type II</span><span>·</span><span>EU & US data residency</span><span>·</span><span>SSO available</span>
       </div>
-      <div aria-hidden="true" style={{ position: "absolute", right: -60, bottom: -100, fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: 480, lineHeight: 1, color: "var(--paper)", opacity: 0.04, pointerEvents: "none" }}>F</div>
+      <div aria-hidden="true" style={{ position: "absolute", right: -60, bottom: -100, fontFamily: "var(--font-sans)", fontWeight: 700, fontSize: 480, lineHeight: 1, color: "var(--ink)", opacity: 0.04, pointerEvents: "none" }}>F</div>
     </div>
   );
 
