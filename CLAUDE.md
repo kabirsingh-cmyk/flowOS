@@ -400,9 +400,11 @@ All in `/api/`. All use `export const config = { runtime: "edge" }`.
 | `POST /api/reddit` | Reddit posting via Composio. Actions: `search_subreddits` (`REDDIT_GET_SUBREDDITS_SEARCH` — typeahead, since Composio exposes no `mine/*` listing), `publish_now` (subreddit + title ≤300 + text ≤40000 + optional imageUrl). **Image gap**: `REDDIT_CREATE_REDDIT_POST` doesn't support `kind:image` — when imageUrl is supplied we fall back to `kind:link` with the hosted image URL and surface `imageAsLink:true` so the drawer toasts a warn. The drawer renders subreddit as a free-text input, not a dropdown. |
 | `POST /api/klaviyo` | Klaviyo push via Composio. Actions: `create_draft_campaign` (email — template + campaign + assign), `create_draft_sms` (SMS — single campaign with inline message body, ≤160 chars, no template), `list_audiences`. Audience resolution shared (fuzzy name match → fallback to largest list). Writes land in `state.outbound.{emails,sms}` and surface in EmailStudio / SmsCenter `ChatDraftsToKlaviyo*` strips. |
 | `GET/POST/PATCH /api/proactive-emails` | Flavor #1 (Proactive) for email. POST reads latest `analytics_insights` for tenant, classifies `recommended_actions` into 5 rules (R1 win-back · R2 replenish · R3 rescue · R4 cart aging · R5 VIP quiet, max 2/run), Claude-generates subject/preheader/body using brand voice, persists to `proactive_emails`. Idempotent by `(tenant, rule, source_insight_id)`. Demo fallback emits 1 seeded draft if no insights row exists. GET hydrates `state.outbound.proactiveEmails`. PATCH updates status/Klaviyo IDs after client push. |
+| `GET/POST/PATCH /api/proactive-sms` | Flavor #1 (Proactive) for SMS. POST reads latest `analytics_insights`, classifies into 4 rules (S1 win-back · S2 replenish · S3 cart-recovery · S4 VIP, max 2/run), Claude-generates body ≤160 chars, persists to `proactive_sms`. Idempotent by `(tenant, rule, source_insight_id)`. Demo fallback (S1 win-back) when no insights row. GET hydrates `state.outbound.proactiveSms`. PATCH updates status/Klaviyo IDs. Auth: `requireAuthOrCron`. |
 | `POST /api/scheduled-posts` | Platform-agnostic schedule queue. Actions: `create` (writes a `scheduled_posts` row with snapshot payload + UTC fire_at), `list` (returns tenant's open rows + last-7-day published for `PublishingQueue` hydration), `cancel` (flips `pending` → `cancelled`). Frontend writes here from `handleSchedule` in `workspaces3.jsx`. |
 | `GET  /api/cron/daily-analytics` | Vercel Cron (06:00 UTC) — calls analytics-ingest for all tenants. |
 | `GET  /api/cron/proactive-emails` | Vercel Cron (07:30 UTC) — iterates tenants and POSTs to /api/proactive-emails. |
+| `GET  /api/cron/proactive-sms` | Vercel Cron (08:00 UTC) — iterates tenants and POSTs to /api/proactive-sms. 30 min after proactive-emails. |
 | `GET  /api/cron/fire-scheduled` | Vercel Cron (`* * * * *` — **requires Pro** for guaranteed 1-min execution; Hobby cron schedules will be rejected at deploy). Calls Supabase RPC `claim_due_scheduled_posts(20)` which atomically picks due `pending` rows via `FOR UPDATE SKIP LOCKED`, transitions them to `publishing`, then POSTs `${origin}/api/<platform>` with the row's snapshot payload. PATCHes the row to `published`/`failed`. Idempotent by construction — same row can never be claimed twice concurrently. |
 | `POST /api/google-ads` | Composio-backed Google Ads wrapper. Actions: `list_customer_ids` (new — returns accessible MCC child accounts via `GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS`), `list_campaigns`, `create_campaign`, `update_budget`, `enable_campaign`, `pause_campaign`, `keyword_ideas`, `campaign_detail`, `generate_copy`. Frontend contract unchanged (`{ ok, data }`). Composio toolkit slug names live in the `TOOLS` constant at the top of the file. Pass `customerId` in params; if omitted, the user must pick one via `list_customer_ids` first. |
 | `POST /api/replicate` `POST /api/higgsfield` `POST /api/luma` | Direct-API connector routes (provider: "direct" in seed.jsx). Actions: `initiate_connection` (validates apiKey against the provider's REST API, persists to `connector_credentials`, flips `channels` to connected), `disconnect`. Shared persistence helper in [api/lib/directCredentials.js](api/lib/directCredentials.js). |
@@ -477,6 +479,7 @@ All public-schema tables have RLS enabled (see [db/migrations/007_core_schema_an
 - `connector_credentials` — per-tenant API keys for Direct-API connectors (Replicate, Higgsfield, Luma today; the other 9 Direct connectors as they're wired). Primary key `(user_id, platform)`. Columns: `secret_kind` (default `api_key`), `secret_value`, `validated_at`, `updated_at`. Service-role only (RLS enabled, no policies). Migration: [supabase/migrations/2026-05-18-connector-credentials.sql](supabase/migrations/2026-05-18-connector-credentials.sql).
 - `proactive_drafts` — weekly social calendar drafts (status `pending`/`archived`). Keys: `tenant_id`, `status`.
 - `proactive_emails` — analytics-triggered email drafts. Keys: `tenant_id`, `rule`, `source_insight_id`. Unique index enforces idempotency. Status: `proactive_draft` → `pushed` (via /api/klaviyo) | `dismissed`.
+- `proactive_sms` — analytics-triggered SMS drafts (flavor #1 for SMS channel). Keys: `tenant_id`, `rule`, `source_insight_id`. 4 rules: S1_winback, S2_replenish, S3_cart, S4_vip. Status: `proactive_draft` → `pushed` | `dismissed`. Surfaced in SmsCenter as `ProactiveSmsDrafts`. Migration: [supabase/migrations/2026-05-23-proactive-sms.sql](supabase/migrations/2026-05-23-proactive-sms.sql).
 
 ---
 
@@ -600,6 +603,20 @@ Frontend uses the Supabase anon key baked into `supabase.jsx` (public — safe).
 - **Git remote**: `github.com/kabirsingh-cmyk/flowOS` — `main` branch
 - **Vercel**: auto-deploys on push to `main`. `outputDirectory: "."` (no build step).
 - **Cron**: `/api/cron/daily-analytics` at `0 6 * * *` — requires Vercel Pro for guaranteed execution.
+
+---
+
+## Session protocol
+
+### Start of session
+1. Read `DAILY_BRIEF.md` first — it has today's health status and prioritised "build next" recommendations generated by Claude. If the file doesn't exist yet, read `SPRINT.md` instead.
+2. Surface the brief's top recommendations to Kabir before asking what to work on.
+
+### End of every session
+1. **Update `SPRINT.md`**: move completed items to "Just shipped", update "Now" with what's actually in progress, mark any new bugs you found.
+2. **Update `BACKLOG.md`**: flip `in-progress` → `done` for anything completed this session. Mark new bugs or tasks you discovered.
+3. **Run the health check**: `node scripts/health-check.mjs` — fix any issues before ending.
+4. **Update this file**: only if you added new workspace targets, connector IDs, artifact types, API routes, or hook aliases.
 
 ---
 
