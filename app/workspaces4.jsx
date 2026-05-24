@@ -933,9 +933,9 @@ function Connections({ state, actions }) {
               <button key={p.id} onClick={() => setActiveGroup(p.id)}
                 style={{
                   padding: "6px 12px", borderRadius: 999,
-                  border: `1px solid ${active ? "var(--ink)" : "var(--rule)"}`,
-                  background: active ? "var(--ink)" : "var(--paper)",
-                  color:      active ? "var(--paper)" : "var(--ink-2)",
+                  border: `1px solid ${active ? "var(--rule-strong)" : "var(--rule)"}`,
+                  background: active ? "var(--paper-3)" : "var(--paper)",
+                  color:      active ? "var(--ink)" : "var(--ink-2)",
                   fontSize: 12, fontWeight: 500, cursor: "pointer",
                   fontFamily: "var(--font-sans)",
                   transition: "all .12s",
