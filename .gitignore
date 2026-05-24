@@ -9,3 +9,8 @@ __pycache__/
 server.js
 server.py
 test-results/
+scripts/.backlog-state.json
+scripts/backlog-proposal-*.md
+BACKLOG.proposed.md
+*.bak
+FlowOS_SRS_*.docx
