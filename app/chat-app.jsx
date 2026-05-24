@@ -920,6 +920,19 @@ function ChatOSAuthed({ auth, onLogout }) {
       });
   }, [auth?.id]);
 
+  // ── Load persisted proactive SMS drafts on auth ───────────────────────────────
+  useEffectApp(() => {
+    if (!auth?.id) return;
+    apiFetch(`/api/proactive-sms`)
+      .then(r => r.ok ? r.json() : null)
+      .catch(() => null)
+      .then(data => {
+        if (data?.ok && Array.isArray(data.drafts) && data.drafts.length > 0) {
+          actions.loadProactiveSms(data.drafts);
+        }
+      });
+  }, [auth?.id]);
+
   const channel = CHANNELS.find(c => c.id === chat.activeChannel) || CHANNELS[0];
   const messages = chat.threads[channel.id] || [];
 

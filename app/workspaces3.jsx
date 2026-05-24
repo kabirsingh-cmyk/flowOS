@@ -12,6 +12,7 @@ function PublishingQueue({ state, actions }) {
   const [resolvingAuthor, setResolvingAuthor] = useState3(false);
   const [publishing, setPublishing] = useState3(false);
   const [scheduling, setScheduling] = useState3(false);
+  const [generatingImage, setGeneratingImage] = useState3(false);
   const [redditTitle, setRedditTitle] = useState3("");      // Reddit-specific title field
 
   // Hydrate scheduled_posts rows into the calendar on mount. The cron writes
@@ -657,6 +658,46 @@ function PublishingQueue({ state, actions }) {
         };
 
         const pub = PLATFORM_PUBLISHERS[platformKey];
+        const hasImage = editItem.imageStatus === "completed" && !!editItem.imageUrl;
+        const needsImageGuard = !!(pub?.needsImage && !hasImage);
+
+        const generateImageFromDrawer = () => {
+          const prompt = editDraft.imagePrompt?.trim();
+          if (!prompt) { actions.notify("warn", "Add an image prompt first"); return; }
+          const aspectRatio =
+            /story|reel/i.test(editItem.kind || "") ? "9:16" :
+            /carousel|pin/i.test(editItem.kind || "") ? "4:5" : "1:1";
+          setGeneratingImage(true);
+          actions.updateItem(editItem.id, { imageStatus: "pending" });
+          setEditItem(prev => ({ ...prev, imageStatus: "pending", imageUrl: null }));
+          apiFetch("/api/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "generate_image", provider: "runware", model: "runware:101@1",
+              aspectRatio, resolution: "1k",
+              promptIntent: { kind: "feed_hero", extra: { scene: prompt } },
+            }),
+          })
+            .then(r => r.json())
+            .then(res => {
+              if (res?.ok && res.rawUrl) {
+                actions.updateItem(editItem.id, { imageUrl: res.rawUrl, imageStatus: "completed" });
+                setEditItem(prev => ({ ...prev, imageUrl: res.rawUrl, imageStatus: "completed" }));
+              } else {
+                const st = res?.status === "failed_content_policy" ? "failed_content_policy" : "failed";
+                actions.updateItem(editItem.id, { imageStatus: st });
+                setEditItem(prev => ({ ...prev, imageStatus: st }));
+                actions.notify("warn", `Image generation failed: ${res?.error || "unknown"}`);
+              }
+            })
+            .catch(e => {
+              actions.updateItem(editItem.id, { imageStatus: "failed" });
+              setEditItem(prev => ({ ...prev, imageStatus: "failed" }));
+              actions.notify("warn", `Image generation failed: ${e.message}`);
+            })
+            .finally(() => setGeneratingImage(false));
+        };
 
         // Compose an ISO-UTC fire timestamp from the drawer's local date+time
         // inputs. Returns null if either field is empty or unparseable.
@@ -897,7 +938,7 @@ function PublishingQueue({ state, actions }) {
                   row to scheduled_posts; cron fires it at fire_at. */}
               {isDraft && (
                 <Btn variant="ghost" onClick={handleSchedule}
-                  disabled={!editDraft.scheduledAt || !editDraft.scheduledDate || publishing || scheduling}>
+                  disabled={!editDraft.scheduledAt || !editDraft.scheduledDate || publishing || scheduling || needsImageGuard}>
                   <Icon name="calendar" size={12}/> {scheduling ? "Scheduling…" : "Schedule"}
                 </Btn>
               )}
@@ -907,7 +948,8 @@ function PublishingQueue({ state, actions }) {
                   || (pub && (resolvingAuthor
                       || (pub.needsAuthor && !author)
                       || overLimit
-                      || (pub.needsTitle && !redditTitle.trim())));
+                      || (pub.needsTitle && !redditTitle.trim())
+                      || needsImageGuard));
                 return (
                   <Btn variant="primary" onClick={handleSendNow} disabled={disabled}>
                     <Icon name="send" size={12}/> {publishing ? "Publishing…" : (pub ? "Publish now" : "Send now")}
@@ -929,6 +971,26 @@ function PublishingQueue({ state, actions }) {
                 {editItem.publishStatus === "published" && <Chip tone="ok">published</Chip>}
                 {editItem.publishStatus === "failed" && <Chip tone="warn">publish failed</Chip>}
               </div>
+
+              {/* Image-required callout — shown for IG drafts without a completed image */}
+              {needsImageGuard && (
+                <div style={{
+                  padding: "10px 14px", borderRadius: 5, fontSize: 12.5,
+                  display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+                  background: "oklch(96% 0.04 340)", border: "1px solid oklch(82% 0.12 340)",
+                  color: "oklch(35% 0.14 340)",
+                }}>
+                  <span style={{ flex: 1 }}>
+                    Instagram requires an image.
+                    {editItem.imageStatus === "pending" ? " Generating…" : " Add a prompt below and generate one."}
+                  </span>
+                  {editDraft.imagePrompt?.trim() && editItem.imageStatus !== "pending" && (
+                    <Btn size="sm" onClick={generateImageFromDrawer} disabled={generatingImage}>
+                      {generatingImage ? "Generating…" : "Generate image"}
+                    </Btn>
+                  )}
+                </div>
+              )}
 
               {/* Per-platform author picker (dropdown or free-text) */}
               {pub && pub.needsAuthor && (() => {

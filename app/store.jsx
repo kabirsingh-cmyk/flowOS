@@ -72,6 +72,10 @@ function mveda_initialState() {
       // status: "proactive_draft" | "pushing" | "klaviyo_draft" | "failed" | "dismissed"
       // shape: { id, rule, ruleLabel, subject, preheader, body, audienceHint, reason, source, status, klaviyoUrl, klaviyoCampaignId, audience, error, createdAt }
       proactiveEmails: [],
+      // Analytics-triggered SMS drafts. Same lifecycle, simpler shape (no subject/preheader).
+      // status: "proactive_draft" | "pushing" | "klaviyo_draft" | "failed" | "dismissed"
+      // shape: { id, rule, ruleLabel, body, audienceHint, reason, source, status, klaviyoUrl, klaviyoCampaignId, klaviyoMessageId, audience, error, createdAt }
+      proactiveSms: [],
     },
 
     // Chat-authored campaign brief from the campaign_planner specialist.
@@ -396,6 +400,30 @@ function mveda_reducer(s, a) {
       if (a.notify) next.notifications = [notify(a.notify.tone, a.notify.text), ...s.notifications];
       return next;
     }
+    case "PROACTIVE_SMS_LOAD": {
+      const existingIds = new Set(s.outbound.proactiveSms.map(e => e.id));
+      const incoming = (a.items || []).filter(e => !existingIds.has(e.id));
+      if (incoming.length === 0) return s;
+      const merged = [...incoming, ...s.outbound.proactiveSms];
+      return { ...s,
+        outbound: { ...s.outbound, proactiveSms: merged },
+        notifications: [notify("accent", `${incoming.length} proactive SMS draft${incoming.length !== 1 ? "s" : ""} ready in SMS Center`), ...s.notifications],
+      };
+    }
+    case "PROACTIVE_SMS_UPDATE": {
+      const proactiveSms = s.outbound.proactiveSms.map(e =>
+        e.id === a.id ? { ...e, ...a.patch } : e
+      );
+      const next = { ...s, outbound: { ...s.outbound, proactiveSms } };
+      if (a.notify) next.notifications = [notify(a.notify.tone, a.notify.text), ...s.notifications];
+      return next;
+    }
+    case "PROACTIVE_SMS_REMOVE": {
+      const proactiveSms = s.outbound.proactiveSms.filter(e => e.id !== a.id);
+      const next = { ...s, outbound: { ...s.outbound, proactiveSms } };
+      if (a.notify) next.notifications = [notify(a.notify.tone, a.notify.text), ...s.notifications];
+      return next;
+    }
     case "OUTBOUND_SMS_ADD": {
       const sms = {
         id:                a.id || ("os_" + Math.random().toString(36).slice(2, 8)),
@@ -507,6 +535,12 @@ function useMvedaStore() {
       dispatch({ type: "PROACTIVE_EMAIL_UPDATE", id, patch, notify: opts.notify }),
     removeProactiveEmail: (id, opts = {}) =>
       dispatch({ type: "PROACTIVE_EMAIL_REMOVE", id, notify: opts.notify }),
+    loadProactiveSms: (items) =>
+      dispatch({ type: "PROACTIVE_SMS_LOAD", items }),
+    updateProactiveSms: (id, patch, opts = {}) =>
+      dispatch({ type: "PROACTIVE_SMS_UPDATE", id, patch, notify: opts.notify }),
+    removeProactiveSms: (id, opts = {}) =>
+      dispatch({ type: "PROACTIVE_SMS_REMOVE", id, notify: opts.notify }),
     setActivePlan: (plan) => dispatch({ type: "ACTIVE_PLAN_SET", plan }),
     clearActivePlan: () => dispatch({ type: "ACTIVE_PLAN_CLEAR" }),
   };

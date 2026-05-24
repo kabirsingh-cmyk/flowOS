@@ -95,15 +95,170 @@ function ChatDraftsToKlaviyoSms({ sms }) {
   );
 }
 
+// ─────────────────────────── Proactive SMS drafts ────────────────────────────
+function ProactiveSmsDrafts({ drafts, actions }) {
+  const pending = (drafts || []).filter(d =>
+    d.status === "proactive_draft" || d.status === "pushing" || d.status === "failed" || d.status === "klaviyo_draft"
+  );
+  if (pending.length === 0) return null;
+
+  const ruleTone = {
+    S1_winback:  { color: "oklch(60% 0.18 30)",  label: "Win-back" },
+    S2_replenish:{ color: "oklch(62% 0.15 180)", label: "Replenish" },
+    S3_cart:     { color: "oklch(58% 0.16 320)", label: "Cart recovery" },
+    S4_vip:      { color: "oklch(55% 0.14 280)", label: "VIP" },
+  };
+
+  const persistPatch = (id, patch) => {
+    apiFetch("/api/proactive-sms", {
+      method:  "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ id, patch }),
+    }).catch(() => null);
+  };
+
+  const handleApprove = (d) => {
+    if (d.status === "pushing" || d.status === "klaviyo_draft") return;
+    actions.updateProactiveSms(d.id, { status: "pushing", error: null });
+
+    apiFetch("/api/klaviyo", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({
+        action:            "create_draft_sms",
+        body:              d.body,
+        audienceHint:      d.audienceHint,
+        includeStopFooter: true,
+      }),
+    })
+      .then(r => r.json())
+      .then(res => {
+        if (res?.ok) {
+          const patch = {
+            status:            "klaviyo_draft",
+            klaviyoCampaignId: res.campaignId,
+            klaviyoMessageId:  res.messageId,
+            klaviyoUrl:        res.klaviyoUrl,
+            audience:          res.audience,
+          };
+          actions.updateProactiveSms(d.id, patch,
+            { notify: { tone: "ok", text: `SMS pushed to Klaviyo · ${res.audience?.name || "draft"}` } });
+          persistPatch(d.id, {
+            status:              "pushed",
+            klaviyo_campaign_id: res.campaignId,
+            klaviyo_message_id:  res.messageId,
+            klaviyo_url:         res.klaviyoUrl,
+            audience:            res.audience,
+          });
+        } else {
+          const err = res?.error || "unknown error";
+          actions.updateProactiveSms(d.id, { status: "failed", error: err },
+            { notify: { tone: "warn", text: `Klaviyo SMS push failed: ${err}` } });
+        }
+      })
+      .catch(e => {
+        actions.updateProactiveSms(d.id, { status: "failed", error: e.message },
+          { notify: { tone: "warn", text: `Klaviyo SMS push failed: ${e.message}` } });
+      });
+  };
+
+  const handleDismiss = (d) => {
+    actions.removeProactiveSms(d.id, { notify: { tone: "neutral", text: "Proactive SMS dismissed" } });
+    persistPatch(d.id, { status: "dismissed" });
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+        <span style={{ fontSize: 13, fontWeight: 700 }}>✦</span>
+        <span className="mono" style={{ fontSize: 10.5, color: "var(--accent)", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600 }}>
+          Proactive SMS · awaiting review
+        </span>
+        <span className="mono" style={{ fontSize: 10.5, color: "var(--muted)" }}>{pending.length}</span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {pending.map(d => {
+          const tone    = ruleTone[d.rule] || { color: "var(--accent)", label: d.ruleLabel || d.rule };
+          const pushed  = d.status === "klaviyo_draft";
+          const failed  = d.status === "failed";
+          const pushing = d.status === "pushing";
+          const len     = (d.body || "").length;
+          return (
+            <div key={d.id} style={{
+              border: "1px solid var(--rule-strong)", borderRadius: 7,
+              background: "var(--paper)", overflow: "hidden",
+            }}>
+              <div style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "10px 14px",
+                background: "var(--paper-2)",
+                borderBottom: "1px solid var(--rule)",
+              }}>
+                <span className="mono" style={{
+                  fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase",
+                  color: tone.color, padding: "3px 8px", borderRadius: 3,
+                  background: "var(--paper-3)", border: `1px solid ${tone.color}`,
+                }}>{tone.label}</span>
+                {d.audienceHint && (
+                  <span style={{ fontSize: 11.5, color: "var(--muted)" }}>· {d.audienceHint}</span>
+                )}
+                {d.source === "fallback" && (
+                  <span className="mono" style={{ fontSize: 9.5, color: "var(--muted-2)", letterSpacing: "0.06em", textTransform: "uppercase" }}>demo</span>
+                )}
+                <div style={{ flex: 1 }}/>
+                <span className="mono" style={{ fontSize: 10.5, color: len > 138 ? "oklch(48% 0.16 25)" : "var(--muted)" }}>{len}/160</span>
+                {pushed && d.klaviyoUrl && (
+                  <a href={d.klaviyoUrl} target="_blank" rel="noreferrer"
+                     style={{ fontSize: 11, color: "var(--accent-ink)", textDecoration: "underline" }}>
+                    Open in Klaviyo ↗
+                  </a>
+                )}
+              </div>
+              <div style={{ padding: "14px 16px" }}>
+                <div style={{ fontSize: 13.5, color: "var(--ink)", lineHeight: 1.55, fontStyle: "italic", marginBottom: 12 }}>
+                  "{d.body}"
+                </div>
+                {d.reason && (
+                  <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 12, lineHeight: 1.4 }}>
+                    Signal: {d.reason}
+                  </div>
+                )}
+                {failed && d.error && (
+                  <div style={{ fontSize: 11.5, color: "oklch(48% 0.16 25)", marginBottom: 10 }}>
+                    Error: {d.error}
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  {!pushed && (
+                    <Btn size="sm" variant="primary" onClick={() => handleApprove(d)} disabled={pushing}>
+                      {pushing ? "Pushing…" : failed ? "Retry push" : "Approve & push to Klaviyo"}
+                    </Btn>
+                  )}
+                  {pushed && <Chip tone="ok">In Klaviyo</Chip>}
+                  {!pushed && (
+                    <Btn size="sm" onClick={() => handleDismiss(d)}>Dismiss</Btn>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function SmsCenter({ state, actions }) {
-  const camp = state.smsCampaigns;
-  const auto = state.smsAutomations;
-  const comp = state.smsCompliance;
-  const chatSms = state?.outbound?.sms || [];
+  const camp       = state.smsCampaigns;
+  const auto       = state.smsAutomations;
+  const comp       = state.smsCompliance;
+  const chatSms    = state?.outbound?.sms || [];
+  const proactiveSms = state?.outbound?.proactiveSms || [];
   return (
     <FeaturePage kicker="Channel · SMS" title="SMS"
       right={<Btn size="sm" variant="primary"><Icon name="plus" size={11}/> New SMS campaign</Btn>}>
 
+      <ProactiveSmsDrafts drafts={proactiveSms} actions={actions}/>
       <ChatDraftsToKlaviyoSms sms={chatSms}/>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>

@@ -14,6 +14,10 @@
       "schedule": "30 7 * * *"
     },
     {
+      "path":     "/api/cron/proactive-sms",
+      "schedule": "0 8 * * *"
+    },
+    {
       "path":     "/api/cron/fire-scheduled",
       "schedule": "* * * * *"
     }

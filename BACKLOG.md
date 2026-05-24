@@ -9,8 +9,8 @@ Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` ar
 | b_8cad | Audit and wire remaining social platform publishers via Composio | in-progress | 2026-05-22 |
 | b_0c94 | Server-side JWT verification on every /api/* endpoint | done | 2026-05-22 |
 | b_9d59 | Enable Row Level Security on every table | done | 2026-05-22 |
-| b_cc01 | Add missing migrations: brands, channels, posts, google_ads_tokens, proactive_drafts | in-progress | 2026-05-22 |
-| b_3037 | Proactive SMS feature (analogue to proactive-emails) | in-progress | 2026-05-22 |
+| b_cc01 | Add missing migrations: brands, channels, posts, google_ads_tokens, proactive_drafts | done | 2026-05-24 |
+| b_3037 | Proactive SMS feature (analogue to proactive-emails) | done | 2026-05-24 |
 | b_43d9 | Reddit native image posts (bypass Composio) | backlog | 2026-05-22 |
 | b_fad1 | Reddit subreddit typeahead suggestions | backlog | 2026-05-22 |
 | b_b274 | Instagram carousel + video/Reels posting | backlog | 2026-05-22 |
@@ -44,7 +44,7 @@ Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` ar
 | b_2504 | Enforce sourceBriefId on CAL_ADD path | backlog | 2026-05-22 |
 | b_38f0 | Edit-after-schedule warning + Unschedule button in drawer | backlog | 2026-05-22 |
 | b_60f8 | Composio code 306 (no managed auth) — Connect modal hangs forever | backlog | 2026-05-22 |
-| b_ea4e | Text-only Instagram post fails at publish (imageUrl required) | backlog | 2026-05-22 |
+| b_ea4e | Text-only Instagram post fails at publish (imageUrl required) | done | 2026-05-24 |
 | b_b259 | Chat AI confidently drafts for platforms with no publish path | backlog | 2026-05-22 |
 | b_c945 | InsightsCenter empty state can't distinguish no-data from broken fetch | backlog | 2026-05-22 |
 | b_a001 | Adopt Zernio for all organic social publishing (replaces Composio social toolkit + Pipedream Pinterest) | backlog | 2026-05-22 |
@@ -142,42 +142,42 @@ This closes b_9d59. Outstanding hardening followups stay open as their own items
 
 ## b_cc01 · Add missing migrations: brands, channels, posts, google_ads_tokens, proactive_drafts
 
-- **status**: in-progress
+- **status**: done
 - **created**: 2026-05-22
-- **last-touched**: 2026-05-22
+- **last-touched**: 2026-05-24
 - **effort**: unsized
 - **source**: bootstrap (from Missing migrations: brands, channels, posts, google_ads_tokens, proactive_drafts  `[in progress]`)
 - **depends-on**: []
-- **touches**: db/migrations/006_core_schema.sql, api/brand-import.js, api/chat.js, app/workspaces4.jsx, app/features.jsx, api/google-ads-auth.js, api/proactive-drafts.js
+- **touches**: db/migrations/007_core_schema_and_rls.sql, db/migrations/008_connector_credentials.sql, db/migrations/009_brand_voice_fields.sql, db/migrations/010_proactive_sms.sql
 
 ### Why
-In progress on `feat/auth-and-rls` (consolidated migration `006_core_schema.sql`) · added 2026-05-14. Priority: Critical — fresh Supabase project cannot reproduce schema.
+Priority: Critical — fresh Supabase project cannot reproduce schema.
 
 ### Notes
-Code reads/writes these tables but no migration ships them:
-- `brands` (`api/brand-import.js:148`, `api/chat.js` brand fetch)
-- `channels` (`app/workspaces4.jsx:429,460,555,570`)
-- `posts` (`app/features.jsx` savePost path)
-- `google_ads_tokens` (`api/google-ads-auth.js:94`)
-- `proactive_drafts` (`api/proactive-drafts.js:74`)
+Original missing tables (brands, channels, posts, google_ads_tokens, proactive_drafts) were added in `007_core_schema_and_rls.sql` on 2026-05-22 as part of the auth+RLS work (b_9d59). The planned `006_core_schema.sql` was folded into `007`.
 
-Pair with the RLS rollout — ship both at once.
+Completed 2026-05-24: added `008`, `009`, `010` to `db/migrations/` to cover the additive changes that had landed only in `supabase/migrations/`:
+- `008_connector_credentials.sql` — `connector_credentials` table (service-role only, no RLS policies)
+- `009_brand_voice_fields.sql` — `messaging` + `terminology` columns on `brands`
+- `010_proactive_sms.sql` — `proactive_sms` table + RLS
+
+`db/migrations/` (001–010) is now the complete source of truth for a fresh Supabase setup. All DDL is idempotent (`IF NOT EXISTS`, `OR REPLACE`, `ADD COLUMN IF NOT EXISTS`). The `006` gap is intentional — `006_core_schema.sql` was merged into `007` before numbering was finalized.
 
 ## b_3037 · Proactive SMS feature (analogue to proactive-emails)
 
-- **status**: in-progress
+- **status**: done
 - **created**: 2026-05-22
-- **last-touched**: 2026-05-22
+- **last-touched**: 2026-05-24
 - **effort**: unsized
 - **source**: bootstrap (from WIP: proactive SMS feature (analogue to proactive-emails))
 - **depends-on**: []
-- **touches**: api/proactive-sms.js, api/cron/proactive-sms.js, db/migrations/006_proactive_sms.sql, app/features.jsx, app/store.jsx, app/studio.jsx, app/ui.jsx, app/chat-app.jsx, CLAUDE.md, vercel.json
+- **touches**: api/proactive-sms.js, api/cron/proactive-sms.js, supabase/migrations/2026-05-23-proactive-sms.sql, db/migrations/010_proactive_sms.sql, app/features.jsx, app/store.jsx, app/chat-app.jsx, vercel.json
 
 ### Why
-Stashed locally · noted 2026-05-14. Priority: Medium. Local stash on `feat/klaviyo-sms`. Recover with `git stash pop` once the auth-and-rls work is in.
+Priority: Medium. Mirrors proactive-emails to close the SMS channel gap.
 
 ### Notes
-Mirrors the proactive-emails design: cron reads `analytics_insights.recommended_actions`, classifies into SMS-friendly rules, Claude drafts ≤160-char body in brand voice, lands in `state.outbound.proactiveSms` for review in `SmsCenter`.
+Shipped 2026-05-24. Four rules (S1 win-back · S2 replenish · S3 cart · S4 VIP). Claude Haiku generates ≤138-char body (160 minus STOP footer headroom). Falls back to MVEDA/Erickson hand-written demo drafts when no insights row exists. Cron at 08:00 UTC (30 min after proactive-emails). ProactiveSmsDrafts UI in SmsCenter — approve pushes to Klaviyo via create_draft_sms, dismiss soft-deletes. Store has PROACTIVE_SMS_LOAD/UPDATE/REMOVE cases + 3 matching actions.
 
 ## b_43d9 · Reddit native image posts (bypass Composio)
 
@@ -744,16 +744,22 @@ Shopify, TikTok (tt + ttads), Twitter/X (x + xads) require a custom OAuth app re
 
 ## b_ea4e · Text-only Instagram post fails at publish (imageUrl required)
 
-- **status**: backlog
+- **status**: done
 - **created**: 2026-05-22
-- **last-touched**: 2026-05-22
+- **last-touched**: 2026-05-24
 - **effort**: unsized
 - **source**: triage 2026-05-22
 - **depends-on**: []
-- **touches**: api/instagram.js, app/workspaces3.jsx, app/chat-ui.jsx
+- **touches**: app/workspaces3.jsx
 
 ### Why
-Instagram Graph API only supports media-bearing posts — `INSTAGRAM_POST_IG_USER_MEDIA` requires a media URL. `/api/instagram` already documents this (imageUrl required), but the chat-to-create + drafts paths don't enforce it: a text-only IG draft surfaces a Schedule button, queues fine, and fails at fire time with a non-obvious Composio error. Drawer must hide/disable Schedule for IG drafts with no image, and surface a "Instagram requires an image — generate one?" prompt that wires to /api/generate.
+Instagram Graph API only supports media-bearing posts — `INSTAGRAM_POST_IG_USER_MEDIA` requires a media URL. `/api/instagram` already documents this (imageUrl required), but the chat-to-create + drafts paths don't enforce it: a text-only IG draft surfaces a Schedule button, queues fine, and fails at fire time with a non-obvious Composio error.
+
+### Notes
+Shipped 2026-05-24. Three changes to `app/workspaces3.jsx`:
+1. `hasImage` + `needsImageGuard` computed at drawer render scope from live `editItem` (not duplicated in each handler).
+2. Schedule button and Publish now button both get `|| needsImageGuard` in their `disabled` conditions — visually blocked, not just warned.
+3. Pink callout banner appears when `needsImageGuard` is true: "Instagram requires an image. Add a prompt below and generate one." If `imagePrompt` is filled, shows a "Generate image" button that calls `/api/generate` (Runware), sets `imageStatus: "pending"`, and patches `editItem` local state + store on completion — so the buttons auto-unblock without closing the drawer.
 
 ## b_b259 · Chat AI confidently drafts for platforms with no publish path
 
