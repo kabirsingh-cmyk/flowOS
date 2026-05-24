@@ -115,30 +115,37 @@ const SEED = {
     { id: "spotifyads", name: "Spotify Ads",      category: "Paid Audio",  group: "Ads",            desc: "Audio + video spots · creative handoff (manual upload to Ad Studio)", auth: "Manual",  provider: "direct",   slug: "spotify", domain: "adstudio.spotify.com"  },
 
     // ── Paid Social ──────────────────────────────────────────────────────────
-    { id: "metaads",    name: "Meta Ads",         category: "Paid Social", group: "Ads",            desc: "Facebook + Instagram paid · Advantage+",          auth: "OAuth",   provider: "composio", slug: "meta", domain: "business.facebook.com"  },
-    { id: "liads",      name: "LinkedIn Ads",     category: "Paid Social", group: "Ads",            desc: "Sponsored content · B2B",                         auth: "OAuth",   provider: "composio", slug: "linkedin", domain: "business.linkedin.com"  },
-    { id: "ttads",      name: "TikTok Ads",       category: "Paid Social", group: "Ads",            desc: "Spark Ads, paid creator content",                 auth: "OAuth",   provider: "composio", slug: "tiktok", domain: "ads.tiktok.com"  },
-    { id: "xads",       name: "X Ads",            category: "Paid Social", group: "Ads",            desc: "Promoted posts, Amplify",                         auth: "OAuth",   provider: "composio", slug: "x", domain: "ads.x.com"  },
-    { id: "pinads",     name: "Pinterest Ads",    category: "Paid Social", group: "Ads",            desc: "Promoted pins · discovery intent",                auth: "OAuth",   provider: "pipedream",slug: "pinterest", domain: "business.pinterest.com"  },
+    { id: "metaads",    name: "Meta Ads",         category: "Paid Social", group: "Ads",            desc: "Facebook + Instagram paid · Advantage+",          auth: "OAuth",   provider: "zernio",   slug: "meta", domain: "business.facebook.com"  },
+    { id: "liads",      name: "LinkedIn Ads",     category: "Paid Social", group: "Ads",            desc: "Sponsored content · B2B",                         auth: "OAuth",   provider: "zernio",   slug: "linkedin", domain: "business.linkedin.com"  },
+    { id: "ttads",      name: "TikTok Ads",       category: "Paid Social", group: "Ads",            desc: "Spark Ads, paid creator content",                 auth: "OAuth",   provider: "zernio",   slug: "tiktok", domain: "ads.tiktok.com"  },
+    { id: "xads",       name: "X Ads",            category: "Paid Social", group: "Ads",            desc: "Promoted posts, Amplify",                         auth: "OAuth",   provider: "zernio",   slug: "x", domain: "ads.x.com"  },
+    { id: "pinads",     name: "Pinterest Ads",    category: "Paid Social", group: "Ads",            desc: "Promoted pins · discovery intent",                auth: "OAuth",   provider: "zernio",   slug: "pinterest", domain: "business.pinterest.com"  },
 
-    // ── Organic Social ───────────────────────────────────────────────────────
-    { id: "fb",         name: "Facebook",         category: "Organic Social", group: "Social",      desc: "Pages & posts",                                   auth: "OAuth",   provider: "composio", slug: "facebook", domain: "facebook.com"  },
-    { id: "ig",         name: "Instagram",        category: "Organic Social", group: "Social",      desc: "Posts, Reels, Stories",                           auth: "OAuth",   provider: "composio", slug: "instagram", domain: "instagram.com"  },
-    { id: "li",         name: "LinkedIn",         category: "Organic Social", group: "Social",      desc: "Company posts, articles",                         auth: "OAuth",   provider: "composio", slug: "linkedin", domain: "linkedin.com"  },
-    { id: "x",          name: "X",                category: "Organic Social", group: "Social",      desc: "Posts & Spaces",                                  auth: "OAuth",   provider: "composio", slug: "x", domain: "x.com"  },
-    { id: "tt",         name: "TikTok",           category: "Organic Social", group: "Social",      desc: "Videos, Photo mode",                              auth: "OAuth",   provider: "composio", slug: "tiktok", domain: "tiktok.com"  },
-    { id: "pn",         name: "Pinterest",        category: "Organic Social", group: "Social",      desc: "Pins & boards",                                   auth: "OAuth",   provider: "pipedream",slug: "pinterest", domain: "pinterest.com"  },
-    { id: "reddit",     name: "Reddit",           category: "Organic Social", group: "Social",      desc: "Subreddit posts & communities",                   auth: "OAuth",   provider: "composio", slug: "reddit", domain: "reddit.com"  },
-    { id: "yt",         name: "YouTube",          category: "Organic Social", group: "Social",      desc: "Shorts & long-form video",                        auth: "OAuth",   provider: "composio", slug: "youtube", domain: "youtube.com"  },
+    // ── Organic Social (all via Zernio) ──────────────────────────────────────
+    { id: "fb",         name: "Facebook",         category: "Organic Social", group: "Social",      desc: "Pages & posts",                                   auth: "OAuth",   provider: "zernio",   slug: "facebook", domain: "facebook.com"  },
+    { id: "ig",         name: "Instagram",        category: "Organic Social", group: "Social",      desc: "Posts, Reels, Stories",                           auth: "OAuth",   provider: "zernio",   slug: "instagram", domain: "instagram.com"  },
+    { id: "li",         name: "LinkedIn",         category: "Organic Social", group: "Social",      desc: "Company posts, articles",                         auth: "OAuth",   provider: "zernio",   slug: "linkedin", domain: "linkedin.com"  },
+    { id: "x",          name: "X",                category: "Organic Social", group: "Social",      desc: "Posts & Spaces",                                  auth: "OAuth",   provider: "zernio",   slug: "x", domain: "x.com"  },
+    { id: "tt",         name: "TikTok",           category: "Organic Social", group: "Social",      desc: "Videos, Photo mode",                              auth: "OAuth",   provider: "zernio",   slug: "tiktok", domain: "tiktok.com"  },
+    { id: "pn",         name: "Pinterest",        category: "Organic Social", group: "Social",      desc: "Pins & boards",                                   auth: "OAuth",   provider: "zernio",   slug: "pinterest", domain: "pinterest.com"  },
+    { id: "reddit",     name: "Reddit",           category: "Organic Social", group: "Social",      desc: "Subreddit posts & communities",                   auth: "OAuth",   provider: "zernio",   slug: "reddit", domain: "reddit.com"  },
+    { id: "yt",         name: "YouTube",          category: "Organic Social", group: "Social",      desc: "Shorts & long-form video",                        auth: "OAuth",   provider: "zernio",   slug: "youtube", domain: "youtube.com"  },
+    { id: "threads",    name: "Threads",          category: "Organic Social", group: "Social",      desc: "Text posts · Meta's Twitter alternative",         auth: "OAuth",   provider: "zernio",   slug: "threads", domain: "threads.net"  },
+    { id: "bluesky",    name: "Bluesky",          category: "Organic Social", group: "Social",      desc: "Decentralised posts · AT Protocol",               auth: "OAuth",   provider: "zernio",   slug: "bluesky", domain: "bsky.app"  },
+    { id: "whatsapp",   name: "WhatsApp",         category: "Organic Social", group: "Social",      desc: "Business messaging · broadcast lists",            auth: "OAuth",   provider: "zernio",   slug: "whatsapp", domain: "business.whatsapp.com"  },
+    { id: "telegram",   name: "Telegram",         category: "Organic Social", group: "Social",      desc: "Channels & groups · rich media",                  auth: "OAuth",   provider: "zernio",   slug: "telegram", domain: "telegram.org"  },
+    { id: "snapchat",   name: "Snapchat",         category: "Organic Social", group: "Social",      desc: "Stories & Spotlight · Gen Z reach",               auth: "OAuth",   provider: "zernio",   slug: "snapchat", domain: "snapchat.com"  },
+    { id: "discord",    name: "Discord",          category: "Organic Social", group: "Social",      desc: "Community server posts · announcements",          auth: "OAuth",   provider: "zernio",   slug: "discord", domain: "discord.com"  },
+    { id: "gbusiness",  name: "Google Business",  category: "Organic Social", group: "Social",      desc: "Google Business Profile posts · local SEO",       auth: "OAuth",   provider: "zernio",   slug: null, domain: "business.google.com"  },
 
     // ── Email Marketing ──────────────────────────────────────────────────────
     { id: "mailchimp",      name: "Mailchimp",      category: "Email Marketing", group: "Email & SMS", desc: "Audiences, automations, A/B tests",          auth: "API key", provider: "composio", slug: "mailchimp", domain: "mailchimp.com"  },
     { id: "klaviyo",        name: "Klaviyo",        category: "Email Marketing", group: "Email & SMS", desc: "Lists, flows, campaigns, segmentation",       auth: "API key", provider: "composio", slug: "klaviyo", domain: "klaviyo.com"  },
-    { id: "sendgrid",       name: "SendGrid",       category: "Email Marketing", group: "Email & SMS", desc: "Transactional + marketing email at scale",    auth: "API key", provider: "pipedream",slug: "twilio", domain: "sendgrid.com"  },
+    { id: "sendgrid",       name: "SendGrid",       category: "Email Marketing", group: "Email & SMS", desc: "Transactional + marketing email at scale",    auth: "API key", provider: "direct",   slug: "twilio", domain: "sendgrid.com"  },
 
     // ── SMS Marketing ────────────────────────────────────────────────────────
     { id: "klaviyo_sms", name: "Klaviyo SMS",     category: "SMS Marketing", group: "Email & SMS", desc: "TCPA consent, MMS, automations · shares Klaviyo key", auth: "API key", provider: "composio", slug: "klaviyo", domain: "klaviyo.com"  },
-    { id: "twilio",      name: "Twilio",          category: "SMS Marketing", group: "Email & SMS", desc: "Programmable SMS · global reach, A2P 10DLC",          auth: "API key", provider: "pipedream",slug: "twilio", domain: "twilio.com"  },
+    { id: "twilio",      name: "Twilio",          category: "SMS Marketing", group: "Email & SMS", desc: "Programmable SMS · global reach, A2P 10DLC",          auth: "API key", provider: "direct",   slug: "twilio", domain: "twilio.com"  },
 
     // ── Email Verification ───────────────────────────────────────────────────
     { id: "neverbounce", name: "NeverBounce",     category: "Email Verification", group: "Email & SMS", desc: "Real-time + bulk email verification",         auth: "API key", provider: "composio", slug: null, domain: "neverbounce.com"  },
@@ -161,7 +168,7 @@ const SEED = {
     // ── AI Video / Image ─────────────────────────────────────────────────────
     { id: "heygen",     name: "HeyGen",           category: "AI Video / Image", group: "Creative AI", desc: "AI avatar videos · UGC personas, voiceover", auth: "API key", provider: "composio", slug: null, domain: "heygen.com"  },
     { id: "replicate",  name: "Replicate",        category: "AI Video / Image", group: "Creative AI", desc: "Hosted ML models · image, video, audio",     auth: "API key", provider: "direct",   slug: "replicate", domain: "replicate.com"  },
-    { id: "runware",    name: "RunWare.ai",       category: "AI Video / Image", group: "Creative AI", desc: "Ultra-fast image gen · SDXL & Flux models",  auth: "API key", provider: "pipedream",slug: null, domain: "runware.ai"  },
+    { id: "runware",    name: "RunWare.ai",       category: "AI Video / Image", group: "Creative AI", desc: "Ultra-fast image gen · SDXL & Flux models",  auth: "API key", provider: "direct",   slug: null, domain: "runware.ai"  },
     { id: "higgsfield", name: "Higgsfield.ai",    category: "AI Video / Image", group: "Creative AI", desc: "Cinematic video gen · Kling, Studio 3.0",    auth: "API key", provider: "direct",   slug: null, domain: "higgsfield.ai"  },
     { id: "luma",       name: "Luma AI",          category: "AI Video / Image", group: "Creative AI", desc: "Dream Machine · photorealistic video gen",   auth: "API key", provider: "direct",   slug: null, domain: "lumalabs.ai"  },
 
@@ -198,6 +205,13 @@ const SEED = {
     pn:             { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     reddit:         { connected: false, status: "—",    note: "not connected",                        syncCount: "—", meta: { authors: [] }, permissions: { read: true, write: true, admin: false } },
     yt:             { connected: true,  status: "ok",   note: "synced 8m ago · @mveda-co",            syncCount: "38 videos", permissions: { read: true, write: true, admin: false } },
+    threads:        { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    bluesky:        { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    whatsapp:       { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    telegram:       { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    snapchat:       { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    discord:        { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    gbusiness:      { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // Email Marketing
     mailchimp:      { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     klaviyo:        { connected: true,  status: "ok",   note: "lists synced 2m ago",                  syncCount: "24,118 contacts · 6 flows", permissions: { read: true, write: true, admin: false } },
@@ -258,6 +272,13 @@ const SEED = {
       pn:             { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       reddit:         { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", meta: { authors: [] }, permissions: { read: true, write: true, admin: false } },
       yt:             { connected: true,  status: "ok", note: "synced 2h ago · @EricksonRefrigeration",            syncCount: "18 videos", permissions: { read: true, write: true, admin: false } },
+      threads:        { connected: false, status: "—",  note: "not connected — not relevant for B2B commercial",  syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      bluesky:        { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      whatsapp:       { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      telegram:       { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      snapchat:       { connected: false, status: "—",  note: "not connected — not relevant for B2B commercial",  syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      discord:        { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      gbusiness:      { connected: true,  status: "ok", note: "synced 1h ago · Erickson Commercial Refrigeration", syncCount: "4 posts", permissions: { read: true, write: true, admin: false } },
       // Email Marketing
       mailchimp:      { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       klaviyo:        { connected: true,  status: "ok", note: "synced 4m ago",                                     syncCount: "1,840 contacts · 3 flows", permissions: { read: true, write: true, admin: false } },
