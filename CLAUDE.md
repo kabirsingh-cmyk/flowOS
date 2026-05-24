@@ -414,10 +414,15 @@ All auth helpers live in [api/lib/auth.js](api/lib/auth.js). Each returns either
 import { requireAuth, requireCron, requireAuthOrCron } from "./lib/auth.js";
 
 // User-only endpoint (chat, brand-import, generate, klaviyo, scheduled-posts,
-// google-ads, composio, GET on proactive-* endpoints):
+// google-ads, composio, pipedream, the six Direct-API connector routes —
+// replicate / higgsfield / luma / optimizely / wordpress / audiostack — and
+// GET on proactive-* endpoints):
 const auth = await requireAuth(req);
 if (auth instanceof Response) return auth;
 const tenantId = auth.tenantId;
+// For action-dispatch endpoints, override body.tenantId so handlers can't be
+// tricked by a client-supplied value:
+//   body = { ...body, tenantId: auth.tenantId };
 
 // Cron-only endpoint (api/cron/*):
 const cronAuth = requireCron(req);   // fails closed if CRON_SECRET unset

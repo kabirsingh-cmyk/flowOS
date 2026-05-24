@@ -19,6 +19,7 @@
  */
 
 import { saveCredential, deleteCredential, json, err, CORS } from "./lib/directCredentials.js";
+import { requireAuth } from "./lib/auth.js";
 
 export const config = { runtime: "edge" };
 
@@ -85,9 +86,14 @@ export default async function handler(req) {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   if (req.method !== "POST")    return err("POST required", 405);
 
+  const auth = await requireAuth(req);
+  if (auth instanceof Response) return auth;
+
   let body;
   try { body = await req.json(); }
   catch { return err("Invalid JSON body", 400); }
+
+  body = { ...body, tenantId: auth.tenantId };
 
   try {
     switch (body.action) {
