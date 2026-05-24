@@ -407,9 +407,9 @@ function PublishingQueue({ state, actions }) {
             {["calendar", "list"].map(v => (
               <button key={v} onClick={() => setView(v)} style={{
                 padding: "4px 10px", borderRadius: 4, fontSize: 11, fontWeight: 500,
-                border: "1px solid " + (v === view ? "var(--ink)" : "var(--rule)"),
-                background: v === view ? "var(--ink)" : "var(--paper)",
-                color: v === view ? "var(--paper)" : "var(--muted)",
+                border: "1px solid " + (v === view ? "var(--rule-strong)" : "var(--rule)"),
+                background: v === view ? "var(--paper-3)" : "var(--paper)",
+                color: v === view ? "var(--ink)" : "var(--muted)",
                 cursor: "pointer", fontFamily: "var(--font-sans)", textTransform: "capitalize",
               }}>{v}</button>
             ))}

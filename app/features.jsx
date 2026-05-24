@@ -580,7 +580,7 @@ function TeamSeats({ state, actions }) {
               return (
                 <button key={s} type="button" onClick={() => setDraft({ ...draft, scope: on ? draft.scope.filter(x => x !== s) : [...draft.scope, s] })}
                   style={{ padding: "5px 10px", borderRadius: 4, fontSize: 11.5, border: "1px solid var(--rule)",
-                    background: on ? "var(--ink)" : "var(--paper)", color: on ? "var(--paper)" : "var(--ink)", cursor: "pointer", fontFamily: "var(--font-sans)" }}>{s}</button>
+                    background: on ? "var(--accent)" : "var(--paper)", color: on ? "var(--accent-ink)" : "var(--ink)", cursor: "pointer", fontFamily: "var(--font-sans)" }}>{s}</button>
               );
             })}
           </div>
@@ -589,7 +589,7 @@ function TeamSeats({ state, actions }) {
             {["view-only","comment-only","edit"].map(p => (
               <button key={p} type="button" onClick={() => setDraft({ ...draft, permissions: p })}
                 style={{ flex: 1, padding: "8px", borderRadius: 4, fontSize: 12, border: "1px solid " + (draft.permissions === p ? "var(--ink)" : "var(--rule)"),
-                  background: draft.permissions === p ? "var(--ink)" : "var(--paper)", color: draft.permissions === p ? "var(--paper)" : "var(--ink)", cursor: "pointer", fontFamily: "var(--font-sans)" }}>{p}</button>
+                  background: draft.permissions === p ? "var(--accent)" : "var(--paper)", color: draft.permissions === p ? "var(--accent-ink)" : "var(--ink)", cursor: "pointer", fontFamily: "var(--font-sans)" }}>{p}</button>
             ))}
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 }}>
@@ -704,14 +704,14 @@ function MobileShell({ state, actions }) {
   const PhoneFrame = ({ children }) => (
     <div style={{
       width: 320, margin: "0 auto",
-      background: "var(--ink)", borderRadius: 32, padding: 8,
+      background: "oklch(8% 0 0)", borderRadius: 32, padding: 8,
       boxShadow: "0 30px 60px -20px oklch(20% 0.02 80 / 0.4)",
     }}>
       <div style={{
         background: "var(--paper)", borderRadius: 26, overflow: "hidden",
         height: 600, position: "relative", display: "flex", flexDirection: "column",
       }}>
-        <div style={{ height: 26, background: "var(--ink)", color: "var(--paper)", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 18px", fontSize: 10.5, fontFamily: "var(--font-mono)" }}>
+        <div style={{ height: 26, background: "oklch(8% 0 0)", color: "oklch(92% 0 0)", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 18px", fontSize: 10.5, fontFamily: "var(--font-mono)" }}>
           <span>9:41</span><span>5G</span>
         </div>
         {children}
@@ -991,9 +991,9 @@ function OrganicSocialStudio({ state, actions }) {
         {TABS.map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: "5px 14px", borderRadius: 5, border: "1px solid",
-            borderColor: tab === t ? "var(--ink)" : "var(--rule)",
-            background: tab === t ? "var(--ink)" : "var(--paper)",
-            color: tab === t ? "var(--paper)" : "var(--ink-2)",
+            borderColor: tab === t ? "var(--rule-strong)" : "var(--rule)",
+            background: tab === t ? "var(--paper-3)" : "var(--paper)",
+            color: tab === t ? "var(--ink)" : "var(--ink-2)",
             fontSize: 12, fontFamily: "var(--font-sans)", cursor: "pointer",
             textTransform: t === "all" ? "none" : "capitalize",
           }}>{t === "all" ? "All channels" : t}</button>

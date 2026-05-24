@@ -283,8 +283,8 @@ function CampaignPlanner({ state, actions, payload, go }) {
               <button key={c} onClick={() => setFilter(c)}
                 style={{
                   padding: "4px 10px", border: 0, borderRadius: 3,
-                  background: filter === c ? "var(--ink)" : "transparent",
-                  color: filter === c ? "var(--paper)" : "var(--ink-2)",
+                  background: filter === c ? "var(--paper-3)" : "transparent",
+                  color: filter === c ? "var(--ink)" : "var(--ink-2)",
                   fontSize: 11.5, fontFamily: "var(--font-sans)", cursor: "pointer",
                   fontWeight: 500,
                 }}>{c === "all" ? "All" : c}</button>
@@ -428,9 +428,9 @@ function NewCampaignDialog({ open, onClose, onCreate }) {
               <button key={w} onClick={() => setStart(w)}
                 style={{
                   padding: "6px 12px", fontSize: 12,
-                  border: `1px solid ${start === w ? "var(--ink)" : "var(--rule)"}`,
-                  background: start === w ? "var(--ink)" : "var(--paper)",
-                  color: start === w ? "var(--paper)" : "var(--ink)",
+                  border: `1px solid ${start === w ? "var(--rule-strong)" : "var(--rule)"}`,
+                  background: start === w ? "var(--paper-3)" : "var(--paper)",
+                  color: "var(--ink)",
                   borderRadius: 4, cursor: "pointer",
                 }}>{w}</button>
             ))}
@@ -573,9 +573,9 @@ function ContentStudio({ state, actions, payload, go }) {
                   <button key={i} onClick={() => setActive(i)}
                     style={{
                       padding: "6px 12px", fontSize: 12,
-                      border: `1px solid ${active === i ? "var(--ink)" : "var(--rule)"}`,
-                      background: active === i ? "var(--ink)" : "var(--paper)",
-                      color: active === i ? "var(--paper)" : "var(--ink)",
+                      border: `1px solid ${active === i ? "var(--rule-strong)" : "var(--rule)"}`,
+                      background: active === i ? "var(--paper-3)" : "var(--paper)",
+                      color: "var(--ink)",
                       borderRadius: 4, cursor: "pointer",
                       fontFamily: "var(--font-mono)", letterSpacing: "0.04em",
                     }}>

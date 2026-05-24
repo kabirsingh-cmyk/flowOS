@@ -1253,7 +1253,7 @@ function Composer({ onSend, channelName }) {
             onMouseUp={() => { setRecording(false); setVal(val + (val ? " " : "") + "[transcript: draft a soft launch teaser for the saffron restock]"); }}
             onMouseLeave={() => setRecording(false)}
             title="Hold to dictate"
-            style={{ ...btn, background: recording ? "var(--accent)" : "transparent", color: recording ? "var(--paper)" : "var(--ink)" }}>
+            style={{ ...btn, background: recording ? "var(--accent)" : "transparent", color: recording ? "var(--accent-ink)" : "var(--ink)" }}>
             <Icon name="dot" size={14}/>
           </button>
         </div>

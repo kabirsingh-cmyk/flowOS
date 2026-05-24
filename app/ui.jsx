@@ -118,7 +118,7 @@ function Btn({ children, onClick, variant = "default", size = "md", style, disab
   };
   const variants = {
     default:  { background: "var(--paper)", color: "var(--ink)",   border: "1px solid var(--rule-strong)" },
-    primary:  { background: "var(--ink)",   color: "var(--paper)", border: "1px solid var(--ink)" },
+    primary:  { background: "var(--accent)", color: "var(--accent-ink)", border: "1px solid var(--accent)" },
     accent:   { background: "var(--accent)",color: "var(--paper)", border: "1px solid var(--accent)" },
     ghost:    { background: "transparent",  color: "var(--ink-2)", border: "1px solid transparent" },
     danger:   { background: "var(--paper)", color: "var(--danger)",border: "1px solid var(--danger)" },
@@ -322,8 +322,8 @@ function Toggle({ value, onChange, options }) {
           <button key={v} onClick={() => onChange(v)}
             style={{
               padding: "5px 11px", border: 0, borderRadius: 3,
-              background: value === v ? "var(--ink)" : "transparent",
-              color: value === v ? "var(--paper)" : "var(--ink-2)",
+              background: value === v ? "var(--paper-3)" : "transparent",
+              color: value === v ? "var(--ink)" : "var(--ink-2)",
               fontSize: 11.5, fontFamily: "var(--font-sans)", cursor: "pointer",
               fontWeight: 500, letterSpacing: "0.01em", textTransform: "capitalize",
             }}>{l}</button>

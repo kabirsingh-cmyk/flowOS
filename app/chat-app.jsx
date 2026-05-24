@@ -307,7 +307,7 @@ function ChannelList({ channels, active, onSelect, brandImported, brandPreset, a
       display: "flex", flexDirection: "column", minHeight: 0,
     }}>
       <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--rule)", display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{ width: 26, height: 26, borderRadius: 5, background: "var(--ink)", color: "var(--paper)", display: "grid", placeItems: "center", fontFamily: "var(--font-serif)", fontSize: 17 }}>F</div>
+        <div style={{ width: 26, height: 26, borderRadius: 5, background: "var(--accent)", color: "var(--accent-ink)", display: "grid", placeItems: "center", fontFamily: "var(--font-serif)", fontSize: 17 }}>F</div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em" }}>FlowOS</div>
           <div className="mono" style={{ fontSize: 9.5, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase" }}>AI Marketing OS</div>
@@ -370,14 +370,14 @@ function ChannelRow({ channel, active, onSelect }) {
       style={{
         display: "flex", alignItems: "center", gap: 10,
         padding: "7px 10px", borderRadius: 4, cursor: "pointer",
-        background: active ? "var(--ink)" : "transparent",
-        color: active ? "var(--paper)" : "var(--ink-2)",
+        background: active ? "var(--paper-3)" : "transparent",
+        color: active ? "var(--ink)" : "var(--ink-2)",
         marginBottom: 1,
       }}>
       <Icon name={channel.icon} size={12}/>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{channel.name}</div>
-        <div style={{ fontSize: 10.5, opacity: active ? 0.7 : 1, color: active ? "var(--paper)" : "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{channel.sub}</div>
+        <div style={{ fontSize: 10.5, opacity: active ? 0.7 : 1, color: active ? "var(--ink-2)" : "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{channel.sub}</div>
       </div>
       {channel.unread > 0 && (
         <span className="mono" style={{
@@ -544,8 +544,8 @@ function ChatHeader({ channels, activeId, onSelect, brandImported, brandPreset, 
         {channels.map(c => (
           <button key={c.id} onClick={() => onSelect(c.id)} title={c.name} style={{
             padding: "2px 7px", borderRadius: 4, fontSize: 10, border: "none",
-            background: c.id === activeId ? "var(--ink)" : "var(--paper-2)",
-            color: c.id === activeId ? "var(--paper)" : "var(--muted)",
+            background: c.id === activeId ? "var(--paper-3)" : "var(--paper-2)",
+            color: c.id === activeId ? "var(--ink)" : "var(--muted)",
             cursor: "pointer", fontFamily: "var(--font-sans)", fontWeight: 500,
           }}>{SHORT[c.name] || c.name.slice(0, 7)}</button>
         ))}
@@ -1255,9 +1255,9 @@ function ChatOSAuthed({ auth, onLogout }) {
               {["reactive", "daily", "always"].map(p => (
                 <button key={p} style={{
                   flex: 1, padding: "7px 8px", borderRadius: 4, fontSize: 11, fontWeight: 500,
-                  border: "1px solid " + (p === "daily" ? "var(--ink)" : "var(--rule)"),
-                  background: p === "daily" ? "var(--ink)" : "var(--paper)",
-                  color: p === "daily" ? "var(--paper)" : "var(--ink)",
+                  border: "1px solid " + (p === "daily" ? "var(--rule-strong)" : "var(--rule)"),
+                  background: p === "daily" ? "var(--paper-3)" : "var(--paper)",
+                  color: "var(--ink)",
                   cursor: "pointer", textTransform: "capitalize", fontFamily: "var(--font-sans)",
                 }}>{p}</button>
               ))}

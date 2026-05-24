@@ -413,7 +413,7 @@ function CommandCenter({ state, actions, go }) {
       {toastMsg && (
         <div style={{
           position: "absolute", top: 16, left: "50%", transform: "translateX(-50%)",
-          background: "var(--ink)", color: "var(--paper)", padding: "8px 18px", borderRadius: 20,
+          background: "var(--paper-3)", color: "var(--ink)", padding: "8px 18px", borderRadius: 20,
           fontSize: 13, fontWeight: 500, zIndex: 999, pointerEvents: "none",
           boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
         }}>{toastMsg}</div>
@@ -540,7 +540,7 @@ function CommandCenter({ state, actions, go }) {
               }}>
                 {msg.role === "user" ? (
                   <div style={{
-                    background: "var(--ink)", color: "var(--paper)",
+                    background: "var(--accent)", color: "var(--accent-ink)",
                     borderRadius: 16, padding: "7px 14px",
                     fontSize: 13, maxWidth: "70%", lineHeight: 1.5,
                   }}>{msg.text}</div>
