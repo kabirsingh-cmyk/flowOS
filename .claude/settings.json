@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /Users/deadstar811/Desktop/flowOS/scripts/daily-brief.mjs",
+            "statusMessage": "Generating daily build brief..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /Users/deadstar811/Desktop/flowOS/scripts/health-check.mjs"
+          }
+        ]
+      }
+    ]
+  }
+}
