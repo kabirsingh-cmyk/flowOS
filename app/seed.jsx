@@ -141,11 +141,8 @@ const SEED = {
     // ── Email Marketing ──────────────────────────────────────────────────────
     { id: "mailchimp",      name: "Mailchimp",      category: "Email Marketing", group: "Email", desc: "Audiences, automations, A/B tests",          auth: "API key", provider: "composio", slug: "mailchimp", domain: "mailchimp.com"  },
     { id: "klaviyo",        name: "Klaviyo",        category: "Email Marketing", group: "Email", desc: "Lists, flows, campaigns, segmentation",       auth: "API key", provider: "composio", slug: "klaviyo", domain: "klaviyo.com"  },
-    { id: "sendgrid",       name: "SendGrid",       category: "Email Marketing", group: "Email", desc: "Transactional + marketing email at scale",    auth: "API key", provider: "direct",   slug: "twilio", domain: "sendgrid.com"  },
-
     // ── SMS Marketing ────────────────────────────────────────────────────────
     { id: "klaviyo_sms", name: "Klaviyo SMS",     category: "SMS Marketing", group: "SMS", desc: "TCPA consent, MMS, automations · shares Klaviyo key", auth: "API key", provider: "composio", slug: "klaviyo", domain: "klaviyo.com"  },
-    { id: "twilio",      name: "Twilio",          category: "SMS Marketing", group: "SMS", desc: "Programmable SMS · global reach, A2P 10DLC",          auth: "API key", provider: "direct",   slug: "twilio", domain: "twilio.com"  },
 
     // ── Email Verification — REMOVED (neverbounce, kickbox, listclean had no feature usage) ──
 
@@ -173,8 +170,7 @@ const SEED = {
     // ── Analytics ────────────────────────────────────────────────────────────
     { id: "ga4",        name: "Google Analytics", category: "Analytics", group: "Analytics", desc: "GA4 · acquisition, behavior, conversion",       auth: "OAuth",   provider: "composio", slug: "googleanalytics", domain: "analytics.google.com"  },
 
-    // ── CRM & Marketing Ops ──────────────────────────────────────────────────
-    { id: "hubspot",    name: "HubSpot",          category: "CRM & Marketing Ops", group: "Analytics", desc: "CRM, marketing hub, sequences",       auth: "OAuth",   provider: "composio", slug: "hubspot", domain: "hubspot.com"  },
+    // ── CRM & Marketing Ops — REMOVED (hubspot had no feature usage beyond CONNECTOR_LABELS) ──
   ],
   // Default per-connector status. The reducer shallow-merges patches into these.
   // Manage modal toggles `permissions.{read,write,admin}` — defaults set by makeConnState below.
@@ -208,10 +204,8 @@ const SEED = {
     // Email Marketing
     mailchimp:      { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     klaviyo:        { connected: true,  status: "ok",   note: "lists synced 2m ago",                  syncCount: "24,118 contacts · 6 flows", permissions: { read: true, write: true, admin: false } },
-    sendgrid:       { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // SMS Marketing
     klaviyo_sms:    { connected: true,  status: "ok",   note: "TCPA opt-ins synced 4m ago",           syncCount: "8,402 SMS subscribers · 3 flows", permissions: { read: true, write: true, admin: false } },
-    twilio:         { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // Email Verification
     // SEO & Search
     gsc:            { connected: true,  status: "ok",   note: "synced 12m ago",                       syncCount: "26 indexed pages", permissions: { read: true, write: true, admin: false } },
@@ -232,7 +226,6 @@ const SEED = {
     // Analytics
     ga4:            { connected: true,  status: "ok",   note: "last event 1m ago",                    syncCount: "", permissions: { read: true, write: true, admin: false } },
     // CRM & Marketing Ops
-    hubspot:        { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
   },
 
   // Per-brand connector states — used when switching accounts
@@ -268,10 +261,8 @@ const SEED = {
       // Email Marketing
       mailchimp:      { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       klaviyo:        { connected: true,  status: "ok", note: "synced 4m ago",                                     syncCount: "1,840 contacts · 3 flows", permissions: { read: true, write: true, admin: false } },
-      sendgrid:       { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       // SMS Marketing
       klaviyo_sms:    { connected: true,  status: "ok", note: "synced 4m ago · service appointment reminders",    syncCount: "820 opted in", permissions: { read: true, write: true, admin: false } },
-      twilio:         { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       // Email Verification
       // SEO & Search
       gsc:            { connected: true,  status: "ok", note: "synced 1h ago",                                     syncCount: "96 queries tracked", permissions: { read: true, write: true, admin: false } },
@@ -291,8 +282,6 @@ const SEED = {
       elevenlabs:     { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       // Analytics
       ga4:            { connected: true,  status: "ok", note: "synced live · ericksonrefrigeration.com",           syncCount: "62 events tracked", permissions: { read: true, write: true, admin: false } },
-      // CRM & Marketing Ops
-      hubspot:        { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
     },
   },
 

@@ -110,7 +110,6 @@ const APP_MAP = {
   ga4:          "google_analytics",
 
   // CRM
-  hubspot:      "hubspot",
   // salesforce — REMOVED (no agent workflows, 2026-05-24)
 };
 

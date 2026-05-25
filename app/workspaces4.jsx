@@ -33,8 +33,6 @@ const DIRECT_API_ROUTES = {
   higgsfield: "/api/higgsfield",
   optimizely: "/api/optimizely",
   wordpress:  "/api/wordpress",
-  sendgrid:   "/api/sendgrid",
-  twilio:     "/api/twilio",
   runware:    "/api/runware",
 };
 

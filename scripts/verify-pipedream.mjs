@@ -12,7 +12,7 @@
 //   2. List every Pipedream app slug.
 //   3. For each FlowOS Pipedream-provider connector id, check whether its mapped
 //      slug exists in that list.
-//   4. Mint a real Connect Token for one known-good app (sendgrid) and confirm
+//   4. Mint a real Connect Token for one known-good app (runware) and confirm
 //      we get a `connect_link_url` back.
 
 const {
@@ -33,8 +33,6 @@ const BASE = "https://api.pipedream.com/v1";
 const APP_MAP = {
   pinads:         "pinterest",
   pn:             "pinterest",
-  sendgrid:       "sendgrid",
-  twilio:         "twilio",
   runware:        "runware",
 };
 

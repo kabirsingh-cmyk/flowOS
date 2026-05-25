@@ -48,7 +48,6 @@ const APP_MAP = {
   heygen:       "heygen",
   elevenlabs:   "elevenlabs",
   ga4:          "google_analytics",
-  hubspot:      "hubspot",
   salesforce:   "salesforce",
 };
 

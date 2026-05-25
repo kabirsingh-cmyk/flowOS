@@ -135,6 +135,22 @@ node scripts/health-check.mjs
 └── supabase/migrations/    # Additional SQL migrations
 ```
 
+## Coding Guidelines (Karpathy)
+
+Source: https://github.com/multica-ai/andrej-karpathy-skills — apply to all work in this repo.
+
+**Tradeoff:** These bias toward caution over speed. For trivial tasks, use judgment.
+
+**Think Before Coding** — State assumptions explicitly before implementing. If multiple interpretations exist, present them — don't pick silently. Push back when a simpler approach exists. If something is unclear, stop and ask.
+
+**Simplicity First** — Minimum code that solves the problem. No features beyond what was asked. No abstractions for single-use code. No speculative flexibility. If 200 lines could be 50, rewrite it.
+
+**Surgical Changes** — Touch only what you must. Don't improve adjacent code, comments, or formatting. Don't refactor things that aren't broken. Match existing style. Mention unrelated dead code — don't delete it. Every changed line should trace directly to the request.
+
+**Goal-Driven Execution** — Define verifiable success criteria before starting. "Fix the bug" → "Write a test that reproduces it, then make it pass". For multi-step tasks, state a plan with a verify check per step.
+
+---
+
 ## Development Conventions
 
 ### No build step / no modules

@@ -806,9 +806,9 @@ All aligned to one campaign theme.`,
   {
     id: "affiliate",
     name: "Affiliate",
-    role: "HubSpot · creators · pipeline",
-    description: "Manages affiliate and creator partnerships through HubSpot CRM. Tracks commission performance, approves new partner applications, and identifies top performers for VIP upgrades.",
-    connectors: ["hubspot"],
+    role: "creators · pipeline",
+    description: "Manages affiliate and creator partnerships. Tracks commission performance, approves new partner applications, and identifies top performers for VIP upgrades.",
+    connectors: [],
     compound: false,
     category: "growth",
     alwaysActive: false,
@@ -859,7 +859,7 @@ When a winner is confirmed:
     name: "Growth Specialist",
     role: "★ Acquisition · referral · viral",
     description: "Combines A/B Testing and CRM with paid media to run structured growth experiments. Identifies highest-ROI acquisition levers and compounds them.",
-    connectors: ["optimizely", "hubspot", "metaads"],
+    connectors: ["optimizely", "metaads"],
     compound: true,
     category: "growth",
     alwaysActive: false,
@@ -897,7 +897,6 @@ const CONNECTOR_LABELS = {
   pinads: "Pinterest Ads", xads: "X Ads",
   // Email + SMS
   klaviyo: "Klaviyo", klaviyo_sms: "Klaviyo SMS", mailchimp: "Mailchimp",
-  sendgrid: "SendGrid", twilio: "Twilio",
   // Commerce
   shopify: "Shopify", wordpress: "WordPress",
   // Analytics + SEO
@@ -909,7 +908,6 @@ const CONNECTOR_LABELS = {
   heygen: "HeyGen", runware: "RunWare", elevenlabs: "ElevenLabs",
   replicate: "Replicate", higgsfield: "Higgsfield",
   // CRM
-  hubspot: "HubSpot",
 };
 
 // ─── Agent status helper ───────────────────────────────────────────────────────

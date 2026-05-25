@@ -38,7 +38,6 @@ const CONNECTOR_IDS = [
   "metaads", "ttads", "liads", "pinads", "xads",
   // Email + SMS
   "klaviyo", "klaviyo_sms", "mailchimp",
-  "sendgrid", "twilio",
   // Commerce
   "shopify", "wordpress",
   // Analytics + SEO

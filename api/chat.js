@@ -93,7 +93,7 @@ function buildBrandVoiceBlock(brand) {
 // ─── Composio helpers ─────────────────────────────────────────────────────────
 
 // Social toolkits migrated to Zernio — exclude from Composio tool fetching.
-// Composio is now scoped to: googleads, ga4, gsc, hubspot, mailchimp,
+// Composio is now scoped to: googleads, ga4, gsc, mailchimp,
 // ahrefs, moz, elevenlabs, heygen, klaviyo, shopify.
 const COMPOSIO_SOCIAL_SLUGS = new Set([
   "linkedin", "li", "liads",
