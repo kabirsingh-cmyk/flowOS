@@ -60,6 +60,70 @@ Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` ar
 | b_e061 | InsightsCenter undefined globals + duplicate stub | done | 2026-05-22 |
 | b_img1_smoke | Smoke test: verify b_img1 durable URLs in production | backlog | 2026-05-25 |
 | b_img1 | Durable image storage — Supabase Storage bucket for generated images | priority-next | 2026-05-25 |
+| b_inb1 | Wire Inbox — real DMs and comments pulled from connected social platforms | priority-next | 2026-05-25 |
+| b_ins1 | Analytics → Insights pipeline — fetch real metrics and surface as actionable insight cards | priority-next | 2026-05-25 |
+| b_cmp1 | Campaign draft state — create and persist campaigns in draft before activation | priority-next | 2026-05-25 |
+
+---
+## b_inb1 · Wire Inbox — real DMs and comments pulled from connected social platforms
+
+- **status**: priority-next
+- **created**: 2026-05-25
+- **last-touched**: 2026-05-25
+- **effort**: unsized
+- **source**: Kabir 2026-05-25
+- **depends-on**: [b_a001]
+- **touches**: api/zernio.js, app/workspaces3.jsx (InboxEscalation), app/store.jsx
+
+### Why
+The Inbox workspace exists in the UI (`InboxEscalation`) but is seeded with fake data. Real value comes from pulling actual DMs and comments from connected platforms so the AI can triage, prioritise, and draft replies. Zernio already exposes `get_dms` and `get_comments` actions — the data layer is there, the wiring isn't.
+
+### Notes
+- `api/zernio.js` already has `action: "get_dms"` and `action: "get_comments"` stubs — wire these to real Zernio endpoints.
+- Add `/api/inbox` route (or reuse `/api/zernio` with action dispatch) to fetch per-platform DMs + comments for a tenant.
+- Hydrate `state.inbox` on workspace mount (currently seeded in `store.jsx`).
+- AI reply drafting: `create_draft` tool already exists; Inbox just needs to pass thread context to the drafter specialist.
+- Scope v1 to platforms that Zernio supports for messaging: Instagram, Facebook, LinkedIn, X.
+
+## b_ins1 · Analytics → Insights pipeline — fetch real metrics and surface as actionable insight cards
+
+- **status**: priority-next
+- **created**: 2026-05-25
+- **last-touched**: 2026-05-25
+- **effort**: unsized
+- **source**: Kabir 2026-05-25
+- **depends-on**: []
+- **touches**: api/analytics-ingest.js, api/cron/daily-analytics.js, app/insights.jsx, app/store.jsx
+
+### Why
+`InsightsCenter` exists but renders empty or seeded data for most tenants. `analytics_snapshots` and `analytics_insights` tables exist and `api/analytics-ingest.js` runs on a daily cron — but the ingestion is thin and the Claude-generated summaries don't reliably produce the structured insight cards the UI expects. The full loop (fetch → store → Claude summarise → surface as cards with recommended actions) needs to be validated end-to-end and the UI needs to handle real data shapes, not just the seed.
+
+### Notes
+- Audit `api/analytics-ingest.js`: confirm it's fetching real metrics from GA4 / GSC / Klaviyo via Composio for connected tenants, not just stubbing.
+- `analytics_insights.recommended_actions` is what drives proactive email/SMS rules — verify Claude is producing the right shape.
+- `InsightsCenter` (`app/insights.jsx`) needs the three distinct states from b_c945: loading / no-data / fetch-error.
+- Insight cards should be actionable: "Open in EmailStudio", "Create campaign", "View in Publishing Queue" — not just text.
+- Consider a manual "Run sync now" button in InsightsCenter for tenants who don't want to wait for the 06:00 cron.
+
+## b_cmp1 · Campaign draft state — create and persist campaigns in draft before activation
+
+- **status**: priority-next
+- **created**: 2026-05-25
+- **last-touched**: 2026-05-25
+- **effort**: unsized
+- **source**: Kabir 2026-05-25
+- **depends-on**: [b_dca6]
+- **touches**: api/chat.js, app/store.jsx, app/workspaces2.jsx (CampaignPlanner), db/migrations/
+
+### Why
+Campaigns created via the chat AI go directly into `state.activePlan` (ephemeral) or into `state.calendar` as scheduled items. There's no intermediate draft state where a campaign can be reviewed, edited, and activated later. Tenants need to be able to save a campaign brief as a draft, come back to it, adjust channels/budget/timeline, and only then push content to the Publishing Queue.
+
+### Notes
+- Depends on b_dca6 (campaign brief persistence to `campaign_plans` table) — that's the storage layer; this item is the UX state machine on top of it.
+- States: `draft` → `active` → `completed` / `paused`. Draft campaigns don't generate calendar items yet.
+- CampaignPlanner workspace should list all draft campaigns for the tenant (not just the one in `state.activePlan`).
+- "Activate" action triggers the content generation loop (same as today's `create_campaign_plan` flow) and stamps items into `state.calendar`.
+- v1 scope: draft/activate/archive only. No approval workflow, no multi-user sign-off.
 
 ---
 ## b_8cad · Wire social platform publishers via Zernio
