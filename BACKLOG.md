@@ -59,6 +59,7 @@ Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` ar
 | b_8698 | Scheduled posting via Vercel Cron + Supabase queue | done | 2026-05-22 |
 | b_e061 | InsightsCenter undefined globals + duplicate stub | done | 2026-05-22 |
 | b_img1_smoke | Smoke test: verify b_img1 durable URLs in production | backlog | 2026-05-25 |
+| b_img1 | Durable image storage — Supabase Storage bucket for generated images | priority-next | 2026-05-25 |
 
 ---
 ## b_8cad · Wire social platform publishers via Zernio
@@ -1049,6 +1050,29 @@ Known constraints:
 - 1-min cron requires Vercel **Pro**. Hobby rejects sub-daily crons at deploy. Confirm tier before deploying — if Hobby, swap to an external trigger (GitHub Actions calling the endpoint with `Bearer ${CRON_SECRET}`).
 - `payload` is a snapshot at Schedule time. Editing the calendar row body/image after scheduling does NOT change what fires — reschedule is `cancel` + new Schedule. No UI surface for this yet; users will be surprised. **Next**: add an "Unschedule" button in the drawer and a "this was edited after scheduling — re-Schedule?" warn when `body !== payload.text`.
 - v1 is fail-loud — no retries. Failed rows surface as `publishStatus: "failed"` on the calendar row with `last_error`. Add backoff if it bites.
+
+## b_img1 · Durable image storage — Supabase Storage bucket for generated images
+
+- **status**: priority-next
+- **created**: 2026-05-25
+- **last-touched**: 2026-05-25
+- **effort**: unsized
+- **source**: architecture review 2026-05-25
+- **depends-on**: []
+- **touches**: api/generate.js, api/lib/providerRouter.js, db/migrations/, app/workspaces3.jsx
+
+### Why
+Generated images are currently ephemeral CDN URLs from Runware/Replicate. These URLs expire. The `imageUrl` field on `state.calendar` items and the `payload` snapshot in `scheduled_posts` both hold raw provider CDN links — if a URL expires before a scheduled post fires, the publish call sends a dead image. There is no Supabase Storage bucket, no `media_assets` table, and no per-tenant media library. This is a silent data-loss risk for any post scheduled more than a few hours out.
+
+### Notes
+**Fix shape:**
+1. Create a Supabase Storage bucket `tenant-media` (private, service-role writes, signed-URL reads).
+2. In `/api/generate.js`, after the provider returns `rawUrl`, download the image and upload it to `storage/tenant-media/{tenantId}/{jobId}.{ext}`. Return the Supabase Storage URL instead of the raw CDN URL.
+3. Add a `media_assets` table: `(id uuid, tenant_id text, job_id text, storage_path text, provider text, created_at timestamptz)` — gives tenants a queryable media library.
+4. RLS: tenant can read own rows; service-role for writes.
+5. `scheduled_posts.payload` then snapshots the durable Supabase URL, not the provider CDN URL — no expiry risk.
+
+**Out of scope for this item:** UI media library browser, image deduplication, storage quota enforcement.
 
 ## b_e061 · InsightsCenter undefined globals + duplicate stub
 
