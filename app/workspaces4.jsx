@@ -793,7 +793,11 @@ function Connections({ state, actions }) {
       pollersRef.current[connector.id] = interval;
     } catch (err) {
       setConnecting(p => { const n = { ...p }; delete n[connector.id]; return n; });
-      actions.notify("warn", `${connector.name} connection failed: ${err.message}`);
+      if (err.message.includes("custom OAuth app") || err.message.includes("Composio dashboard")) {
+        setConnectStep({ connector, errorMsg: err.message });
+      } else {
+        actions.notify("warn", `${connector.name} connection failed: ${err.message}`);
+      }
     }
   };
 
@@ -1065,6 +1069,38 @@ function ConnectorAuthModal({ step, onClose, onSubmit }) {
   }, [step]);
 
   if (!step) return null;
+
+  if (step.errorMsg) {
+    return (
+      <Dialog open onClose={onClose} title={`Connect · ${connector.name}`} width={440}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+          <ConnectorIcon connector={connector} size={32}/>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>Connect {connector.name}</div>
+            <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{connector.desc}</div>
+          </div>
+        </div>
+        <div style={{
+          padding: "12px 14px",
+          background: "color-mix(in oklch, var(--warn) 8%, var(--paper))",
+          border: "1px solid var(--warn)",
+          borderRadius: 6, marginBottom: 14,
+          fontSize: 12.5, color: "var(--ink)", lineHeight: 1.55,
+        }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Setup required in Composio</div>
+          {connector.name} requires a custom OAuth app configured in Composio before it can connect.
+          Open the Composio dashboard, create an auth config for <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>{connector.id}</span>, then try connecting again.
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <Btn variant="ghost" onClick={onClose}>Close</Btn>
+          <Btn variant="primary" onClick={() => window.open("https://app.composio.dev", "_blank")}>
+            Open Composio dashboard
+          </Btn>
+        </div>
+      </Dialog>
+    );
+  }
+
   const isApiKey = connector.auth === "API key";
   const isManual = connector.auth === "Manual";
 

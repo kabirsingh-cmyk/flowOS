@@ -14,6 +14,7 @@ Nothing actively in progress.
 
 | ID | What | Date |
 |----|------|------|
+| b_60f8 | Fix Shopify 306 → modal shows actionable error + Composio link | `workspaces4.jsx`: catch block re-opens `ConnectorAuthModal` with `errorMsg` on 409; modal renders error banner + "Open Composio dashboard" button instead of spinning | 2026-05-24 |
 | b_c003 | Fix unverified inbox/analytics endpoints in zernio.js | Removed stale `ENDPOINT_UNVERIFIED` from `handleBoostPost` and `ENDPOINT_PARTIAL` from `handleGetAnalytics` — paths were already correct from prior session | 2026-05-24 |
 | b_c002 | Social ads action layer (all 5 paid platforms) | `api/social-ads.js` — `list_campaigns`, `create_campaign`, `boost_post`, `get_analytics`, `create_audience` via Zernio; covers metaads/liads/ttads/xads/pinads | 2026-05-24 |
 | b_c001 | Wire 5 remaining organic platforms to publish cron | `api/whatsapp.js`, `api/telegram.js`, `api/snapchat.js`, `api/discord.js`, `api/googlebusiness.js` (thin Zernio proxies); `PLATFORM_ROUTES` in `api/cron/fire-scheduled.js` extended | 2026-05-24 |
@@ -37,8 +38,6 @@ Nothing actively in progress.
 
 | ID | Chat scope | What it touches | Effort |
 |----|-----------|-----------------|--------|
-| b_60f8 | **BUG: Shopify 306 hangs Connect modal** | Frontend only — `workspaces4.jsx` doesn't handle 409 from Composio; modal spins forever. Show error message + link to Composio dashboard. | Small |
-
 ---
 
 ## Known issues
