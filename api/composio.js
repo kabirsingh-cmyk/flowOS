@@ -80,14 +80,7 @@ const APP_MAP = {
   // Paid Search / Ads
   googleads:    "googleads",
 
-  // Paid Social — needs custom OAuth app registered in Composio dashboard.
-  // Toolkit slugs are best-guess; verify with POST { action: "verify_app", app: "<id>" }.
-  // Reverted from Zernio 2026-05-24 (Zernio does not support ad platform OAuth).
-  metaads: "meta_ads",
-  liads:   "linkedin_ads",
-  ttads:   "tiktok_ads",
-  xads:    "twitter_ads",
-  pinads:  "pinterest_ads",
+  // Paid Social (metaads, liads, ttads, xads, pinads) — REMOVED (on Zernio)
 
   // Organic Social — REMOVED (all migrated to Zernio 2026-05-24)
 

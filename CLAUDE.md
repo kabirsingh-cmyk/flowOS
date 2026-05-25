@@ -316,15 +316,16 @@ The connect surface in [workspaces4.jsx](app/workspaces4.jsx) is provider-agnost
 
 [api/zernio.js](api/zernio.js) handles all 15 social platforms via Zernio's OAuth-as-a-service. Auth: `ZERNIO_API_KEY` + `X-External-User-ID: {tenantId}` per call. Zernio manages per-user OAuth tokens internally.
 
-| Scope | Platforms |
-|---|---|
-| **Organic Social** | facebook, instagram, linkedin, tiktok, pinterest, youtube, twitter (X), reddit, bluesky, threads, googlebusiness, whatsapp, telegram, snapchat, discord |
+| Scope | Zernio slugs | FlowOS IDs |
+|---|---|---|
+| **Organic Social** | facebook, instagram, linkedin, tiktok, pinterest, youtube, twitter, reddit, bluesky, threads, googlebusiness, whatsapp, telegram, snapchat, discord | fb, ig, li, tt, pn, yt, x, gbusiness (+ full names pass through) |
+| **Paid Social** | metaads, linkedinads, tiktokads, xads, pinterestads | metaads, liads, ttads, xads, pinads |
 
-FlowOS short IDs (fb, ig, li, tt, pn, yt, x, gbusiness) are resolved to Zernio slugs via `PLATFORM_ID_MAP` in zernio.js before API calls. Key mappings: `x → twitter`, `gbusiness → googlebusiness`.
+FlowOS IDs resolved to Zernio slugs in `PLATFORM_ID_MAP` (zernio.js): `x→twitter`, `gbusiness→googlebusiness`, `liads→linkedinads`, `ttads→tiktokads`, `pinads→pinterestads`. `metaads` and `xads` match in both.
 
-Multi-tenancy: each tenant gets one Zernio profile (created on first connect, stored in `connector_credentials(user_id, platform='zernio_profile')`). The profileId is passed as a query param to `GET /v1/connect/{platform}?profileId=...`. Zernio account IDs (_id from `GET /v1/accounts`) are stored in `channels.composio_connection_id` and loaded for publish calls.
+Multi-tenancy: each tenant gets one Zernio profile (created on first connect via `POST /v1/profiles`, stored in `connector_credentials(user_id, platform='zernio_profile')`). The `profileId` is passed as a query param to `GET /v1/connect/{platform}?profileId=...`. Zernio account IDs (`_id` from `GET /v1/accounts`) are stored in `channels.composio_connection_id` and loaded automatically for publish calls.
 
-**Paid social ad accounts (metaads, liads, ttads, xads, pinads) are NOT on Zernio** — Zernio is organic social only. These five connectors are `provider: "composio"` in seed.jsx. Composio toolkit slugs for paid social are best-guess (meta_ads, linkedin_ads, tiktok_ads, twitter_ads, pinterest_ads) and require custom OAuth app registration in the Composio dashboard to work end-to-end.
+`googleads` is also available in Zernio (`googleads` slug) but stays on Composio for now — existing integration.
 
 Platform routes (`/api/linkedin` etc.) are thin proxies — they auth-check, then forward to `/api/zernio` with `platform` set.
 
@@ -336,7 +337,7 @@ Platform routes (`/api/linkedin` etc.) are thin proxies — they auth-check, the
 |---|---|
 | **OAuth (Composio managed)** | googleads, ga4, gsc, hubspot, salesforce, mailchimp |
 | **API key (Composio custom auth)** | klaviyo (+ klaviyo_sms), ahrefs, moz, elevenlabs, heygen |
-| **OAuth (needs custom app in Composio dashboard)** | shopify, metaads, liads, ttads, xads, pinads — toolkit slugs best-guess; verify with `{ action: "verify_app" }` |
+| **OAuth (needs custom app in Composio dashboard)** | shopify |
 
 `/api/composio` debug actions: `list_toolkits`, `verify_app`. `COMPOSIO_SOCIAL_SLUGS` in [api/chat.js](api/chat.js) excludes social toolkits from the tool-fetch for the Claude prompt.
 

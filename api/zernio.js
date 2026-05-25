@@ -18,9 +18,10 @@
  *   whatsapp, telegram, snapchat, discord
  *   + FlowOS short IDs: fb, ig, li, tt, pn, yt, x, gbusiness
  *
- * Paid social ad accounts (metaads, liads, ttads, xads, pinads) are NOT handled
- * here — Zernio is an organic social platform only. Those connectors route
- * through Composio (provider: "composio" in seed.jsx).
+ * Supported ad platforms (via /v1/ads endpoint):
+ *   metaads, linkedinads, tiktokads, xads, pinterestads, googleads
+ *   FlowOS IDs: metaads, liads→linkedinads, ttads→tiktokads, xads, pinads→pinterestads
+ *   (googleads stays on Composio for now — existing integration)
  *
  * Actions:
  *   initiate_connection  — start OAuth flow for a tenant + platform
@@ -50,14 +51,20 @@ const ZERNIO_BASE = "https://zernio.com/api/v1";
  * Confirmed against https://docs.zernio.com (2026-05-24).
  */
 const PLATFORM_ID_MAP = {
+  // Organic social — FlowOS short IDs → Zernio slugs (confirmed 2026-05-24)
   fb:        "facebook",
   ig:        "instagram",
   li:        "linkedin",
   tt:        "tiktok",
   pn:        "pinterest",
   yt:        "youtube",
-  x:         "twitter",       // Zernio uses "twitter", not "x"
+  x:         "twitter",        // Zernio uses "twitter" not "x"
   gbusiness: "googlebusiness", // Zernio uses "googlebusiness"
+  // Paid social — FlowOS IDs → Zernio slugs (confirmed 2026-05-24)
+  liads:  "linkedinads",
+  ttads:  "tiktokads",
+  pinads: "pinterestads",
+  // metaads → "metaads" (same), xads → "xads" (same) — no entry needed
 };
 
 /**
@@ -66,6 +73,7 @@ const PLATFORM_ID_MAP = {
  * some callers (thin proxies) pass resolved Zernio slugs — this maps back.
  */
 const ZERNIO_TO_FLOWOS = {
+  // Organic
   facebook:       "fb",
   instagram:      "ig",
   linkedin:       "li",
@@ -74,6 +82,11 @@ const ZERNIO_TO_FLOWOS = {
   youtube:        "yt",
   twitter:        "x",
   googlebusiness: "gbusiness",
+  // Paid social
+  linkedinads:    "liads",
+  tiktokads:      "ttads",
+  pinterestads:   "pinads",
+  // metaads → "metaads", xads → "xads" (same in both)
 };
 
 function resolvePlatform(id) {
@@ -84,14 +97,18 @@ function flowOSId(platform) {
   return ZERNIO_TO_FLOWOS[platform] || platform;
 }
 
-// Organic social platforms only.
 const SUPPORTED_PLATFORMS = new Set([
-  // FlowOS short IDs
+  // Organic — FlowOS short IDs
   "fb", "ig", "li", "tt", "pn", "yt", "x", "gbusiness",
-  // Full Zernio slugs (confirmed)
+  // Organic — Zernio slugs (confirmed)
   "facebook", "instagram", "linkedin", "tiktok", "pinterest", "youtube",
   "twitter", "reddit", "bluesky", "threads", "googlebusiness",
   "whatsapp", "telegram", "snapchat", "discord",
+  // Paid social — FlowOS IDs
+  "metaads", "liads", "ttads", "xads", "pinads",
+  // Paid social — Zernio slugs (confirmed)
+  "linkedinads", "tiktokads", "pinterestads",
+  // metaads and xads are the same in both — already covered above
 ]);
 
 // ─── Zernio API helpers ───────────────────────────────────────────────────────
