@@ -20,6 +20,7 @@
 
 import { fetchBrandProfile, sbHeaders } from './lib/supabase.js';
 import { requireAuth, requireAuthOrCron } from './lib/auth.js';
+import { corsHeaders } from './lib/cors.js';
 
 export const config = { runtime: "edge" };
 
@@ -301,6 +302,7 @@ async function generateEmail(brand, rule, signal) {
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
 export default async function handler(req) {
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders() });
   if (req.method === "GET") {
     const auth = await requireAuth(req);
     if (auth instanceof Response) return auth;
@@ -402,7 +404,7 @@ export default async function handler(req) {
 function json(status, body) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...corsHeaders() },
   });
 }
 

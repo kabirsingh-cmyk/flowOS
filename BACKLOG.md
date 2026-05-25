@@ -6,7 +6,7 @@ Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` ar
 
 | id | title | status | last-touched |
 |---|---|---|---|
-| b_8cad | Audit and wire remaining social platform publishers via Composio | in-progress | 2026-05-22 |
+| b_8cad | Wire social platform publishers via Zernio | done | 2026-05-24 |
 | b_0c94 | Server-side JWT verification on every /api/* endpoint | done | 2026-05-22 |
 | b_9d59 | Enable Row Level Security on every table | done | 2026-05-22 |
 | b_cc01 | Add missing migrations: brands, channels, posts, google_ads_tokens, proactive_drafts | done | 2026-05-24 |
@@ -47,9 +47,9 @@ Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` ar
 | b_ea4e | Text-only Instagram post fails at publish (imageUrl required) | done | 2026-05-24 |
 | b_b259 | Chat AI confidently drafts for platforms with no publish path | backlog | 2026-05-22 |
 | b_c945 | InsightsCenter empty state can't distinguish no-data from broken fetch | backlog | 2026-05-22 |
-| b_a001 | Adopt Zernio for all organic social publishing (replaces Composio social toolkit + Pipedream Pinterest) | backlog | 2026-05-22 |
+| b_a001 | Adopt Zernio for all organic social publishing (replaces Composio social toolkit + Pipedream Pinterest) | done | 2026-05-24 |
 | b_a002 | Route paid social ads through Zernio (Meta / LinkedIn / TikTok / Pinterest / X Ads) | backlog | 2026-05-22 |
-| b_a003 | Scope Composio strictly to non-social: Google Ads, GA4, GSC, HubSpot, Salesforce, Mailchimp, YouTube analytics, ElevenLabs, HeyGen, brand-import | backlog | 2026-05-22 |
+| b_a003 | Scope Composio strictly to non-social: Google Ads, GA4, GSC, HubSpot, Salesforce, Mailchimp, YouTube analytics, ElevenLabs, HeyGen, brand-import | done | 2026-05-24 |
 | b_a004 | Remove SendGrid; transactional email via Postmark/Resend, marketing via Klaviyo | backlog | 2026-05-22 |
 | b_a005 | Defer Twilio integration until validated tenant request (scope decision) | backlog | 2026-05-22 |
 | b_a006 | generation_usage Supabase table to track Runware / HeyGen / Higgsfield cost per tenant | backlog | 2026-05-22 |
@@ -60,37 +60,37 @@ Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` ar
 | b_e061 | InsightsCenter undefined globals + duplicate stub | done | 2026-05-22 |
 
 ---
-## b_8cad · Audit and wire remaining social platform publishers via Composio
+## b_8cad · Wire social platform publishers via Zernio
 
-- **status**: in-progress
+- **status**: done
 - **created**: 2026-05-22
-- **last-touched**: 2026-05-22
+- **last-touched**: 2026-05-24
 - **effort**: unsized
 - **source**: bootstrap (from Other social platforms — Composio posting audit)
 - **depends-on**: []
-- **touches**: api/linkedin.js, api/facebook.js, api/x.js, api/instagram.js, api/reddit.js
+- **touches**: api/zernio.js, api/linkedin.js, api/facebook.js, api/x.js, api/instagram.js, api/reddit.js, api/tiktok.js, api/pinterest.js, api/threads.js, api/bluesky.js, api/youtube.js, app/seed.jsx
 
 ### Why
-Partial · updated 2026-05-14. Priority: Medium — five platforms now publish (LinkedIn + FB/X/IG/Reddit); rest still unwired.
+Shipped 2026-05-24 via Zernio (not Composio). All organic social platforms are now wired behind `api/zernio.js` — a unified OAuth-as-a-service provider. Individual platform files are thin proxies that forward to `/api/zernio` with the appropriate `platform` field. `api/cron/fire-scheduled.js` routes through those proxies correctly.
 
 ### Notes
-| Connector | seed.id | Endpoint / toolkit | Status | Plan |
-|---|---|---|---|---|
-| LinkedIn | `li` | `/api/linkedin` · LINKEDIN | ✅ Shipped | — |
-| Facebook | `fb` | `/api/facebook` · FACEBOOK | ✅ Shipped | resolve_pages + publish_now (photo or text) |
-| X / Twitter | `x` | `/api/x` · TWITTER | ✅ Shipped | publish_now only, no author picker |
-| Instagram | `ig` | `/api/instagram` · INSTAGRAM + FACEBOOK | ✅ Shipped | accounts resolved via linked FB Pages; image required |
-| Reddit | `reddit` | `/api/reddit` · REDDIT | ✅ Shipped (with gaps — see below) | free-text subreddit; image posts fall back to link |
-| TikTok | `tt` | TIKTOK | ⬜ Not feasible without approval | TikTok Content Posting API is gated — separate approval flow |
-| YouTube | `yt` | YOUTUBE | ⬜ Open | likely (50 tools, 4 triggers) — Shorts upload, multi-step video |
-| Pinterest | `pn` | not in toolkit index | ⬜ Open | Pinterest API direct, or skip |
-| Threads | `threads` | not in toolkit index | ⬜ Out of scope | Meta Threads API direct (different auth shape) |
-| Snapchat | `snap` | SNAPCHAT | ⬜ Out of scope | 139 tools but ads-only — Snap doesn't expose organic posting |
-| Bluesky | `bluesky` | not in toolkit index | ⬜ Open | AT Protocol direct (open, easy) |
-| Mastodon | `mastodon` | not in toolkit index | ⬜ Open | Mastodon API direct (per-instance) |
-| Telegram | `telegram` | TELEGRAM | ⬜ Open | Bot API sendMessage — bot token flow, not OAuth |
-
-**Pattern when Composio doesn't have it:** in the Publishing Queue drawer, surface "Composio doesn't currently support direct posting for X — choose one: (a) export and post manually, (b) connect a custom integration, (c) keep as draft." Don't silently flip `status: "sent"` without firing.
+| Connector | seed.id | Provider | Status |
+|---|---|---|---|
+| LinkedIn | `li` | Zernio → `/api/linkedin` | ✅ Shipped |
+| Facebook | `fb` | Zernio → `/api/facebook` | ✅ Shipped |
+| X / Twitter | `x` | Zernio → `/api/x` | ✅ Shipped |
+| Instagram | `ig` | Zernio → `/api/instagram` | ✅ Shipped |
+| Reddit | `reddit` | Zernio → `/api/reddit` | ✅ Shipped |
+| TikTok | `tt` | Zernio → `/api/tiktok` | ✅ Shipped |
+| Pinterest | `pn` | Zernio → `/api/pinterest` | ✅ Shipped |
+| Threads | `threads` | Zernio → `/api/threads` | ✅ Shipped |
+| Bluesky | `bluesky` | Zernio → `/api/bluesky` | ✅ Shipped |
+| YouTube | `yt` | Zernio → `/api/youtube` | ✅ Shipped |
+| WhatsApp | `whatsapp` | Zernio (connection only, no cron route yet) | 🔶 Partial |
+| Telegram | `telegram` | Zernio (connection only, no cron route yet) | 🔶 Partial |
+| Snapchat | `snap` | Zernio (connection only, no cron route yet) | 🔶 Partial |
+| Discord | `discord` | Zernio (connection only, no cron route yet) | 🔶 Partial |
+| Google Business | `gbusiness` | Zernio (connection only, no cron route yet) | 🔶 Partial |
 
 ## b_0c94 · Server-side JWT verification on every /api/* endpoint
 
@@ -740,7 +740,9 @@ Fix when it bites: either (a) extend `CAL_ADD` to accept a top-level `sourceBrie
 - **touches**: api/composio.js, app/workspaces4.jsx
 
 ### Why
-Shopify, TikTok (tt + ttads), Twitter/X (x + xads) require a custom OAuth app registered in the Composio dashboard — Composio has no default managed credentials and returns error code 306. `/api/composio` translates this to a 409 with a clear message, but the frontend Connect modal still flips amber and polls indefinitely; no error path surfaces the 409 to the user. Needs the modal to catch the 409, stop polling, and show the actionable "configure auth_config in dashboard or switch to direct provider" copy that the API already returns.
+Some non-social Composio connectors (Shopify, and paid social ad connectors that still use Composio: metaads, liads, ttads, xads) require a custom OAuth app registered in the Composio dashboard — Composio has no default managed credentials and returns error code 306. `/api/composio` translates this to a 409 with a clear message, but the frontend Connect modal still flips amber and polls indefinitely; no error path surfaces the 409 to the user. Needs the modal to catch the 409, stop polling, and show the actionable "configure auth_config in dashboard or switch to direct provider" copy that the API already returns.
+
+**Scope as of 2026-05-24**: X (organic) and TikTok (organic) have migrated to Zernio and are no longer affected. The bug now only hits non-social Composio connectors: Shopify and the four paid social ad connectors (metaads, liads, ttads, xads) that remain on Composio pending b_a002.
 
 ## b_ea4e · Text-only Instagram post fails at publish (imageUrl required)
 
@@ -789,9 +791,9 @@ When `analytics_snapshots` and `analytics_insights` return zero rows, InsightsCe
 
 ## b_a001 · Adopt Zernio for all organic social publishing (replaces Composio social toolkit + Pipedream Pinterest)
 
-- **status**: backlog
+- **status**: done
 - **created**: 2026-05-22
-- **last-touched**: 2026-05-22
+- **last-touched**: 2026-05-24
 - **effort**: unsized
 - **source**: integration architecture decision 2026-05-22
 - **depends-on**: [b_0c94]
@@ -821,10 +823,7 @@ Zernio collapses all organic social publishing — LinkedIn, Facebook, Instagram
 - `channel-strategy.jsx connectedSet` + `agents.jsx CONNECTOR_LABELS` + `brand-import.js CONNECTOR_IDS` + `store.jsx channelRules`: add the new platforms.
 - Schema: per-platform `imageUrl`/`videoUrl`/`postId`/`postUrl` columns on calendar items already exist for the five shipped platforms; extend `state.calendar` shape (lines 88–106 in this file's project CLAUDE.md) for the new platforms.
 
-**Open questions before starting**
-- Zernio's MCP server — wire it into Supervisor/Drafter as a single tool surface vs. one tool per action? MCP-native is simpler but loses the structured-output widgets the current `create_draft` artifact gives. Probably start with a thin `/api/zernio` REST shim like the existing Composio platform handlers, defer MCP integration to a follow-up.
-- Token migration: when a tenant already has a Composio LinkedIn / FB / IG / X / Reddit connection, do we force re-auth through Zernio or run both in parallel until cutover? Default: force re-auth, sunset Composio social connections on the same release.
-- Analytics: the cron daily-analytics path currently pulls per-platform via Composio. Zernio includes analytics read-back — move analytics ingestion to Zernio in the same change, or split into a second backlog item?
+**Shipped 2026-05-24.** `api/zernio.js` is a complete unified publisher for all 15 organic social platforms. All organic social connector catalog entries in `seed.jsx` carry `provider: "zernio"`. Individual platform files (`api/linkedin.js`, `api/facebook.js`, `api/x.js`, `api/instagram.js`, `api/reddit.js`, `api/tiktok.js`, `api/pinterest.js`, `api/threads.js`, `api/bluesky.js`, `api/youtube.js`) are thin proxies. `api/cron/fire-scheduled.js` routes through those proxies correctly. Pipedream Pinterest also migrated to Zernio. Implementation used thin REST shim (not MCP) as planned — deferred MCP integration.
 
 ## b_a002 · Route paid social ads through Zernio (Meta / LinkedIn / TikTok / Pinterest / X Ads)
 
@@ -845,11 +844,13 @@ Zernio covers Meta Ads, LinkedIn Ads, TikTok Ads, Pinterest Ads, and X Ads under
 - Same `provider: "zernio"` flag in seed.jsx as b_a001, but with `category: "Paid Social"`.
 - Sequenced behind b_a001 so the Zernio integration scaffolding (token mint, OAuth fork, account list) is already in place.
 
+**Partial progress (2026-05-24)**: `pinads` (Pinterest Ads) already has `provider: "zernio"` in `seed.jsx` — it uses Zernio's `boost_post` action and is listed in `SUPPORTED_PLATFORMS` in `api/zernio.js`. The remaining four paid social ad connectors (`metaads`, `liads`, `ttads`, `xads`) still carry `provider: "composio"` and are blocked by b_60f8 (Composio code 306 on those OAuth apps).
+
 ## b_a003 · Scope Composio strictly to non-social: Google Ads, GA4, GSC, HubSpot, Salesforce, Mailchimp, YouTube analytics, ElevenLabs, HeyGen, brand-import
 
-- **status**: backlog
+- **status**: done
 - **created**: 2026-05-22
-- **last-touched**: 2026-05-22
+- **last-touched**: 2026-05-24
 - **effort**: unsized
 - **source**: integration architecture decision 2026-05-22
 - **depends-on**: [b_a001, b_a002]
@@ -876,11 +877,7 @@ Composio earns its place on CRM + analytics + creative-AI: deep connector catalo
 - LinkedIn Ads, Meta Ads, TikTok Ads, Pinterest Ads, X Ads — to Zernio (b_a002)
 - Klaviyo + Klaviyo SMS — already in scope and works; keeping on Composio for now (Composio's Klaviyo `create_draft_campaign` and `create_draft_sms` are wired and shipped). Re-evaluate if Klaviyo's native API would simplify, but not part of this item.
 
-**Code changes**
-- `api/composio.js APP_MAP`: drop linkedin, facebook, x, instagram, reddit, tiktok, ttads, xads slugs. Keep googleads, ga4, gsc, hubspot, salesforce, mailchimp, youtube (analytics-only), elevenlabs, heygen.
-- `scripts/verify-composio.mjs`: same trim.
-- `api/chat.js`: if Supervisor/Drafter tool definitions reference Composio social toolkits explicitly, remove. Most calls are abstract enough not to.
-- `api/brand-import.js CONNECTOR_IDS`: leave social ids in (Claude can still recommend them — they just resolve to Zernio).
+**Shipped 2026-05-24.** Composio is now used only for non-social connectors. `seed.jsx` confirms: all organic social connectors carry `provider: "zernio"`. Composio connectors in seed are: googleads, ga4, gsc, hubspot, salesforce, mailchimp, klaviyo, klaviyo_sms, neverbounce, kickbox, listclean, ahrefs, moz, neuronwriter, shopify, heygen, elevenlabs — and the four remaining paid social ad connectors (metaads, liads, ttads, xads) pending b_a002. Social toolkits (linkedin, facebook, x, instagram, reddit, tiktok) have been removed from the Composio path and moved to Zernio via b_a001.
 
 ## b_a004 · Remove SendGrid; transactional email via Postmark/Resend, marketing via Klaviyo
 

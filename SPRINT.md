@@ -6,9 +6,7 @@
 
 ## Now (in progress)
 
-| ID | What | Notes |
-|----|------|-------|
-| b_8cad | Wire remaining social publishers via Composio | Reddit, Instagram, X still need testing end-to-end |
+Nothing actively in progress.
 
 ---
 
@@ -16,6 +14,9 @@
 
 | ID | What | Date |
 |----|------|------|
+| b_a001 | Adopt Zernio for all organic social publishing | `api/zernio.js` unified publisher; all 10 cron-routed platforms wired; individual platform files are thin proxies; all organic social `seed.jsx` entries flipped to `provider: "zernio"` | 2026-05-24 |
+| b_a003 | Scope Composio strictly to non-social | Social toolkits removed from Composio path; Composio now covers only: Google Ads, GA4, GSC, HubSpot, Salesforce, Mailchimp, ElevenLabs, HeyGen, email/SMS verification, paid social ad connectors | 2026-05-24 |
+| b_8cad | Wire social platform publishers via Zernio | All 10 platforms in `fire-scheduled` PLATFORM_ROUTES wired end-to-end; retitled from "via Composio" | 2026-05-24 |
 | b_ea4e | IG text-only post fix | Schedule + Publish Now disabled when no image; pink callout with "Generate image" button; auto-unblocks on completion | 2026-05-24 |
 | b_cc01 | DB migrations complete | 008 connector_credentials · 009 brand_voice_fields · 010 proactive_sms added to db/migrations/ — now a full sequential source of truth | 2026-05-24 |
 | b_3037 | Proactive SMS cron | api/proactive-sms.js + cron/proactive-sms.js + vercel.json + store (3 cases/actions) + ProactiveSmsDrafts UI in SmsCenter + DB migration | 2026-05-24 |
@@ -32,19 +33,18 @@
 
 | ID | What | Why it matters |
 |----|------|----------------|
-| b_ea4e | **BUG: text-only Instagram post fails** | Composio requires imageUrl — crashes silently |
-| b_60f8 | **BUG: Composio code 306 hangs Connect modal forever** | User can't connect Shopify/TikTok/X until fixed |
-| b_a001 | Switch organic social to Zernio | Replaces Composio social toolkit — strategic change |
-| b_a002 | Route paid social ads through Zernio | Meta / LinkedIn / TikTok / Pinterest / X Ads |
-| b_43d9 | Reddit native image posts | Composio can't do image kind; need direct API |
-| b_b259 | AI drafts for platforms with no publish path | Chat confidently creates content that can't be published |
+| b_60f8 | **BUG: Composio code 306 hangs Connect modal forever** | Blocks connecting Shopify + paid social ad connectors (metaads, liads, ttads, xads); X/TikTok organic unaffected (now Zernio) |
+| b_a002 | Route paid social ads through Zernio | pinads done; metaads/liads/ttads/xads still on Composio — blocked by b_60f8 |
+| b_43d9 | Reddit native image posts | Zernio may support natively; needs verification |
+| b_b259 | Chat AI drafts for platforms with no publish path | Drafter should flag non-publishable drafts rather than silently produce them |
+| b_317a | Strip or preview-tag platform pickers without backends | 10 Zernio platforms now have backends in cron; remaining 5 (whatsapp/telegram/snap/discord/gbusiness) have connection flows but no cron route |
 
 ---
 
 ## Known issues (not yet backlog items)
 
 - Cron for `fire-scheduled` requires **Vercel Pro** (1-min schedule). On Hobby plan it won't fire reliably.
-- Zernio work (b_a001–a003) is a strategic pivot from Composio for social — needs a plan session before starting.
+- **b_60f8 scope (2026-05-24)**: Composio code 306 now only affects non-social connectors — Shopify and the four paid social ad connectors (metaads, liads, ttads, xads) that remain on Composio. X and TikTok organic use Zernio and are unaffected.
 - `sourceBriefId` on calendar items is wired but no UI reads it yet (backlog: b_2504).
 
 ---
@@ -56,4 +56,4 @@ Run `node scripts/health-check.mjs` after any session. Silent = all clear.
 
 ---
 
-*Last updated: 2026-05-24*
+*Last updated: 2026-05-24 — Zernio migration complete (b_a001, b_a003, b_8cad done)*

@@ -15,6 +15,7 @@
  */
 
 import { sbHeaders } from "./supabase.js";
+import { corsHeaders } from "./cors.js";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 
@@ -117,11 +118,7 @@ export async function loadCredential({ tenantId, platform }) {
 
 // ─── Shared response helpers ──────────────────────────────────────────────────
 
-export const CORS = {
-  "Access-Control-Allow-Origin":  "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-};
+export const CORS = corsHeaders();
 
 export function json(body, status = 200) {
   return new Response(JSON.stringify(body), {

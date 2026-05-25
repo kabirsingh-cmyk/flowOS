@@ -1508,6 +1508,18 @@ function SettingsHub({ state, actions, go }) {
           ))}
         </div>
 
+        {/* Operator section */}
+        <div>
+          <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 14, fontWeight: 600 }}>Operator</div>
+          <div style={{ padding: 20, borderRadius: 8, background: "var(--paper)", border: "1px solid var(--rule)", borderTop: "3px solid oklch(55% 0.14 300)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 24 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Generation Spend</div>
+              <div style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.5 }}>All-tenant AI generation cost tracking — runware, replicate, heygen, higgsfield, luma, elevenlabs, audiostack.</div>
+            </div>
+            <Btn size="sm" variant="primary" onClick={() => go("spend")} style={{ flexShrink: 0 }}>Open Spend →</Btn>
+          </div>
+        </div>
+
         {/* Quick brand overview */}
         {brand && (
           <div style={{ padding: 20, borderRadius: 8, background: "var(--paper)", border: "1px solid var(--rule)" }}>
@@ -1538,4 +1550,188 @@ function SettingsHub({ state, actions, go }) {
   );
 }
 
-Object.assign(window, { StudioHub, EmailStudio, SearchStudio, SettingsHub });
+// ───────────────────────────── SPEND DASHBOARD ──────────────────────────────
+// FlowOS operator view — all-tenant AI generation cost tracking.
+// Data comes from /api/spend which uses the service key to bypass RLS.
+
+function SpendDashboard({ actions }) {
+  const [data,    setData]    = useStateS(null);
+  const [loading, setLoading] = useStateS(true);
+  const [error,   setError]   = useStateS(null);
+
+  function load() {
+    setLoading(true); setError(null);
+    apiFetch("/api/spend")
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok) setData(d);
+        else setError(d.error || "Failed to load spend data");
+      })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  }
+
+  React.useEffect(() => { load(); }, []);
+
+  const fmt$ = (n) => n == null ? "—" : n < 0.01 ? "<$0.01" : `$${n.toFixed(n >= 10 ? 2 : 4)}`;
+  const fmtDate = (iso) => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " " +
+           d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  };
+
+  const PROVIDER_COLORS = {
+    runware:    "var(--accent)",
+    replicate:  "oklch(55% 0.18 280)",
+    heygen:     "oklch(62% 0.16 30)",
+    higgsfield: "oklch(58% 0.18 200)",
+    luma:       "oklch(60% 0.17 160)",
+    elevenlabs: "oklch(55% 0.14 50)",
+    audiostack: "oklch(50% 0.14 300)",
+  };
+
+  const STATUS_COLOR = { completed: "var(--success)", failed: "oklch(58% 0.18 25)", pending: "oklch(72% 0.12 70)" };
+
+  const maxProviderSpend = data ? Math.max(...(data.byProvider.map(p => p.spend)), 0.0001) : 1;
+
+  return (
+    <div className="anim-fade" style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      {/* Header */}
+      <div style={{ padding: "24px 32px 20px", borderBottom: "1px solid var(--rule)", background: "var(--paper)", flexShrink: 0 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+          <div>
+            <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Operator · FlowOS internal</div>
+            <h1 style={{ fontSize: 28, fontWeight: 500, letterSpacing: "-0.025em", margin: "4px 0 0" }}>Generation Spend</h1>
+            <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>All-tenant AI generation costs — runware · replicate · heygen · higgsfield · luma · elevenlabs · audiostack</div>
+          </div>
+          <Btn size="sm" variant="ghost" onClick={load} disabled={loading}>
+            <Icon name="refresh" size={12}/> {loading ? "Loading…" : "Refresh"}
+          </Btn>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div style={{ flex: 1, overflow: "auto", padding: "28px 32px", display: "flex", flexDirection: "column", gap: 28 }}>
+
+        {error && (
+          <div style={{ padding: 16, borderRadius: 6, background: "oklch(97% 0.02 25)", border: "1px solid oklch(85% 0.08 25)", color: "oklch(45% 0.15 25)", fontSize: 13 }}>
+            {error}
+          </div>
+        )}
+
+        {/* KPI row */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+          {[
+            { label: "All-time spend",  value: data ? fmt$(data.summary.totalSpend)     : "—" },
+            { label: "This month",      value: data ? fmt$(data.summary.thisMonthSpend)  : "—" },
+            { label: "Last 30 days",    value: data ? fmt$(data.summary.last30dSpend)    : "—" },
+            { label: "Total jobs",      value: data ? data.summary.totalJobs.toLocaleString() : "—" },
+          ].map(k => (
+            <div key={k.label} style={{ padding: "18px 20px", borderRadius: 8, background: "var(--paper)", border: "1px solid var(--rule)" }}>
+              <div className="mono" style={{ fontSize: 9.5, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>{k.label}</div>
+              <div style={{ fontSize: 26, fontWeight: 600, letterSpacing: "-0.03em", color: loading ? "var(--muted)" : "var(--ink)" }}>{k.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {data && (
+          <>
+            {/* Provider breakdown */}
+            <div>
+              <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontWeight: 600 }}>By provider</div>
+              <div style={{ background: "var(--paper)", border: "1px solid var(--rule)", borderRadius: 8, overflow: "hidden" }}>
+                {data.byProvider.length === 0 ? (
+                  <div style={{ padding: "24px 20px", color: "var(--muted)", fontSize: 13 }}>No jobs recorded yet.</div>
+                ) : (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 80px 80px", gap: 12, padding: "8px 18px", borderBottom: "1px solid var(--rule)", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em", background: "var(--paper-2)" }}>
+                      <span>Provider</span><span>Share</span><span style={{ textAlign: "right" }}>Jobs</span><span style={{ textAlign: "right" }}>Spend</span>
+                    </div>
+                    {data.byProvider.map((p, i) => {
+                      const color = PROVIDER_COLORS[p.provider] || "var(--accent)";
+                      const pct   = maxProviderSpend > 0 ? (p.spend / maxProviderSpend) * 100 : 0;
+                      return (
+                        <div key={p.provider} style={{ display: "grid", gridTemplateColumns: "120px 1fr 80px 80px", gap: 12, padding: "12px 18px", borderBottom: i < data.byProvider.length - 1 ? "1px solid var(--rule)" : "none", alignItems: "center" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0, display: "inline-block" }}/>
+                            <span className="mono" style={{ fontSize: 12, fontWeight: 600 }}>{p.provider}</span>
+                          </div>
+                          <div style={{ height: 6, borderRadius: 3, background: "var(--paper-2)", overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 3, transition: "width .4s ease" }}/>
+                          </div>
+                          <span className="mono" style={{ fontSize: 12, color: "var(--muted)", textAlign: "right" }}>{p.jobs.toLocaleString()}</span>
+                          <span className="mono" style={{ fontSize: 12.5, fontWeight: 600, textAlign: "right" }}>{fmt$(p.spend)}</span>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* By tenant */}
+            {data.byTenant.length > 0 && (
+              <div>
+                <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontWeight: 600 }}>By tenant</div>
+                <div style={{ background: "var(--paper)", border: "1px solid var(--rule)", borderRadius: 8, overflow: "hidden" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 80px", gap: 12, padding: "8px 18px", borderBottom: "1px solid var(--rule)", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em", background: "var(--paper-2)" }}>
+                    <span>Tenant ID</span><span style={{ textAlign: "right" }}>Jobs</span><span style={{ textAlign: "right" }}>Spend</span>
+                  </div>
+                  {data.byTenant.map((t, i) => (
+                    <div key={t.tenant_id} style={{ display: "grid", gridTemplateColumns: "1fr 80px 80px", gap: 12, padding: "11px 18px", borderBottom: i < data.byTenant.length - 1 ? "1px solid var(--rule)" : "none", alignItems: "center" }}>
+                      <span className="mono" style={{ fontSize: 11.5, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.tenant_id}</span>
+                      <span className="mono" style={{ fontSize: 12, color: "var(--muted)", textAlign: "right" }}>{t.jobs.toLocaleString()}</span>
+                      <span className="mono" style={{ fontSize: 12.5, fontWeight: 600, textAlign: "right" }}>{fmt$(t.spend)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Recent jobs */}
+            {data.recent.length > 0 && (
+              <div>
+                <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 14, fontWeight: 600 }}>Recent jobs</div>
+                <div style={{ background: "var(--paper)", border: "1px solid var(--rule)", borderRadius: 8, overflow: "hidden" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "130px 90px 90px 80px 1fr 60px 70px", gap: 10, padding: "8px 18px", borderBottom: "1px solid var(--rule)", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em", background: "var(--paper-2)" }}>
+                    <span>When</span><span>Provider</span><span>Type</span><span>Status</span><span>Job ID</span><span>Model</span><span style={{ textAlign: "right" }}>Cost</span>
+                  </div>
+                  {data.recent.slice(0, 20).map((r, i) => {
+                    const color = PROVIDER_COLORS[r.provider] || "var(--accent)";
+                    const sc    = STATUS_COLOR[r.status] || "var(--muted)";
+                    return (
+                      <div key={r.id} style={{ display: "grid", gridTemplateColumns: "130px 90px 90px 80px 1fr 60px 70px", gap: 10, padding: "10px 18px", borderBottom: i < Math.min(data.recent.length, 20) - 1 ? "1px solid var(--rule)" : "none", alignItems: "center", fontSize: 12 }}>
+                        <span className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDate(r.created_at)}</span>
+                        <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: color, flexShrink: 0, display: "inline-block" }}/>
+                          <span className="mono" style={{ fontSize: 11 }}>{r.provider}</span>
+                        </span>
+                        <span className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>{r.job_type || "—"}</span>
+                        <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: sc, flexShrink: 0, display: "inline-block" }}/>
+                          <span className="mono" style={{ fontSize: 10, color: sc }}>{r.status}</span>
+                        </span>
+                        <span className="mono" style={{ fontSize: 10.5, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.job_id || r.id}</span>
+                        <span className="mono" style={{ fontSize: 10, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.model ? r.model.split("/").pop() : "—"}</span>
+                        <span className="mono" style={{ fontSize: 12, fontWeight: 600, textAlign: "right" }}>{fmt$(r.cost_estimate)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {loading && !data && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--muted)", fontSize: 13 }}>
+            <Dot status="warn"/> Loading spend data…
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { StudioHub, EmailStudio, SearchStudio, SettingsHub, SpendDashboard });

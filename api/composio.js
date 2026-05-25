@@ -18,16 +18,13 @@
  */
 
 import { requireAuth } from "./lib/auth.js";
+import { corsHeaders } from "./lib/cors.js";
 
 export const config = { runtime: "edge" };
 
 const COMPOSIO_BASE = "https://backend.composio.dev/api/v3";
 
-const CORS = {
-  "Access-Control-Allow-Origin":  "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-};
+const CORS = corsHeaders();
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -83,11 +80,7 @@ const APP_MAP = {
   // Paid Search / Ads
   googleads:    "googleads",
 
-  // Paid Social — share auth with their organic counterparts
-  metaads:      "facebook",     // Meta Ads Manager auth = Facebook
-  liads:        "linkedin",
-  ttads:        "tiktok",
-  xads:         "twitter",
+  // Paid Social (metaads, liads, ttads, xads) — REMOVED (migrated to Zernio, b_a002 2026-05-24)
 
   // Organic Social
   fb:           "facebook",

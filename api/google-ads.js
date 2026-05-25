@@ -8,8 +8,8 @@
 //   ANTHROPIC_API_KEY   — for the AI ad-copy generation action
 
 import { executeComposioTool } from "./lib/composio.js";
-
 import { requireAuth } from "./lib/auth.js";
+import { corsHeaders } from "./lib/cors.js";
 
 export const config = { runtime: "edge" };
 
@@ -240,11 +240,7 @@ Rules:
 export default async function handler(req) {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
 
-  const cors = {
-    "Access-Control-Allow-Origin":  "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-  };
+  const cors = corsHeaders();
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
 
   const auth = await requireAuth(req);

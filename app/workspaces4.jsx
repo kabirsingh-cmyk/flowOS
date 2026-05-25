@@ -15,10 +15,9 @@ const CONNECTOR_PILLS = [
 ];
 
 // Map FlowOS connector provider → backend API route.
-// Pipedream is treated identically to Composio at the surface level; if /api/pipedream
-// is not deployed the popup fails and the tile rolls back to unconnected.
+// zernio handles all social platforms; composio handles non-social toolkits.
 function providerApiPath(provider) {
-  if (provider === "pipedream") return "/api/pipedream";
+  if (provider === "zernio") return "/api/zernio";
   return "/api/composio";
 }
 
@@ -33,6 +32,9 @@ const DIRECT_API_ROUTES = {
   optimizely: "/api/optimizely",
   audiostack: "/api/audiostack",
   wordpress:  "/api/wordpress",
+  sendgrid:   "/api/sendgrid",
+  twilio:     "/api/twilio",
+  runware:    "/api/runware",
 };
 
 // Direct-API connectors that need more than a single apiKey field in the
@@ -519,7 +521,7 @@ function Connections({ state, actions }) {
   useEffect4(() => {
     (async () => {
       const params = new URLSearchParams(window.location.search);
-      const connectorId = params.get("composio_connected") || params.get("pipedream_connected");
+      const connectorId = params.get("composio_connected") || params.get("zernio_connected");
       if (!connectorId) return;
       window.history.replaceState({}, "", window.location.pathname);
       await verifyAndPersistConnection(connectorId);
@@ -719,7 +721,8 @@ function Connections({ state, actions }) {
       const { data: { session } } = await sb.auth.getSession();
       if (!session?.user) throw new Error("Not signed in");
       const apiPath  = providerApiPath(connector.provider);
-      const callbackUrl = `${window.location.origin}/oauth-callback.html?composio_connected=${connector.id}`;
+      const callbackParam = connector.provider === "zernio" ? "zernio_connected" : "composio_connected";
+      const callbackUrl = `${window.location.origin}/oauth-callback.html?${callbackParam}=${connector.id}`;
 
       const res = await apiFetch(apiPath, {
         method:  "POST",
@@ -810,9 +813,9 @@ function Connections({ state, actions }) {
       }
     }
 
-    // Revoke at the provider for any Composio-backed connector (OAuth or API key).
+    // Revoke at the provider for Composio or Zernio-backed connectors (OAuth or API key).
     // Direct API-key connectors only need local cleanup.
-    if (connector.provider === "composio" || connector.provider === "pipedream") {
+    if (connector.provider === "composio" || connector.provider === "zernio") {
       const { data: { session } } = await sb.auth.getSession();
       if (session?.user) {
         const { data: channelRow } = await sb
@@ -827,7 +830,7 @@ function Connections({ state, actions }) {
           apiFetch(apiPath, {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ action: "disconnect", accountId: channelRow.composio_connection_id }),
+            body:    JSON.stringify({ action: "disconnect", app: connector.id, accountId: channelRow.composio_connection_id }),
           }).catch(() => {});
         }
         await sb.from("channels")

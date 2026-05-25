@@ -888,6 +888,8 @@ const CONNECTOR_LABELS = {
   // Organic Social
   ig: "Instagram", tt: "TikTok", fb: "Facebook", li: "LinkedIn",
   yt: "YouTube", pn: "Pinterest", x: "X", reddit: "Reddit",
+  threads: "Threads", bluesky: "Bluesky", whatsapp: "WhatsApp",
+  telegram: "Telegram", snapchat: "Snapchat", discord: "Discord", gbusiness: "Google Business",
   // Paid Search + Audio
   googleads: "Google Ads", spotifyads: "Spotify Ads",
   // Paid Social

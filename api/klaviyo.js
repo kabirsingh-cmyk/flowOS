@@ -17,6 +17,7 @@
 
 import { executeComposioTool } from './lib/composio.js';
 import { requireAuth } from './lib/auth.js';
+import { corsHeaders } from './lib/cors.js';
 
 export const config = { runtime: "edge" };
 
@@ -28,7 +29,7 @@ const runTool = (name, input, tenantId) =>
 function json(status, body) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...corsHeaders() },
   });
 }
 
@@ -309,6 +310,7 @@ async function handleListAudiences(req) {
 // ─── handler ─────────────────────────────────────────────────────────────────
 
 export default async function handler(req) {
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders() });
   if (req.method !== "POST") return json(405, { ok: false, error: "POST only" });
 
   const auth = await requireAuth(req);

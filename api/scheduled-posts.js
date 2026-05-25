@@ -18,14 +18,11 @@
 // tenant id when calling /api/<platform>.
 
 import { requireAuth } from "./lib/auth.js";
+import { corsHeaders } from "./lib/cors.js";
 
 export const config = { runtime: "edge" };
 
-const CORS = {
-  "Access-Control-Allow-Origin":  "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
+const CORS = corsHeaders();
 
 const reply = (data, status = 200) =>
   new Response(JSON.stringify(data), {
