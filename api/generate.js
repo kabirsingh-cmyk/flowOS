@@ -133,6 +133,71 @@ async function logGenerationUsage({ tenantId, provider, model, jobType, jobId, s
   } catch (_) { /* non-blocking */ }
 }
 
+/**
+ * rehost — download a provider CDN asset and upload to Supabase Storage.
+ * Returns the durable Supabase Storage URL, or rawUrl on any failure.
+ *
+ * @param {string} rawUrl       Provider CDN URL
+ * @param {string} tenantId
+ * @param {string} jobId        generation_jobs row id (or provider_job_id as fallback)
+ * @param {string} assetType    "image" | "video"
+ * @param {string} provider
+ * @returns {Promise<string>}   Durable URL
+ */
+async function rehost(rawUrl, tenantId, jobId, assetType = 'image', provider = 'unknown') {
+  const base = process.env.SUPABASE_URL;
+  const key  = process.env.SUPABASE_SERVICE_KEY;
+  if (!base || !key || !rawUrl) return rawUrl;
+  try {
+    const urlPath = rawUrl.split('?')[0];
+    const ext = urlPath.match(/\.(mp4|webm|mov|png|jpg|jpeg|webp|gif)$/i)?.[1]
+      || (assetType === 'video' ? 'mp4' : 'jpg');
+    const storagePath = `${tenantId}/${jobId}.${ext}`;
+
+    const fetchRes = await fetch(rawUrl);
+    if (!fetchRes.ok) throw new Error(`Fetch failed: ${fetchRes.status}`);
+    const buffer      = await fetchRes.arrayBuffer();
+    const contentType = fetchRes.headers.get('content-type')
+      || (assetType === 'video' ? 'video/mp4' : 'image/jpeg');
+
+    const uploadUrl = `${base}/storage/v1/object/tenant-media/${storagePath}`;
+    const uploadRes = await fetch(uploadUrl, {
+      method:  'POST',
+      headers: {
+        'Authorization': `Bearer ${key}`,
+        'Content-Type':  contentType,
+        'x-upsert':      'true',
+      },
+      body: buffer,
+    });
+    if (!uploadRes.ok) {
+      const text = await uploadRes.text();
+      throw new Error(`Storage upload failed (${uploadRes.status}): ${text}`);
+    }
+
+    const durableUrl = `${base}/storage/v1/object/public/tenant-media/${storagePath}`;
+
+    // Fire-and-forget registry insert.
+    fetch(`${base}/rest/v1/media_assets`, {
+      method:  'POST',
+      headers: { ...supabaseHeaders(), 'Prefer': 'resolution=ignore-duplicates,return=minimal' },
+      body:    JSON.stringify({
+        tenant_id:    tenantId,
+        job_id:       jobId,
+        storage_path: storagePath,
+        storage_url:  durableUrl,
+        provider,
+        asset_type:   assetType,
+      }),
+    }).catch(() => {});
+
+    return durableUrl;
+  } catch (e) {
+    console.warn('[rehost] falling back to rawUrl:', e.message);
+    return rawUrl;
+  }
+}
+
 // Resolve Replicate API key: per-tenant key in connector_credentials takes
 // precedence over the global REPLICATE_API_KEY env var.
 async function resolveReplicateKey(tenantId) {
@@ -275,6 +340,15 @@ async function handleGenerateImage(body) {
     thumbnail_url:   thumbnailUrl,
     completed_at:    isTerminal ? new Date().toISOString() : null,
   });
+
+  // Re-host to Supabase Storage so the URL is durable (won't expire like provider CDNs).
+  // Falls back to rawUrl if storage is unavailable.
+  if (rawUrl) {
+    rawUrl = await rehost(rawUrl, tenantId, row?.id || providerJobId, 'image', provider);
+    if (row?.id) {
+      supabaseUpdate('generation_jobs', row.id, { raw_url: rawUrl }).catch(() => {});
+    }
+  }
 
   // Fire-and-forget usage tracking.
   logGenerationUsage({ tenantId, provider, model, jobType: 'image', jobId: row?.id || providerJobId, status: immediateStatus || 'pending' });
@@ -420,16 +494,20 @@ async function handleJobStatus(body) {
     return err(`Provider polling error: ${e.message}`, 502);
   }
 
-  // Persist status updates back to generation_jobs (fire-and-forget; don't block response)
-  const updatePromises = results.map(async r => {
-    if (r.status === 'completed' || r.status === 'failed' || r.status === 'failed_content_policy') {
+  // Rehost any newly-completed rawUrls to durable storage, then persist status.
+  // Awaited so the response carries the durable URL (not the expiring CDN URL).
+  const rehostPromises = results.map(async r => {
+    if ((r.status === 'completed' || r.status === 'failed_content_policy') && r.rawUrl) {
       try {
-        // Find the row by provider_job_id
-        const rows = await supabaseSelect('generation_jobs', { provider_job_id: r.jobId });
-        if (rows?.[0]?.id) {
-          await supabaseUpdate('generation_jobs', rows[0].id, {
+        const rows  = await supabaseSelect('generation_jobs', { provider_job_id: r.jobId });
+        const dbRow = rows?.[0];
+        if (dbRow) {
+          const assetType  = dbRow.type || 'image';
+          const durableUrl = await rehost(r.rawUrl, dbRow.tenant_id, dbRow.id, assetType, dbRow.provider);
+          r.rawUrl = durableUrl;
+          await supabaseUpdate('generation_jobs', dbRow.id, {
             status:        r.status,
-            raw_url:       r.rawUrl       || null,
+            raw_url:       durableUrl,
             thumbnail_url: r.thumbnailUrl || null,
             completed_at:  new Date().toISOString(),
           });
@@ -437,8 +515,7 @@ async function handleJobStatus(body) {
       } catch (_) { /* non-blocking */ }
     }
   });
-  // Don't await — return immediately
-  Promise.allSettled(updatePromises);
+  await Promise.allSettled(rehostPromises);
 
   return json({ ok: true, results });
 }
