@@ -152,6 +152,9 @@ function ChannelStrategyCanvas({ state, actions }) {
   const connectedSet = useMemoCS(() => {
     const map = {
       ig: "Instagram", tt: "TikTok", fb: "Facebook", li: "LinkedIn", yt: "YouTube", pn: "Pinterest",
+      x: "X", reddit: "Reddit", threads: "Threads", bluesky: "Bluesky",
+      whatsapp: "WhatsApp", telegram: "Telegram", snapchat: "Snapchat",
+      discord: "Discord", gbusiness: "Google Business",
       klaviyo: "Email", mailchimp: "Email",
       googleads: "Google Ads", appleads: "Apple Search", amazonads: "Amazon Ads",
       metaads: "Meta Ads", ttads: "TikTok Ads", liads: "LinkedIn Ads", pinads: "Pinterest Ads",
