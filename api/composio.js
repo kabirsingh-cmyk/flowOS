@@ -92,15 +92,13 @@ const APP_MAP = {
   klaviyo_sms:  "klaviyo",
 
   // Email Verification
-  neverbounce:  "neverbounce",
-  kickbox:      "kickbox",
-  listclean:    "listclean",
+  // neverbounce, kickbox, listclean — REMOVED (no feature usage, 2026-05-24)
 
   // SEO & Search
   gsc:          "google_search_console",
   ahrefs:       "ahrefs",
   moz:          "moz",
-  neuronwriter: "neuronwriter",
+  // neuronwriter — REMOVED (no feature usage, 2026-05-24)
 
   // E-commerce
   shopify:      "shopify",
@@ -114,7 +112,7 @@ const APP_MAP = {
 
   // CRM
   hubspot:      "hubspot",
-  salesforce:   "salesforce",
+  // salesforce — REMOVED (no agent workflows, 2026-05-24)
 };
 
 function resolveApp(app) {

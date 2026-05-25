@@ -898,20 +898,18 @@ const CONNECTOR_LABELS = {
   // Email + SMS
   klaviyo: "Klaviyo", klaviyo_sms: "Klaviyo SMS", mailchimp: "Mailchimp",
   sendgrid: "SendGrid", twilio: "Twilio",
-  // Email Verification
-  neverbounce: "NeverBounce", kickbox: "Kickbox", listclean: "Listclean",
   // Commerce
   shopify: "Shopify", wordpress: "WordPress",
   // Analytics + SEO
   ga4: "GA4", gsc: "Search Console", ahrefs: "Ahrefs",
-  moz: "Moz", neuronwriter: "Neuronwriter",
+  moz: "Moz",
   // A/B
   optimizely: "Optimizely",
   // Creative AI
   heygen: "HeyGen", runware: "RunWare", luma: "Luma AI", elevenlabs: "ElevenLabs",
   replicate: "Replicate", higgsfield: "Higgsfield", audiostack: "AudioStack",
   // CRM
-  hubspot: "HubSpot", salesforce: "Salesforce",
+  hubspot: "HubSpot",
 };
 
 // ─── Agent status helper ───────────────────────────────────────────────────────

@@ -147,16 +147,12 @@ const SEED = {
     { id: "klaviyo_sms", name: "Klaviyo SMS",     category: "SMS Marketing", group: "Email & SMS", desc: "TCPA consent, MMS, automations · shares Klaviyo key", auth: "API key", provider: "composio", slug: "klaviyo", domain: "klaviyo.com"  },
     { id: "twilio",      name: "Twilio",          category: "SMS Marketing", group: "Email & SMS", desc: "Programmable SMS · global reach, A2P 10DLC",          auth: "API key", provider: "direct",   slug: "twilio", domain: "twilio.com"  },
 
-    // ── Email Verification ───────────────────────────────────────────────────
-    { id: "neverbounce", name: "NeverBounce",     category: "Email Verification", group: "Email & SMS", desc: "Real-time + bulk email verification",         auth: "API key", provider: "composio", slug: null, domain: "neverbounce.com"  },
-    { id: "kickbox",     name: "Kickbox",         category: "Email Verification", group: "Email & SMS", desc: "Email verification · syntax, MX, SMTP",       auth: "API key", provider: "composio", slug: null, domain: "kickbox.com"  },
-    { id: "listclean",   name: "Listclean",       category: "Email Verification", group: "Email & SMS", desc: "Bulk list hygiene · deliverability scoring",  auth: "API key", provider: "composio", slug: null, domain: "listclean.io"  },
+    // ── Email Verification — REMOVED (neverbounce, kickbox, listclean had no feature usage) ──
 
     // ── SEO & Search ─────────────────────────────────────────────────────────
     { id: "gsc",         name: "Search Console",  category: "SEO & Search", group: "Analytics & Ops", desc: "Google · impressions, CTR, indexing status",     auth: "OAuth",   provider: "composio", slug: "googlesearchconsole", domain: "search.google.com"  },
     { id: "ahrefs",      name: "Ahrefs",          category: "SEO & Search", group: "Analytics & Ops", desc: "Keyword ranks, backlinks, site audit",           auth: "API key", provider: "composio", slug: "ahrefs", domain: "ahrefs.com"  },
     { id: "moz",         name: "Moz",             category: "SEO & Search", group: "Analytics & Ops", desc: "Domain authority, link explorer, rank tracking", auth: "API key", provider: "composio", slug: "moz", domain: "moz.com"  },
-    { id: "neuronwriter",name: "Neuronwriter",    category: "SEO & Search", group: "Analytics & Ops", desc: "Content optimisation · SERP NLP analysis",       auth: "API key", provider: "composio", slug: null, domain: "neuronwriter.com"  },
 
     // ── E-commerce ───────────────────────────────────────────────────────────
     { id: "shopify",     name: "Shopify",         category: "E-commerce", group: "Commerce",      desc: "Products, inventory, orders, customers",          auth: "OAuth",   provider: "composio", slug: "shopify", domain: "shopify.com"  },
@@ -181,7 +177,6 @@ const SEED = {
 
     // ── CRM & Marketing Ops ──────────────────────────────────────────────────
     { id: "hubspot",    name: "HubSpot",          category: "CRM & Marketing Ops", group: "Analytics & Ops", desc: "CRM, marketing hub, sequences",       auth: "OAuth",   provider: "composio", slug: "hubspot", domain: "hubspot.com"  },
-    { id: "salesforce", name: "Salesforce",       category: "CRM & Marketing Ops", group: "Analytics & Ops", desc: "Sales Cloud, Marketing Cloud, Pardot", auth: "OAuth",  provider: "composio", slug: "salesforce", domain: "salesforce.com"  },
   ],
   // Default per-connector status. The reducer shallow-merges patches into these.
   // Manage modal toggles `permissions.{read,write,admin}` — defaults set by makeConnState below.
@@ -220,14 +215,10 @@ const SEED = {
     klaviyo_sms:    { connected: true,  status: "ok",   note: "TCPA opt-ins synced 4m ago",           syncCount: "8,402 SMS subscribers · 3 flows", permissions: { read: true, write: true, admin: false } },
     twilio:         { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // Email Verification
-    neverbounce:    { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
-    kickbox:        { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
-    listclean:      { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // SEO & Search
     gsc:            { connected: true,  status: "ok",   note: "synced 12m ago",                       syncCount: "26 indexed pages", permissions: { read: true, write: true, admin: false } },
     ahrefs:         { connected: true,  status: "ok",   note: "rank crawl 6h ago · 184 tracked",      syncCount: "184 keywords", permissions: { read: true, write: true, admin: false } },
     moz:            { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
-    neuronwriter:   { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // E-commerce
     shopify:        { connected: true,  status: "ok",   note: "32 products · 1,408 orders MTD",       syncCount: "", permissions: { read: true, write: true, admin: false } },
     wordpress:      { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
@@ -246,7 +237,6 @@ const SEED = {
     ga4:            { connected: true,  status: "ok",   note: "last event 1m ago",                    syncCount: "", permissions: { read: true, write: true, admin: false } },
     // CRM & Marketing Ops
     hubspot:        { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
-    salesforce:     { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
   },
 
   // Per-brand connector states — used when switching accounts
@@ -287,14 +277,10 @@ const SEED = {
       klaviyo_sms:    { connected: true,  status: "ok", note: "synced 4m ago · service appointment reminders",    syncCount: "820 opted in", permissions: { read: true, write: true, admin: false } },
       twilio:         { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       // Email Verification
-      neverbounce:    { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
-      kickbox:        { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
-      listclean:      { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       // SEO & Search
       gsc:            { connected: true,  status: "ok", note: "synced 1h ago",                                     syncCount: "96 queries tracked", permissions: { read: true, write: true, admin: false } },
       ahrefs:         { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       moz:            { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
-      neuronwriter:   { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
       // E-commerce
       shopify:        { connected: false, status: "—",  note: "not connected — service business, no storefront",  syncCount: "—", permissions: { read: true, write: true, admin: false } },
       wordpress:      { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
@@ -313,7 +299,6 @@ const SEED = {
       ga4:            { connected: true,  status: "ok", note: "synced live · ericksonrefrigeration.com",           syncCount: "62 events tracked", permissions: { read: true, write: true, admin: false } },
       // CRM & Marketing Ops
       hubspot:        { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
-      salesforce:     { connected: false, status: "—",  note: "not connected",                                     syncCount: "—", permissions: { read: true, write: true, admin: false } },
     },
   },
 
