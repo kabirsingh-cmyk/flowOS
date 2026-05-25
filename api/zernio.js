@@ -21,7 +21,7 @@
  * Supported ad platforms (via /v1/ads endpoint):
  *   metaads, linkedinads, tiktokads, xads, pinterestads, googleads
  *   FlowOS IDs: metaads, liads→linkedinads, ttads→tiktokads, xads, pinads→pinterestads
- *   (googleads stays on Composio for now — existing integration)
+ *   googleads→googleads (migrated from Composio 2026-05-24; actions in api/google-ads.js)
  *
  * Actions:
  *   initiate_connection  — start OAuth flow for a tenant + platform
@@ -109,6 +109,8 @@ const SUPPORTED_PLATFORMS = new Set([
   // Paid social — Zernio slugs (confirmed)
   "linkedinads", "tiktokads", "pinterestads",
   // metaads and xads are the same in both — already covered above
+  // Paid Search
+  "googleads",
 ]);
 
 // ─── Zernio API helpers ───────────────────────────────────────────────────────

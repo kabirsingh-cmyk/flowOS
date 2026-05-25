@@ -320,12 +320,13 @@ The connect surface in [workspaces4.jsx](app/workspaces4.jsx) is provider-agnost
 |---|---|---|
 | **Organic Social** | facebook, instagram, linkedin, tiktok, pinterest, youtube, twitter, reddit, bluesky, threads, googlebusiness, whatsapp, telegram, snapchat, discord | fb, ig, li, tt, pn, yt, x, gbusiness (+ full names pass through) |
 | **Paid Social** | metaads, linkedinads, tiktokads, xads, pinterestads | metaads, liads, ttads, xads, pinads |
+| **Paid Search** | googleads | googleads |
 
 FlowOS IDs resolved to Zernio slugs in `PLATFORM_ID_MAP` (zernio.js): `x→twitter`, `gbusiness→googlebusiness`, `liads→linkedinads`, `ttads→tiktokads`, `pinads→pinterestads`. `metaads` and `xads` match in both.
 
 Multi-tenancy: each tenant gets one Zernio profile (created on first connect via `POST /v1/profiles`, stored in `connector_credentials(user_id, platform='zernio_profile')`). The `profileId` is passed as a query param to `GET /v1/connect/{platform}?profileId=...`. Zernio account IDs (`_id` from `GET /v1/accounts`) are stored in `channels.composio_connection_id` and loaded automatically for publish calls.
 
-`googleads` is also available in Zernio (`googleads` slug) but stays on Composio for now — existing integration.
+`googleads` uses Zernio for OAuth (`googleads` slug). Connection flow goes through `api/zernio.js`; campaign actions go through `api/google-ads.js` (Zernio-backed since 2026-05-24).
 
 Platform routes (`/api/linkedin` etc.) are thin proxies — they auth-check, then forward to `/api/zernio` with `platform` set.
 
@@ -335,7 +336,7 @@ Platform routes (`/api/linkedin` etc.) are thin proxies — they auth-check, the
 
 | Mode | Works for |
 |---|---|
-| **OAuth (Composio managed)** | googleads, ga4, gsc, hubspot, salesforce, mailchimp |
+| **OAuth (Composio managed)** | ga4, gsc, hubspot, salesforce, mailchimp |
 | **API key (Composio custom auth)** | klaviyo (+ klaviyo_sms), ahrefs, moz, elevenlabs, heygen |
 | **OAuth (needs custom app in Composio dashboard)** | shopify |
 
@@ -413,7 +414,7 @@ All in `/api/`. All use `export const config = { runtime: "edge" }`.
 | `GET  /api/cron/proactive-emails` | Vercel Cron (07:30 UTC) — iterates tenants and POSTs to /api/proactive-emails. |
 | `GET  /api/cron/proactive-sms` | Vercel Cron (08:00 UTC) — iterates tenants and POSTs to /api/proactive-sms. 30 min after proactive-emails. |
 | `GET  /api/cron/fire-scheduled` | Vercel Cron (`* * * * *` — **requires Pro** for guaranteed 1-min execution; Hobby cron schedules will be rejected at deploy). Calls Supabase RPC `claim_due_scheduled_posts(20)` which atomically picks due `pending` rows via `FOR UPDATE SKIP LOCKED`, transitions them to `publishing`, then POSTs `${origin}/api/<platform>` with the row's snapshot payload. PATCHes the row to `published`/`failed`. Idempotent by construction — same row can never be claimed twice concurrently. |
-| `POST /api/google-ads` | Composio-backed Google Ads wrapper. Actions: `list_customer_ids` (new — returns accessible MCC child accounts via `GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS`), `list_campaigns`, `create_campaign`, `update_budget`, `enable_campaign`, `pause_campaign`, `keyword_ideas`, `campaign_detail`, `generate_copy`. Frontend contract unchanged (`{ ok, data }`). Composio toolkit slug names live in the `TOOLS` constant at the top of the file. Pass `customerId` in params; if omitted, the user must pick one via `list_customer_ids` first. |
+| `POST /api/google-ads` | **Zernio-backed** Google Ads wrapper (migrated from Composio 2026-05-24). Actions: `list_customer_ids`, `list_campaigns`, `create_campaign`, `update_budget`, `enable_campaign`, `pause_campaign`, `keyword_ideas`, `campaign_detail`, `generate_copy`. Frontend contract unchanged (`{ ok, data }`). Uses `ZERNIO_API_KEY`; resolves Zernio `accountId` via the tenant's Zernio profile. Pass `customerId` (Google Ads account number) in params; if omitted, uses the first connected account. |
 | `POST /api/replicate` `POST /api/higgsfield` | Direct-API connector routes (provider: "direct" in seed.jsx). Actions: `initiate_connection` (validates apiKey against the provider's REST API, persists to `connector_credentials`, flips `channels` to connected), `disconnect`. Shared persistence helper in [api/lib/directCredentials.js](api/lib/directCredentials.js). `/api/luma` and `/api/audiostack` exist as tombstones (connectors removed from catalog 2026-05-24). |
 | `GET/POST /api/google-ads-auth` | **REMOVED — 410 Gone tombstone.** Returns `{ error: "Google Ads OAuth has moved to Composio…", code: "GONE_USE_COMPOSIO" }`. Connect flow now goes through `/api/composio` like every other OAuth connector. The old `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET` env vars are no longer read at runtime. |
 

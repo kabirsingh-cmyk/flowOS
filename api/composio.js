@@ -77,8 +77,7 @@ async function composioFetch(path, options = {}) {
 // is wrong, /auth_configs lookup fails and the user sees a clear error.
 
 const APP_MAP = {
-  // Paid Search / Ads
-  googleads:    "googleads",
+  // Paid Search / Ads — REMOVED (googleads migrated to Zernio 2026-05-24)
 
   // Paid Social (metaads, liads, ttads, xads, pinads) — REMOVED (on Zernio)
 

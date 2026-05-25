@@ -109,7 +109,7 @@ const SEED = {
   //   slug       Simple Icons logo slug (lowercase, dash-separated). null → letter-mark fallback
   connectorCatalog: [
     // ── Paid Search ──────────────────────────────────────────────────────────
-    { id: "googleads",  name: "Google Ads",       category: "Paid Search", group: "Ads",            desc: "Search, Performance Max, Display, YouTube",       auth: "OAuth",   provider: "composio", slug: "googleads", domain: "ads.google.com"  },
+    { id: "googleads",  name: "Google Ads",       category: "Paid Search", group: "Ads",            desc: "Search, Performance Max, Display, YouTube",       auth: "OAuth",   provider: "zernio",   slug: "googleads", domain: "ads.google.com"  },
 
     // ── Paid Audio ───────────────────────────────────────────────────────────
     { id: "spotifyads", name: "Spotify Ads",      category: "Paid Audio",  group: "Ads",            desc: "Audio + video spots · creative handoff (manual upload to Ad Studio)", auth: "Manual",  provider: "direct",   slug: "spotify", domain: "adstudio.spotify.com"  },
@@ -180,7 +180,7 @@ const SEED = {
   // Manage modal toggles `permissions.{read,write,admin}` — defaults set by makeConnState below.
   connectorState: {
     // Paid Search
-    googleads:      { connected: false, status: "warn", note: "reconnect required · Composio migration", syncCount: "—", permissions: { read: true, write: true, admin: false } },
+    googleads:      { connected: false, status: "warn", note: "reconnect required · migrated to Zernio", syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // Paid Audio
     spotifyads:     { connected: false, status: "—",    note: "not connected",                        syncCount: "—", permissions: { read: true, write: true, admin: false } },
     // Paid Social
@@ -240,7 +240,7 @@ const SEED = {
     mveda: null, // null = use default connectorState above
     erickson: {
       // Paid Search
-      googleads:      { connected: false, status: "warn", note: "reconnect required · Composio migration",          syncCount: "—", permissions: { read: true, write: true, admin: false } },
+      googleads:      { connected: false, status: "warn", note: "reconnect required · migrated to Zernio",          syncCount: "—", permissions: { read: true, write: true, admin: false } },
       // Paid Audio
       spotifyads:     { connected: false, status: "—",  note: "not connected — not relevant for B2B commercial",  syncCount: "—", permissions: { read: true, write: true, admin: false } },
       // Paid Social
