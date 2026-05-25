@@ -14,8 +14,9 @@ Nothing actively in progress.
 
 | ID | What | Date |
 |----|------|------|
+| b_a004 | Migrate googleads from Composio to Zernio | `api/google-ads.js` rewritten against Zernio `/v1/ads/*`; `ADS_TO_ORGANIC` routing added to `api/zernio.js`; `seed.jsx` provider flipped; Composio `APP_MAP` cleaned | 2026-05-24 |
 | b_a001 | Adopt Zernio for all organic social publishing | `api/zernio.js` unified publisher; all 10 cron-routed platforms wired; individual platform files are thin proxies; all organic social `seed.jsx` entries flipped to `provider: "zernio"` | 2026-05-24 |
-| b_a003 | Scope Composio strictly to non-social | Social toolkits removed from Composio path; Composio now covers only: Google Ads, GA4, GSC, HubSpot, Salesforce, Mailchimp, ElevenLabs, HeyGen, email/SMS verification, paid social ad connectors | 2026-05-24 |
+| b_a003 | Scope Composio strictly to non-social | Social toolkits removed from Composio path; Composio now covers only: GA4, GSC, HubSpot, Salesforce, Mailchimp, ElevenLabs, HeyGen | 2026-05-24 |
 | b_8cad | Wire social platform publishers via Zernio | All 10 platforms in `fire-scheduled` PLATFORM_ROUTES wired end-to-end; retitled from "via Composio" | 2026-05-24 |
 | b_ea4e | IG text-only post fix | Schedule + Publish Now disabled when no image; pink callout with "Generate image" button; auto-unblocks on completion | 2026-05-24 |
 | b_cc01 | DB migrations complete | 008 connector_credentials · 009 brand_voice_fields · 010 proactive_sms added to db/migrations/ — now a full sequential source of truth | 2026-05-24 |
@@ -33,8 +34,7 @@ Nothing actively in progress.
 
 | ID | What | Why it matters |
 |----|------|----------------|
-| b_60f8 | **BUG: Composio code 306 hangs Connect modal forever** | Blocks connecting Shopify + paid social ad connectors (metaads, liads, ttads, xads); X/TikTok organic unaffected (now Zernio) |
-| b_a002 | Route paid social ads through Zernio | pinads done; metaads/liads/ttads/xads still on Composio — blocked by b_60f8 |
+| b_60f8 | **BUG: Composio code 306 hangs Connect modal forever** | Now only affects Shopify (all ads + social on Zernio); modal hangs indefinitely on 409 response |
 | b_43d9 | Reddit native image posts | Zernio may support natively; needs verification |
 | b_b259 | Chat AI drafts for platforms with no publish path | Drafter should flag non-publishable drafts rather than silently produce them |
 | b_317a | Strip or preview-tag platform pickers without backends | 10 Zernio platforms now have backends in cron; remaining 5 (whatsapp/telegram/snap/discord/gbusiness) have connection flows but no cron route |
