@@ -289,15 +289,15 @@ DO NOT generate a new image. Use the provided reference directly.
 BEHAVIOR BY FORMAT:
 
 - Social organic (Instagram, TikTok, LinkedIn, Facebook, X, Pinterest, Threads, etc.):
-  Set `imagePrompt` to the exact reference image URL. Do not describe a scene — pass the URL as-is.
+  Set \`imagePrompt\` to the exact reference image URL. Do not describe a scene — pass the URL as-is.
 
 - Paid social / ads (Meta, TikTok Ads, LinkedIn Ads, Pinterest Ads, etc.):
-  Same rule. The reference image IS the creative. Set `imagePrompt` to the URL.
+  Same rule. The reference image IS the creative. Set \`imagePrompt\` to the URL.
 
 - Video (Reels, TikTok, YouTube Shorts, ad video):
-  Use the reference image as the first frame / base visual. Pass the URL in `imagePrompt`
-  prefixed with `[REF_FRAME]` so the generation pipeline knows to treat it as input,
-  not a text prompt. Example: `[REF_FRAME] https://...`
+  Use the reference image as the first frame / base visual. Pass the URL in \`imagePrompt\`
+  prefixed with \`[REF_FRAME]\` so the generation pipeline knows to treat it as input,
+  not a text prompt. Example: \`[REF_FRAME] https://...\`
 
 WHEN TO STILL GENERATE:
   Only generate a new image if no reference was provided, or if the user explicitly
