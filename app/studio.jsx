@@ -512,6 +512,8 @@ function EmailStudio({ state, actions }) {
   const [tab, setTab] = useStateS("overview");
   const [activeDraft, setActiveDraft] = useStateS(null);
   const [createOpen, setCreateOpen] = useStateS(false);
+  const [createHint, setCreateHint] = useStateS("");
+  const [recLoading, setRecLoading] = useStateS(false);
   const defaultSegment = isErickson ? "All contacts" : "All subscribers";
   const [form, setForm] = useStateS({ name: "", type: "campaign", subject: "", previewText: "", segment: defaultSegment, sendDate: "", body: "" });
 
@@ -553,6 +555,29 @@ function EmailStudio({ state, actions }) {
                  : tab === "flows"     ? CAMPAIGNS.filter(c => c.type === "flow")
                  : CAMPAIGNS.slice(0, 5);
 
+  const brand = state?.brandPreset;
+
+  React.useEffect(() => {
+    if (!createOpen) return;
+    setRecLoading(true);
+    apiFetch("/api/google-ads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action:                "recommend_email_campaign",
+        brandName:             brand?.name  || "",
+        brandVoice:            brand?.voice || "",
+        hint:                  createHint,
+        existingCampaignNames: CAMPAIGNS.map(c => c.name),
+        segments:              SEGMENTS,
+      }),
+    })
+      .then(r => r.json())
+      .then(d => { if (d.ok && d.data && Object.keys(d.data).length) setForm(f => ({ ...f, ...d.data })); })
+      .catch(() => {})
+      .finally(() => setRecLoading(false));
+  }, [createOpen]);
+
   return (
     <div className="anim-fade" style={{ height: "100%", display: "flex", overflow: "hidden" }}>
       {/* Main column */}
@@ -566,7 +591,7 @@ function EmailStudio({ state, actions }) {
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <Btn size="sm" variant="ghost"><Icon name="download" size={12}/> Export</Btn>
-              <Btn variant="primary" onClick={() => setCreateOpen(true)}><Icon name="spark" size={13}/> Create campaign</Btn>
+              <Btn variant="primary" onClick={() => { setCreateHint(""); setCreateOpen(true); }}><Icon name="spark" size={13}/> Create campaign</Btn>
             </div>
           </div>
           <div style={{ display: "flex" }}>
@@ -613,7 +638,7 @@ function EmailStudio({ state, actions }) {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
                   {RECS.map((r, i) => (
                     <FlowRec key={i} title={r.title} body={r.body} cta={r.cta} urgent={r.urgent}
-                      onClick={() => { const d = CAMPAIGNS.find(c => c.id === r.draftId); if (d) setActiveDraft(d); else setCreateOpen(true); }}/>
+                      onClick={() => { const d = CAMPAIGNS.find(c => c.id === r.draftId); if (d) setActiveDraft(d); else { setCreateHint(r.title); setCreateOpen(true); } }}/>
                   ))}
                 </div>
               </div>
@@ -706,8 +731,14 @@ function EmailStudio({ state, actions }) {
 
       {/* Create campaign dialog */}
       {createOpen && (
-        <Dialog open onClose={() => setCreateOpen(false)} title="Create email campaign" width={640}>
+        <Dialog open onClose={() => { setCreateOpen(false); setForm({ name: "", type: "campaign", subject: "", previewText: "", segment: defaultSegment, sendDate: "", body: "" }); setCreateHint(""); }} title="Create email campaign" width={640}>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {recLoading && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--muted)" }}>
+                <span className="dot-pulse" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", display: "inline-block" }}/>
+                Flow AI is drafting recommendations…
+              </div>
+            )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <FormRow label="Campaign name">
                 <Input placeholder="e.g. Summer sale · July 4" value={form.name} onChange={e => setForm(p => ({...p, name: e.target.value}))}/>
@@ -739,9 +770,11 @@ function EmailStudio({ state, actions }) {
             <FormRow label="Email body">
               <Textarea rows={6} placeholder="Write your email body here, or paste from your design tool…" value={form.body} onChange={e => setForm(p => ({...p, body: e.target.value}))}/>
             </FormRow>
-            <div style={{ padding: 12, borderRadius: 5, background: "var(--accent-wash)", border: "1px solid var(--accent)", fontSize: 12, color: "var(--ink-2)" }}>
-              ✦ <strong>Flow AI:</strong> Once saved, Flow will suggest the optimal send time, subject line A/B variants, and audience refinements.
-            </div>
+            {!recLoading && (
+              <div style={{ padding: 12, borderRadius: 5, background: "var(--accent-wash)", border: "1px solid var(--accent)", fontSize: 12, color: "var(--ink-2)" }}>
+                ✦ <strong>Flow AI:</strong> Fields pre-filled from your brand voice and audience data. Edit freely before saving.
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, borderTop: "1px solid var(--rule)", paddingTop: 14 }}>
               <Btn variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Btn>
               <Btn onClick={() => { setCreateOpen(false); actions.notify("ok", `'${form.name || "Campaign"}' saved as draft`); }}>Save as draft</Btn>

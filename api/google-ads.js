@@ -364,6 +364,59 @@ Rules:
   }
 }
 
+// AI email campaign recommendation — pre-fills the Create email campaign form
+async function recommendEmailCampaign({ brandName, brandVoice, hint, existingCampaignNames, segments }) {
+  const existing = (existingCampaignNames || []).join(", ") || "none";
+  const segmentList = (segments || []).join(", ") || "All subscribers";
+  const hintLine = hint ? `The user opened the dialog from this recommendation: "${hint}". Tailor the campaign to address this opportunity.` : "";
+  const prompt = `You are an email marketing strategist. Recommend a complete new email campaign for the brand below.
+
+Brand: ${brandName || "Unknown brand"}
+Brand voice: ${brandVoice || "conversational, benefit-led"}
+Available audience segments: ${segmentList}
+Existing campaigns (avoid duplicating): ${existing}
+${hintLine}
+
+Output ONLY valid JSON — no other text:
+{
+  "name": "Campaign name (concise, ≤60 chars)",
+  "type": "campaign",
+  "subject": "Subject line (≤60 chars, personalisation token {{first_name}} where natural)",
+  "previewText": "Preview text shown in inbox (≤90 chars)",
+  "segment": "Best matching segment from the available list",
+  "body": "Full email body (2–4 short paragraphs, brand voice, clear CTA, sign-off)"
+}
+
+Rules:
+- name: descriptive, includes audience or goal (e.g. "Win-back · 90d lapsed")
+- subject: compelling, benefit or curiosity-led, no clickbait
+- previewText: extends the subject naturally
+- segment: must exactly match one of the available segments listed above
+- body: conversational, on-brand, ends with a clear CTA link placeholder →`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key":         process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+      "Content-Type":      "application/json",
+    },
+    body: JSON.stringify({
+      model:      "claude-3-5-haiku-20241022",
+      max_tokens: 700,
+      messages:   [{ role: "user", content: prompt }],
+    }),
+  });
+  const data = await res.json();
+  const raw  = data.content?.[0]?.text || "{}";
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const match = raw.match(/\{[\s\S]*\}/);
+    return match ? JSON.parse(match[0]) : {};
+  }
+}
+
 // AI ad copy — no Google credentials, just Claude
 async function generateAdCopy({ brandName, productName, keywords, tone, url, voiceNote }) {
   const prompt = `You are an expert Google Ads copywriter. Generate high-converting responsive search ad copy.
@@ -432,6 +485,9 @@ export default async function handler(req) {
     switch (action) {
       case "recommend_campaign":
         result = await recommendCampaign(params);
+        break;
+      case "recommend_email_campaign":
+        result = await recommendEmailCampaign(params);
         break;
       case "generate_copy":
         result = await generateAdCopy(params);
