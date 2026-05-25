@@ -612,6 +612,7 @@ function Canvas({ canvas, onClose, state, actions, go }) {
     retention: "Retention", cx: "CX signals", seasonal: "Seasonal mode",
     abtests: "A/B tests", team: "Team & guests", discounts: "Discount ops",
     mobile: "Mobile preview", settings: "Settings", agents: "Agents",
+    spend: "Spend Dashboard",
   };
 
   const isHome = canvas.kind === "workspace" && canvas.target === "command";
@@ -652,6 +653,7 @@ function CanvasBody({ canvas, state, actions, go }) {
       abtests: AbTestLab, team: TeamSeats, discounts: DiscountOps, mobile: MobileShell,
       settings: SettingsHub,
       agents: AgentsWorkspace,
+      spend: SpendDashboard,
     }[canvas.target];
     if (!Comp) return <div style={{ padding: 40, color: "var(--muted)" }}>Unknown workspace</div>;
     return <Comp state={state} actions={actions} go={go} payload={{}}/>;
