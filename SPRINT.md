@@ -14,8 +14,12 @@ Nothing actively in progress.
 
 | ID | What | Date |
 |----|------|------|
+| b_c003 | Fix unverified inbox/analytics endpoints in zernio.js | Removed stale `ENDPOINT_UNVERIFIED` from `handleBoostPost` and `ENDPOINT_PARTIAL` from `handleGetAnalytics` — paths were already correct from prior session | 2026-05-24 |
+| b_c002 | Social ads action layer (all 5 paid platforms) | `api/social-ads.js` — `list_campaigns`, `create_campaign`, `boost_post`, `get_analytics`, `create_audience` via Zernio; covers metaads/liads/ttads/xads/pinads | 2026-05-24 |
+| b_c001 | Wire 5 remaining organic platforms to publish cron | `api/whatsapp.js`, `api/telegram.js`, `api/snapchat.js`, `api/discord.js`, `api/googlebusiness.js` (thin Zernio proxies); `PLATFORM_ROUTES` in `api/cron/fire-scheduled.js` extended | 2026-05-24 |
+| b_a004 | Migrate googleads from Composio to Zernio | `api/google-ads.js` rewritten against Zernio `/v1/ads/*`; `ADS_TO_ORGANIC` routing added to `api/zernio.js`; `seed.jsx` provider flipped; Composio `APP_MAP` cleaned | 2026-05-24 |
 | b_a001 | Adopt Zernio for all organic social publishing | `api/zernio.js` unified publisher; all 10 cron-routed platforms wired; individual platform files are thin proxies; all organic social `seed.jsx` entries flipped to `provider: "zernio"` | 2026-05-24 |
-| b_a003 | Scope Composio strictly to non-social | Social toolkits removed from Composio path; Composio now covers only: Google Ads, GA4, GSC, HubSpot, Salesforce, Mailchimp, ElevenLabs, HeyGen, email/SMS verification, paid social ad connectors | 2026-05-24 |
+| b_a003 | Scope Composio strictly to non-social | Social toolkits removed from Composio path; Composio now covers only: GA4, GSC, HubSpot, Salesforce, Mailchimp, ElevenLabs, HeyGen | 2026-05-24 |
 | b_8cad | Wire social platform publishers via Zernio | All 10 platforms in `fire-scheduled` PLATFORM_ROUTES wired end-to-end; retitled from "via Composio" | 2026-05-24 |
 | b_ea4e | IG text-only post fix | Schedule + Publish Now disabled when no image; pink callout with "Generate image" button; auto-unblocks on completion | 2026-05-24 |
 | b_cc01 | DB migrations complete | 008 connector_credentials · 009 brand_voice_fields · 010 proactive_sms added to db/migrations/ — now a full sequential source of truth | 2026-05-24 |
@@ -29,31 +33,26 @@ Nothing actively in progress.
 
 ---
 
-## Up next (top of backlog)
+## Up next — one chat each, in priority order
 
-| ID | What | Why it matters |
-|----|------|----------------|
-| b_60f8 | **BUG: Composio code 306 hangs Connect modal forever** | Blocks connecting Shopify + paid social ad connectors (metaads, liads, ttads, xads); X/TikTok organic unaffected (now Zernio) |
-| b_a002 | Route paid social ads through Zernio | pinads done; metaads/liads/ttads/xads still on Composio — blocked by b_60f8 |
-| b_43d9 | Reddit native image posts | Zernio may support natively; needs verification |
-| b_b259 | Chat AI drafts for platforms with no publish path | Drafter should flag non-publishable drafts rather than silently produce them |
-| b_317a | Strip or preview-tag platform pickers without backends | 10 Zernio platforms now have backends in cron; remaining 5 (whatsapp/telegram/snap/discord/gbusiness) have connection flows but no cron route |
+| ID | Chat scope | What it touches | Effort |
+|----|-----------|-----------------|--------|
+| b_60f8 | **BUG: Shopify 306 hangs Connect modal** | Frontend only — `workspaces4.jsx` doesn't handle 409 from Composio; modal spins forever. Show error message + link to Composio dashboard. | Small |
 
 ---
 
-## Known issues (not yet backlog items)
+## Known issues
 
-- Cron for `fire-scheduled` requires **Vercel Pro** (1-min schedule). On Hobby plan it won't fire reliably.
-- **b_60f8 scope (2026-05-24)**: Composio code 306 now only affects non-social connectors — Shopify and the four paid social ad connectors (metaads, liads, ttads, xads) that remain on Composio. X and TikTok organic use Zernio and are unaffected.
-- `sourceBriefId` on calendar items is wired but no UI reads it yet (backlog: b_2504).
+- Cron `fire-scheduled` requires **Vercel Pro** for guaranteed 1-min execution; Hobby plan won't fire reliably.
+- `sourceBriefId` on calendar items is wired but no UI reads it yet (b_2504).
 
 ---
 
 ## Health check
 
 Run `node scripts/health-check.mjs` after any session. Silent = all clear.
-*(Also runs automatically via Claude Code Stop hook — you'll see a red warning if something breaks.)*
+*(Also runs automatically via Claude Code Stop hook.)*
 
 ---
 
-*Last updated: 2026-05-24 — Zernio migration complete (b_a001, b_a003, b_8cad done)*
+*Last updated: 2026-05-24 — googleads migrated to Zernio; backlog restructured with one-chat scopes*

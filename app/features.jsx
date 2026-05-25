@@ -1010,7 +1010,7 @@ function OrganicSocialStudio({ state, actions }) {
   }, []);
 
   const connectedImageGen = ["runware", "fal", "replicate"].find(id => state.connectors?.[id]?.connected);
-  const connectedVideoGen = ["luma", "kling", "pika", "higgsfield"].find(id => state.connectors?.[id]?.connected);
+  const connectedVideoGen = ["higgsfield", "kling", "pika"].find(id => state.connectors?.[id]?.connected);
 
   const simulateImageGen = () => {
     setGenLoading(true);

@@ -159,14 +159,15 @@ async function higgsfieldGenerateImage({ model, prompt, negative, aspectRatio, r
  * @param {{ model, prompt, negative, aspectRatio, duration, startImageJobId }} params
  * @returns {{ providerJobId: string }}
  */
-async function higgsfieldGenerateVideo({ model, prompt, negative, aspectRatio, duration, startImageJobId }) {
+async function higgsfieldGenerateVideo({ model, prompt, negative, aspectRatio, duration, startImageJobId, startImageUrl }) {
+  const startImageValue = startImageJobId || startImageUrl || null;
   const body = {
     prompt,
     negative_prompt: negative || '',
     aspect_ratio:    aspectRatio || '9:16',
     duration:        duration    || 6,
-    medias: startImageJobId
-      ? [{ value: startImageJobId, role: 'start_image' }]
+    medias: startImageValue
+      ? [{ value: startImageValue, role: 'start_image' }]
       : [],
   };
 
@@ -403,7 +404,7 @@ async function runwareGenerateImage({ model, prompt, negative, aspectRatio, reso
  *
  * @returns {{ providerJobId, status, rawUrl?, thumbnailUrl? }}
  */
-async function runwareGenerateVideo({ model, prompt, negative, aspectRatio, duration, startImageJobId }) {
+async function runwareGenerateVideo({ model, prompt, negative, aspectRatio, duration, startImageJobId, startImageUrl }) {
   // Video models often have stricter resolution rules; default to a sensible
   // base and let the model clamp. 1024 long side works across Kling / Veo.
   const { width, height } = dimsFor(aspectRatio || '9:16', '1k');
@@ -423,9 +424,10 @@ async function runwareGenerateVideo({ model, prompt, negative, aspectRatio, dura
     outputType:      'URL',
     checkNSFW:       true,
   };
-  if (startImageJobId) {
+  const startImageValue = startImageJobId || startImageUrl || null;
+  if (startImageValue) {
     // Runware accepts a previously-uploaded imageUUID or a public URL.
-    task.frameImages = [{ inputImage: startImageJobId }];
+    task.frameImages = [{ inputImage: startImageValue }];
   }
 
   const results = await runwarePost([task]);

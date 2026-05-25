@@ -39,16 +39,14 @@ const CONNECTOR_IDS = [
   // Email + SMS
   "klaviyo", "klaviyo_sms", "mailchimp",
   "sendgrid", "twilio",
-  // Email Verification
-  "neverbounce", "kickbox", "listclean",
   // Commerce
   "shopify", "wordpress",
   // Analytics + SEO
-  "ga4", "gsc", "ahrefs", "moz", "neuronwriter",
+  "ga4", "gsc", "ahrefs", "moz",
   // A/B Testing
   "optimizely",
   // Creative AI
-  "heygen", "runware", "luma", "elevenlabs", "replicate", "higgsfield", "audiostack",
+  "heygen", "runware", "elevenlabs", "replicate", "higgsfield",
 ];
 
 // ─── Jina reader ──────────────────────────────────────────────────────────────

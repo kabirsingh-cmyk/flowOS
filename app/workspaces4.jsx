@@ -3,15 +3,18 @@
 const { useState: useState4, useEffect: useEffect4, useMemo: useMemo4, useRef: useRef4 } = React;
 
 // Filter pill groups for the Connections grid.
-// Each pill corresponds to a `connector.group` value in seed.jsx (or "all").
+// "recommended" is a virtual group — filters to brandPreset.recommendedConnectors.
+// All other ids match connector.group values in seed.jsx.
 const CONNECTOR_PILLS = [
-  { id: "all",              label: "All" },
-  { id: "Social",           label: "Social" },
-  { id: "Ads",              label: "Ads" },
-  { id: "Email & SMS",      label: "Email & SMS" },
-  { id: "Commerce",         label: "Commerce" },
-  { id: "Analytics & Ops",  label: "Analytics & Ops" },
-  { id: "Creative AI",      label: "Creative AI" },
+  { id: "recommended", label: "Recommended" },
+  { id: "all",         label: "All" },
+  { id: "Social",      label: "Social" },
+  { id: "Ads",         label: "Ads" },
+  { id: "Email",       label: "Email" },
+  { id: "SMS",         label: "SMS" },
+  { id: "Commerce",    label: "Commerce" },
+  { id: "Analytics",   label: "Analytics" },
+  { id: "Creative AI", label: "Creative AI" },
 ];
 
 // Map FlowOS connector provider → backend API route.
@@ -28,9 +31,7 @@ function providerApiPath(provider) {
 const DIRECT_API_ROUTES = {
   replicate:  "/api/replicate",
   higgsfield: "/api/higgsfield",
-  luma:       "/api/luma",
   optimizely: "/api/optimizely",
-  audiostack: "/api/audiostack",
   wordpress:  "/api/wordpress",
   sendgrid:   "/api/sendgrid",
   twilio:     "/api/twilio",
@@ -866,7 +867,8 @@ function Connections({ state, actions }) {
   const visible = useMemo4(() => {
     const q = search.trim().toLowerCase();
     const filtered = catalog.filter(c => {
-      if (activeGroup !== "all" && c.group !== activeGroup) return false;
+      if (activeGroup === "recommended" && !recommendedSet.has(c.id)) return false;
+      if (activeGroup !== "all" && activeGroup !== "recommended" && c.group !== activeGroup) return false;
       if (q && !c.name.toLowerCase().includes(q)) return false;
       return true;
     });

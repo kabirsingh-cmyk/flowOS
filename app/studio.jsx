@@ -1514,7 +1514,7 @@ function SettingsHub({ state, actions, go }) {
           <div style={{ padding: 20, borderRadius: 8, background: "var(--paper)", border: "1px solid var(--rule)", borderTop: "3px solid oklch(55% 0.14 300)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 24 }}>
             <div>
               <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Generation Spend</div>
-              <div style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.5 }}>All-tenant AI generation cost tracking — runware, replicate, heygen, higgsfield, luma, elevenlabs, audiostack.</div>
+              <div style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.5 }}>All-tenant AI generation cost tracking — runware, replicate, heygen, higgsfield, elevenlabs.</div>
             </div>
             <Btn size="sm" variant="primary" onClick={() => go("spend")} style={{ flexShrink: 0 }}>Open Spend →</Btn>
           </div>
@@ -1586,9 +1586,7 @@ function SpendDashboard({ actions }) {
     replicate:  "oklch(55% 0.18 280)",
     heygen:     "oklch(62% 0.16 30)",
     higgsfield: "oklch(58% 0.18 200)",
-    luma:       "oklch(60% 0.17 160)",
     elevenlabs: "oklch(55% 0.14 50)",
-    audiostack: "oklch(50% 0.14 300)",
   };
 
   const STATUS_COLOR = { completed: "var(--success)", failed: "oklch(58% 0.18 25)", pending: "oklch(72% 0.12 70)" };
@@ -1603,7 +1601,7 @@ function SpendDashboard({ actions }) {
           <div>
             <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Operator · FlowOS internal</div>
             <h1 style={{ fontSize: 28, fontWeight: 500, letterSpacing: "-0.025em", margin: "4px 0 0" }}>Generation Spend</h1>
-            <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>All-tenant AI generation costs — runware · replicate · heygen · higgsfield · luma · elevenlabs · audiostack</div>
+            <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>All-tenant AI generation costs — runware · replicate · heygen · higgsfield · elevenlabs</div>
           </div>
           <Btn size="sm" variant="ghost" onClick={load} disabled={loading}>
             <Icon name="refresh" size={12}/> {loading ? "Loading…" : "Refresh"}

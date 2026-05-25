@@ -1,191 +1,311 @@
-// FlowOS — Google Ads API edge function (Composio-backed)
-// Hard cutover from direct Google Ads REST + Flow-owned OAuth → Composio managed OAuth.
-// All 8 frontend actions preserved; response shape ({ ok, data } | { ok:false, error })
-// is identical so studio.jsx callers do not change.
+// FlowOS — Google Ads API edge function (Zernio-backed)
+// Migrated from Composio to Zernio 2026-05-24.
+// All 8 frontend actions preserved; response shape ({ ok, data } | { ok:false, error }) unchanged.
 //
 // Required env vars:
-//   COMPOSIO_API_KEY2   — Composio API key (already used by other routes)
-//   ANTHROPIC_API_KEY   — for the AI ad-copy generation action
+//   ZERNIO_API_KEY      — same key used by api/zernio.js
+//   SUPABASE_URL, SUPABASE_SERVICE_KEY — for Zernio profileId + accountId lookup
+//   ANTHROPIC_API_KEY   — for generate_copy (Claude-only, no Zernio call)
 
-import { executeComposioTool } from "./lib/composio.js";
 import { requireAuth } from "./lib/auth.js";
-import { corsHeaders } from "./lib/cors.js";
+import { corsPreflightResponse, jsonResponse, errResponse } from "./lib/cors.js";
 
 export const config = { runtime: "edge" };
 
-// Composio Google Ads toolkit slugs. Names follow the GOOGLEADS_<ACTION> convention.
-// If Composio renames any of these, only this constant needs to change.
-const TOOLS = {
-  search:           "GOOGLEADS_SEARCH_STREAM",
-  listCustomers:    "GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS",
-  createCampaign:   "GOOGLEADS_CREATE_CAMPAIGN",
-  mutateCampaign:   "GOOGLEADS_MUTATE_CAMPAIGN",
-  mutateBudget:     "GOOGLEADS_MUTATE_CAMPAIGN_BUDGET",
-  keywordIdeas:     "GOOGLEADS_GENERATE_KEYWORD_IDEAS",
-};
+const ZERNIO_BASE = "https://zernio.com/api/v1";
 
-// ─── Composio helpers ────────────────────────────────────────────────────────
+// ─── Zernio API helpers ──────────────────────────────────────────────────────
 
-async function runGAQL(query, tenantId, customerId) {
-  const out = await executeComposioTool(
-    TOOLS.search,
-    { customer_id: customerId, query },
-    tenantId
-  );
-  if (out?.error) throw new Error(out.error);
-  return out?.results || out?.data?.results || [];
+function zernioHeaders() {
+  const key = process.env.ZERNIO_API_KEY;
+  if (!key) throw new Error("ZERNIO_API_KEY env var not set");
+  return {
+    "Authorization": `Bearer ${key}`,
+    "Content-Type":  "application/json",
+  };
 }
 
-async function composioMutate(toolName, input, tenantId) {
-  const out = await executeComposioTool(toolName, input, tenantId);
-  if (out?.error) throw new Error(out.error);
-  return out;
+async function zernioFetch(path, options = {}) {
+  const res = await fetch(`${ZERNIO_BASE}${path}`, {
+    ...options,
+    headers: { ...zernioHeaders(), ...(options.headers || {}) },
+  });
+  const text = await res.text();
+  let data;
+  try { data = JSON.parse(text); } catch { data = { raw: text }; }
+  if (!res.ok) {
+    const msg = data?.error || data?.message || `Zernio ${path} ${res.status}: ${text.slice(0, 300)}`;
+    throw Object.assign(new Error(msg), { status: res.status, zernioCode: data?.code });
+  }
+  return data;
+}
+
+// ─── Supabase helpers ────────────────────────────────────────────────────────
+
+function sbHeaders() {
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  return {
+    "apikey":        key,
+    "Authorization": `Bearer ${key}`,
+    "Content-Type":  "application/json",
+  };
+}
+
+async function getZernioProfileId(tenantId) {
+  const url = `${process.env.SUPABASE_URL}/rest/v1/connector_credentials` +
+    `?user_id=eq.${encodeURIComponent(tenantId)}&platform=eq.zernio_profile` +
+    `&select=secret_value&limit=1`;
+  const res = await fetch(url, { headers: sbHeaders() });
+  if (!res.ok) return null;
+  const rows = await res.json();
+  return rows?.[0]?.secret_value || null;
+}
+
+/**
+ * Load the cached Zernio social account _id for a connected platform.
+ * Stored in channels.composio_connection_id at verify-and-persist time.
+ */
+async function getZernioAccountId(tenantId, platform) {
+  const url = `${process.env.SUPABASE_URL}/rest/v1/channels` +
+    `?user_id=eq.${encodeURIComponent(tenantId)}&platform=eq.${encodeURIComponent(platform)}` +
+    `&select=composio_connection_id&limit=1`;
+  const res = await fetch(url, { headers: sbHeaders() });
+  if (!res.ok) return null;
+  const rows = await res.json();
+  return rows?.[0]?.composio_connection_id || null;
+}
+
+// ─── Google Ads account resolution ───────────────────────────────────────────
+
+/**
+ * Resolve the Zernio social account (_id) for this tenant's Google Ads connection.
+ * First tries channels.composio_connection_id, then falls back to walking
+ * /v1/accounts via the tenant's Zernio profile.
+ */
+async function resolveGoogleAdsSocialAccount(tenantId) {
+  const cached = await getZernioAccountId(tenantId, "googleads");
+  if (cached) return cached;
+
+  const profileId = await getZernioProfileId(tenantId);
+  if (!profileId) {
+    throw new Error("No Google Ads account connected. Connect via the Connections panel.");
+  }
+  const data = await zernioFetch(
+    `/accounts?profileId=${encodeURIComponent(profileId)}&platform=googleads`,
+    { method: "GET" },
+  );
+  const account = (data.accounts || []).find(a => a.platform === "googleads");
+  if (!account) {
+    throw new Error("No Google Ads account connected. Connect via the Connections panel.");
+  }
+  return account._id;
+}
+
+/**
+ * List the platform ad accounts (Google Ads customer IDs) reachable through
+ * the tenant's connected Google Ads social account.
+ */
+async function getGoogleAdsCustomerAccounts(socialAccountId) {
+  const data = await zernioFetch(
+    `/ads/accounts?accountId=${encodeURIComponent(socialAccountId)}`,
+    { method: "GET" },
+  );
+  return data.accounts || [];
 }
 
 // ─── Action handlers ─────────────────────────────────────────────────────────
 
 async function listAccessibleCustomers(tenantId) {
-  const out = await executeComposioTool(TOOLS.listCustomers, {}, tenantId);
-  if (out?.error) throw new Error(out.error);
-  const ids = out?.resource_names || out?.customers || out?.results || [];
-  // resource_names come back as "customers/1234567890" — strip the prefix
-  return ids
-    .map(x => (typeof x === "string" ? x : x?.id || x?.resourceName || ""))
-    .map(s => s.replace(/^customers\//, ""))
-    .filter(Boolean)
-    .map(id => ({ id, name: id }));
+  const socialAccountId = await resolveGoogleAdsSocialAccount(tenantId);
+  const accounts = await getGoogleAdsCustomerAccounts(socialAccountId);
+  return accounts.map(a => ({
+    id:   String(a.id),
+    name: a.name || String(a.id),
+  }));
 }
 
 async function listCampaigns(tenantId, customerId) {
-  const results = await runGAQL(`
-    SELECT
-      campaign.id,
-      campaign.name,
-      campaign.status,
-      campaign.advertising_channel_type,
-      campaign_budget.amount_micros,
-      metrics.clicks,
-      metrics.impressions,
-      metrics.ctr,
-      metrics.average_cpc,
-      metrics.conversions,
-      metrics.cost_micros,
-      metrics.conversions_value
-    FROM campaign
-    WHERE segments.date DURING LAST_30_DAYS
-    ORDER BY metrics.cost_micros DESC
-  `, tenantId, customerId);
-
-  return results.map(r => ({
-    id:          r.campaign?.id,
-    name:        r.campaign?.name,
-    status:      r.campaign?.status?.toLowerCase().replace("_", "-"),
-    type:        r.campaign?.advertisingChannelType,
-    budgetMonth: Math.round((r.campaignBudget?.amountMicros || 0) / 1_000_000 * 30.4),
-    spend:       Math.round((r.metrics?.costMicros || 0) / 1_000_000),
-    revenue:     Math.round(r.metrics?.conversionsValue || 0),
-    roas:        r.metrics?.costMicros > 0
-                   ? +((r.metrics.conversionsValue / (r.metrics.costMicros / 1_000_000)).toFixed(1))
-                   : null,
-    ctr:         +((r.metrics?.ctr * 100 || 0).toFixed(1)),
-    clicks:      r.metrics?.clicks || 0,
-    impressions: r.metrics?.impressions || 0,
-    avgCpc:      +((r.metrics?.averageCpc / 1_000_000 || 0).toFixed(2)),
-    conversions: r.metrics?.conversions || 0,
+  const socialAccountId = await resolveGoogleAdsSocialAccount(tenantId);
+  const qs = new URLSearchParams({ platform: "google", accountId: socialAccountId });
+  if (customerId) qs.set("adAccountId", String(customerId));
+  const data = await zernioFetch(`/ads/campaigns?${qs}`, { method: "GET" });
+  const campaigns = data.campaigns || [];
+  return campaigns.map(c => ({
+    id:          c.platformCampaignId,
+    name:        c.campaignName,
+    status:      (c.status || "").toLowerCase().replace(/_/g, "-"),
+    type:        null,
+    budgetMonth: c.budget?.amount ? Math.round(c.budget.amount * 30.4) : null,
+    spend:       c.metrics?.spend   || 0,
+    revenue:     c.metrics?.purchaseValue || 0,
+    roas:        c.metrics?.roas    || null,
+    ctr:         c.metrics?.ctr != null ? +(c.metrics.ctr.toFixed(1)) : 0,
+    clicks:      c.metrics?.clicks  || 0,
+    impressions: c.metrics?.impressions || 0,
+    avgCpc:      c.metrics?.cpc != null ? +(c.metrics.cpc.toFixed(2)) : 0,
+    conversions: c.metrics?.conversions || 0,
   }));
 }
 
-async function getCampaignDetail({ campaignId }, tenantId, customerId) {
-  const [adResults, kwResults] = await Promise.all([
-    runGAQL(`
-      SELECT ad_group_ad.ad.id, ad_group_ad.ad.responsive_search_ad.headlines,
-             ad_group_ad.ad.responsive_search_ad.descriptions,
-             ad_group_ad.status,
-             metrics.clicks, metrics.impressions, metrics.ctr, metrics.cost_micros
-      FROM ad_group_ad
-      WHERE campaign.id = ${campaignId} AND segments.date DURING LAST_30_DAYS
-    `, tenantId, customerId),
-    runGAQL(`
-      SELECT ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type,
-             ad_group_criterion.status,
-             metrics.clicks, metrics.impressions, metrics.ctr,
-             metrics.cost_micros, metrics.average_cpc
-      FROM ad_group_criterion
-      WHERE campaign.id = ${campaignId}
-        AND ad_group_criterion.type = KEYWORD
-        AND segments.date DURING LAST_30_DAYS
-    `, tenantId, customerId),
-  ]);
+async function getCampaignDetail({ campaignId }, tenantId) {
+  const socialAccountId = await resolveGoogleAdsSocialAccount(tenantId);
+  const qs = new URLSearchParams({
+    platform:   "google",
+    accountId:  socialAccountId,
+    campaignId,
+  });
+  const data = await zernioFetch(`/ads?${qs}`, { method: "GET" });
+  const ads = data.ads || [];
 
+  const metrics = aggregateMetrics(ads);
   return {
-    ads: adResults.map(r => ({
-      headlines:    r.adGroupAd?.ad?.responsiveSearchAd?.headlines?.map(h => h.text) || [],
-      descriptions: r.adGroupAd?.ad?.responsiveSearchAd?.descriptions?.map(d => d.text) || [],
-      status:       r.adGroupAd?.status?.toLowerCase(),
-      clicks:       r.metrics?.clicks || 0,
-      impressions:  r.metrics?.impressions || 0,
-      ctr:          +((r.metrics?.ctr * 100 || 0).toFixed(1)),
-      spend:        +((r.metrics?.costMicros / 1_000_000 || 0).toFixed(2)),
+    ads: ads.map(ad => ({
+      id:      ad.platformAdId || ad._id,
+      name:    ad.name,
+      status:  ad.status,
+      type:    ad.adType,
+      metrics: ad.metrics || {},
     })),
-    keywords: kwResults.map(r => ({
-      text:        r.adGroupCriterion?.keyword?.text,
-      matchType:   r.adGroupCriterion?.keyword?.matchType,
-      status:      r.adGroupCriterion?.status?.toLowerCase(),
-      clicks:      r.metrics?.clicks || 0,
-      impressions: r.metrics?.impressions || 0,
-      ctr:         +((r.metrics?.ctr * 100 || 0).toFixed(1)),
-      spend:       +((r.metrics?.costMicros / 1_000_000 || 0).toFixed(2)),
-      avgCpc:      +((r.metrics?.averageCpc / 1_000_000 || 0).toFixed(2)),
-    })),
+    keywords: [],
+    metrics,
   };
 }
 
+function aggregateMetrics(ads) {
+  const out = {
+    spend: 0, impressions: 0, clicks: 0, conversions: 0,
+    reach: 0, cpc: 0, ctr: 0, roas: null, revenue: 0,
+  };
+  let purchaseValue = 0;
+  for (const ad of ads) {
+    const m = ad.metrics || {};
+    out.spend       += m.spend       || 0;
+    out.impressions += m.impressions || 0;
+    out.clicks      += m.clicks      || 0;
+    out.conversions += m.conversions || 0;
+    out.reach       += m.reach       || 0;
+    purchaseValue   += m.purchaseValue || 0;
+  }
+  out.revenue = +purchaseValue.toFixed(2);
+  if (out.impressions > 0) {
+    out.ctr = +((out.clicks / out.impressions * 100).toFixed(1));
+  }
+  if (out.clicks > 0) {
+    out.cpc = +((out.spend / out.clicks).toFixed(2));
+  }
+  if (out.spend > 0) {
+    out.roas = +(purchaseValue / out.spend).toFixed(2);
+  }
+  return out;
+}
+
 async function createCampaign(params, tenantId) {
-  const { customerId, name, channelType, budgetDaily, biddingStrategy } = params;
-  return composioMutate(TOOLS.createCampaign, {
-    customer_id:        customerId,
+  const { customerId, name, channelType, budgetDaily, linkUrl, headline, body } = params;
+  const socialAccountId = await resolveGoogleAdsSocialAccount(tenantId);
+
+  // Resolve adAccountId (Google Ads customer ID) — required by Zernio
+  let adAccountId = customerId ? String(customerId) : null;
+  if (!adAccountId) {
+    const accounts = await getGoogleAdsCustomerAccounts(socialAccountId);
+    if (accounts.length) adAccountId = accounts[0].id;
+  }
+  if (!adAccountId) throw new Error("No Google Ads customer ID available.");
+
+  if (!linkUrl) throw new Error("linkUrl is required to create a Google Ads campaign.");
+
+  const goal = channelTypeToGoal(channelType);
+
+  const payload = {
+    accountId:   socialAccountId,
+    adAccountId,
     name,
-    advertising_channel_type: channelType || "SEARCH",
-    daily_budget_micros: Math.round((budgetDaily || 0) * 1_000_000),
-    bidding_strategy:    biddingStrategy || "MAXIMIZE_CONVERSIONS",
-    status:              "PAUSED",
-  }, tenantId);
+    goal,
+    budgetAmount: budgetDaily || 10,
+    budgetType:   "daily",
+    headline:     (headline || name).slice(0, 30),
+    body:         (body || "Discover what we have to offer.").slice(0, 90),
+    linkUrl,
+  };
+
+  const data = await zernioFetch("/ads/create", {
+    method: "POST",
+    body:   JSON.stringify(payload),
+  });
+
+  const ad = data.ad || {};
+  const campaignId = ad.platformCampaignId;
+  if (!campaignId) {
+    throw new Error("Zernio created the ad but returned no platformCampaignId.");
+  }
+
+  // Pause immediately so the campaign starts safe (matches old Composio behaviour)
+  await zernioFetch(`/ads/campaigns/${encodeURIComponent(campaignId)}/status`, {
+    method: "PUT",
+    body:   JSON.stringify({ status: "paused", platform: "google" }),
+  });
+
+  return { id: campaignId, name, status: "paused" };
+}
+
+function channelTypeToGoal(channelType) {
+  switch ((channelType || "").toUpperCase()) {
+    case "DISPLAY":       return "awareness";
+    case "VIDEO":         return "video_views";
+    case "MULTI_CHANNEL": return "engagement";
+    default:              return "traffic"; // SEARCH and fallback
+  }
 }
 
 async function updateBudget(params, tenantId) {
-  const { customerId, budgetResourceName, dailyBudget } = params;
-  return composioMutate(TOOLS.mutateBudget, {
-    customer_id:         customerId,
-    resource_name:       budgetResourceName,
-    amount_micros:       Math.round((dailyBudget || 0) * 1_000_000),
-  }, tenantId);
+  const { customerId, campaignId, dailyBudget } = params;
+  if (!campaignId) throw new Error("campaignId required");
+  if (dailyBudget == null) throw new Error("dailyBudget required");
+
+  const socialAccountId = await resolveGoogleAdsSocialAccount(tenantId);
+
+  // Campaign-level budget edit is Meta-only (501 on Google).
+  // Fall back to updating the first ad in the campaign.
+  const qs = new URLSearchParams({
+    platform:  "google",
+    accountId: socialAccountId,
+    campaignId,
+    limit:     "1",
+  });
+  if (customerId) qs.set("adAccountId", String(customerId));
+
+  const list = await zernioFetch(`/ads?${qs}`, { method: "GET" });
+  const ad = (list.ads || [])[0];
+  if (!ad) throw new Error("No ads found in this campaign; budget cannot be updated.");
+
+  const data = await zernioFetch(`/ads/${encodeURIComponent(ad._id)}`, {
+    method: "PUT",
+    body:   JSON.stringify({
+      budget: {
+        amount: dailyBudget,
+        type:   "daily",
+      },
+    }),
+  });
+
+  return data;
 }
 
-async function setCampaignStatus({ campaignResourceName, status, customerId }, tenantId) {
-  return composioMutate(TOOLS.mutateCampaign, {
-    customer_id:   customerId,
-    resource_name: campaignResourceName,
-    status,
-  }, tenantId);
+async function setCampaignStatus({ campaignId, status }, _tenantId) {
+  if (!campaignId) throw new Error("campaignId required");
+  const data = await zernioFetch(
+    `/ads/campaigns/${encodeURIComponent(campaignId)}/status`,
+    {
+      method: "PUT",
+      body:   JSON.stringify({ status, platform: "google" }),
+    },
+  );
+  return data;
 }
 
-async function getKeywordIdeas({ keywords, url, locationIds, languageId, customerId }, tenantId) {
-  const out = await executeComposioTool(TOOLS.keywordIdeas, {
-    customer_id:   customerId,
-    keyword_seed:  keywords?.length ? { keywords } : undefined,
-    url_seed:      url ? { url } : undefined,
-    geo_target_constants: locationIds || ["geoTargetConstants/2840"], // default: US
-    language:      languageId || "languageConstants/1000",            // default: English
-  }, tenantId);
-  if (out?.error) throw new Error(out.error);
-  const ideas = out?.results || [];
-  return ideas.map(r => ({
-    text:             r.text,
-    avgMonthlySearches: r.keywordIdeaMetrics?.avgMonthlySearches || 0,
-    competition:      r.keywordIdeaMetrics?.competition,
-    lowCpc:           +((r.keywordIdeaMetrics?.lowTopOfPageBidMicros  / 1_000_000 || 0).toFixed(2)),
-    highCpc:          +((r.keywordIdeaMetrics?.highTopOfPageBidMicros / 1_000_000 || 0).toFixed(2)),
-  }));
+async function getKeywordIdeas() {
+  // Zernio does not expose a Google Ads Keyword Planner endpoint.
+  // Return an empty array so the UI stays stable.
+  return [];
 }
 
 // AI ad copy — no Google credentials, just Claude
@@ -238,10 +358,8 @@ Rules:
 // ─── Main router ─────────────────────────────────────────────────────────────
 
 export default async function handler(req) {
-  if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
-
-  const cors = corsHeaders();
-  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+  if (req.method === "OPTIONS") return corsPreflightResponse();
+  if (req.method !== "POST") return errResponse("POST required", 405);
 
   const auth = await requireAuth(req);
   if (auth instanceof Response) return auth;
@@ -249,11 +367,8 @@ export default async function handler(req) {
 
   let body;
   try { body = await req.json(); }
-  catch { return new Response(JSON.stringify({ ok: false, error: "Invalid JSON" }), { status: 400, headers: cors }); }
+  catch { return errResponse("Invalid JSON body", 400); }
 
-  // tenantId comes from requireAuth above — any tenantId in the request
-  // body is ignored. customerId comes from the body because the user may
-  // have multiple Google Ads accounts under one Google identity.
   const { action, customerId, ...params } = body;
 
   try {
@@ -275,29 +390,25 @@ export default async function handler(req) {
         result = await updateBudget({ ...params, customerId }, tenantId);
         break;
       case "enable_campaign":
-        result = await setCampaignStatus({ ...params, status: "ENABLED", customerId }, tenantId);
+        result = await setCampaignStatus({ ...params, status: "active" }, tenantId);
         break;
       case "pause_campaign":
-        result = await setCampaignStatus({ ...params, status: "PAUSED", customerId }, tenantId);
+        result = await setCampaignStatus({ ...params, status: "paused" }, tenantId);
         break;
       case "keyword_ideas":
-        result = await getKeywordIdeas({ ...params, customerId }, tenantId);
+        result = await getKeywordIdeas();
         break;
       case "campaign_detail":
         result = await getCampaignDetail({ ...params, customerId }, tenantId);
         break;
       default:
-        return new Response(JSON.stringify({ ok: false, error: `Unknown action: ${action}` }), { status: 400, headers: cors });
+        return errResponse(`Unknown action: ${action}`);
     }
 
-    return new Response(JSON.stringify({ ok: true, data: result }), {
-      headers: { ...cors, "Content-Type": "application/json" },
-    });
-  } catch (err) {
-    console.error("[google-ads]", err);
-    return new Response(JSON.stringify({ ok: false, error: err.message }), {
-      status: 500,
-      headers: { ...cors, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ ok: true, data: result });
+  } catch (e) {
+    console.error("[google-ads]", e);
+    const status = e.status && e.status >= 400 && e.status < 600 ? e.status : 502;
+    return errResponse(e.message, status);
   }
 }

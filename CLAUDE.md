@@ -270,14 +270,14 @@ if (hasCreateVerb && hasContentNoun) { return makeDraftArtifact(t); }
 
 ### Connector catalog (`seed.jsx` is the source of truth)
 
-The canonical connector list (now 56 connectors — 7 new Zernio platforms added 2026-05-24) lives in `SEED.connectorCatalog` in [seed.jsx](app/seed.jsx). Every entry has:
+The canonical connector list (now 54 connectors — Luma AI and AudioStack removed 2026-05-24) lives in `SEED.connectorCatalog` in [seed.jsx](app/seed.jsx). Every entry has:
 
 ```js
 {
   id,         // FlowOS-stable slug, used as the key everywhere
   name,       // display name
   category,   // canonical category (Paid Search / Paid Audio / Paid Social / Organic Social / Email Marketing / SMS Marketing / Email Verification / SEO & Search / E-commerce / A/B Testing / AI Video / Image / AI Audio / Voice / Analytics / CRM & Marketing Ops)
-  group,      // pill-filter bucket: "Social" | "Ads" | "Email & SMS" | "Commerce" | "Analytics & Ops" | "Creative AI"
+  group,      // pill-filter bucket: "Social" | "Ads" | "Email" | "SMS" | "Commerce" | "Analytics" | "Creative AI"
   desc,       // short description — tooltip + setup modal
   auth,       // "OAuth" | "API key" | "Manual" — drives Connect-modal fork (paragraph vs. input vs. handoff explanation)
   provider,   // "composio" | "zernio" | "direct" — drives the initiate path (provider-agnostic surface)
@@ -316,10 +316,17 @@ The connect surface in [workspaces4.jsx](app/workspaces4.jsx) is provider-agnost
 
 [api/zernio.js](api/zernio.js) handles all 15 social platforms via Zernio's OAuth-as-a-service. Auth: `ZERNIO_API_KEY` + `X-External-User-ID: {tenantId}` per call. Zernio manages per-user OAuth tokens internally.
 
-| Scope | Platforms |
-|---|---|
-| **Organic Social** | linkedin, facebook, instagram, x, reddit, tiktok, pinterest, threads, bluesky, youtube, whatsapp, telegram, snapchat, discord, gbusiness |
-| **Paid Social (via Zernio boost_post)** | pinads (Pinterest Ads) |
+| Scope | Zernio slugs | FlowOS IDs |
+|---|---|---|
+| **Organic Social** | facebook, instagram, linkedin, tiktok, pinterest, youtube, twitter, reddit, bluesky, threads, googlebusiness, whatsapp, telegram, snapchat, discord | fb, ig, li, tt, pn, yt, x, gbusiness (+ full names pass through) |
+| **Paid Social** | metaads, linkedinads, tiktokads, xads, pinterestads | metaads, liads, ttads, xads, pinads |
+| **Paid Search** | googleads | googleads |
+
+FlowOS IDs resolved to Zernio slugs in `PLATFORM_ID_MAP` (zernio.js): `x→twitter`, `gbusiness→googlebusiness`, `liads→linkedinads`, `ttads→tiktokads`, `pinads→pinterestads`. `metaads` and `xads` match in both.
+
+Multi-tenancy: each tenant gets one Zernio profile (created on first connect via `POST /v1/profiles`, stored in `connector_credentials(user_id, platform='zernio_profile')`). The `profileId` is passed as a query param to `GET /v1/connect/{platform}?profileId=...`. Zernio account IDs (`_id` from `GET /v1/accounts`) are stored in `channels.composio_connection_id` and loaded automatically for publish calls.
+
+`googleads` uses Zernio for OAuth (`googleads` slug). Connection flow goes through `api/zernio.js`; campaign actions go through `api/google-ads.js` (Zernio-backed since 2026-05-24).
 
 Platform routes (`/api/linkedin` etc.) are thin proxies — they auth-check, then forward to `/api/zernio` with `platform` set.
 
@@ -329,9 +336,9 @@ Platform routes (`/api/linkedin` etc.) are thin proxies — they auth-check, the
 
 | Mode | Works for |
 |---|---|
-| **OAuth (Composio managed)** | googleads, ga4, gsc, hubspot, salesforce, mailchimp |
-| **API key (Composio custom auth)** | klaviyo (+ klaviyo_sms), ahrefs, moz, neuronwriter, neverbounce, kickbox, listclean, elevenlabs, heygen |
-| **OAuth (needs custom app in Composio dashboard)** | shopify, metaads, liads, ttads, xads |
+| **OAuth (Composio managed)** | ga4, gsc, hubspot, salesforce, mailchimp |
+| **API key (Composio custom auth)** | klaviyo (+ klaviyo_sms), ahrefs, moz, elevenlabs, heygen |
+| **OAuth (needs custom app in Composio dashboard)** | shopify |
 
 `/api/composio` debug actions: `list_toolkits`, `verify_app`. `COMPOSIO_SOCIAL_SLUGS` in [api/chat.js](api/chat.js) excludes social toolkits from the tool-fetch for the Claude prompt.
 
@@ -362,11 +369,11 @@ Per-tenant API-key connectors that don't go through Composio or Pipedream live b
 |---|---|---|---|
 | `replicate`  | `/api/replicate`  | `GET /v1/account`                           | ✓ |
 | `higgsfield` | `/api/higgsfield` | `GET /models`                               | ✓ |
-| `luma`       | `/api/luma`       | `GET /dream-machine/v1/generations?limit=1` | ✓ |
 | `optimizely` | `/api/optimizely` | `GET /v2/projects` (Bearer PAT)             | ✓ |
-| `audiostack` | `/api/audiostack` | `GET /organisation` (`x-api-key`; falls back to `/script?limit=1`) | ✓ |
 | `wordpress`  | `/api/wordpress`  | `GET <siteUrl>/wp-json/wp/v2/users/me?context=edit` (Basic Auth — Application Password). 3-input credential: `{siteUrl, username, appPassword}` stored as a JSON blob in `secret_value`. | ✓ |
-| `spotifyads` | — (none) | Manual handoff — `auth: "Manual"` in seed.jsx. Spotify Ad Studio has no public API, and the partner-only Marketing API requires a signed agreement. FlowOS owns the creative (script via Claude, audio via AudioStack/ElevenLabs, video if needed via Higgsfield); the user uploads manually to adstudio.spotify.com. Connect flow flips the tile to "in use" via `actions.setConnector` without any backend call. No credential stored. | ✓ (manual) |
+| `spotifyads` | — (none) | Manual handoff — `auth: "Manual"` in seed.jsx. Spotify Ad Studio has no public API, and the partner-only Marketing API requires a signed agreement. FlowOS owns the creative (script via Claude, audio via ElevenLabs, video if needed via Higgsfield); the user uploads manually to adstudio.spotify.com. Connect flow flips the tile to "in use" via `actions.setConnector` without any backend call. No credential stored. | ✓ (manual) |
+
+**Dropped from catalog 2026-05-24**: Luma AI (removed — no agent workflows, no direct API usage), AudioStack (removed — same). API routes `/api/luma` and `/api/audiostack` remain in the repo as tombstones but are no longer reachable from the frontend.
 
 **Dropped from catalog 2026-05-18**: VWO, AB Tasty, Loops.so (scope cut — Optimizely covers A/B Testing alone). MailerLite, Moosend, ActiveCampaign, Hunter (scope cut — Klaviyo + Mailchimp + SendGrid cover email; lifecycle email use case is satisfied). Attentive (scope cut — Klaviyo SMS is sufficient for now; Twilio retained for transactional/dev-side messaging only). Microsoft Ads (scope cut — not a priority channel; Bing/Audience Network spend not material for the brands in scope). To restore any of these: row in `seed.jsx connectorCatalog` + default `connectorState` + `brandConnectorStates.erickson`, entry in `agents.jsx CONNECTOR_LABELS`, id in `api/brand-import.js CONNECTOR_IDS`, slug in `api/composio.js` or `api/pipedream.js` APP_MAP (+ matching verify script), and (for direct API-key ones) `/api/<id>.js` + a row in `DIRECT_API_ROUTES`. **Bringing back a Direct OAuth connector requires rebuilding the OAuth scaffolding that was removed alongside Microsoft Ads** — `saveOAuthCredential` / `loadOAuthCredential` / `signOAuthState` / `verifyOAuthState` helpers in `directCredentials.js`, a `DIRECT_OAUTH_ROUTES` map + handleConnectSubmit fork in `workspaces4.jsx`, and `?direct_connected=` / `?ok=0&error=` handling in `oauth-callback.html`. PR #26 has the reference implementation. Microsoft Ads also had an agent block in `agents.jsx`, a channel definition in `channel-strategy.jsx`, a channelRules row in `store.jsx`, and a section in `full-mapping.md` — all removed.
 
@@ -407,8 +414,8 @@ All in `/api/`. All use `export const config = { runtime: "edge" }`.
 | `GET  /api/cron/proactive-emails` | Vercel Cron (07:30 UTC) — iterates tenants and POSTs to /api/proactive-emails. |
 | `GET  /api/cron/proactive-sms` | Vercel Cron (08:00 UTC) — iterates tenants and POSTs to /api/proactive-sms. 30 min after proactive-emails. |
 | `GET  /api/cron/fire-scheduled` | Vercel Cron (`* * * * *` — **requires Pro** for guaranteed 1-min execution; Hobby cron schedules will be rejected at deploy). Calls Supabase RPC `claim_due_scheduled_posts(20)` which atomically picks due `pending` rows via `FOR UPDATE SKIP LOCKED`, transitions them to `publishing`, then POSTs `${origin}/api/<platform>` with the row's snapshot payload. PATCHes the row to `published`/`failed`. Idempotent by construction — same row can never be claimed twice concurrently. |
-| `POST /api/google-ads` | Composio-backed Google Ads wrapper. Actions: `list_customer_ids` (new — returns accessible MCC child accounts via `GOOGLEADS_LIST_ACCESSIBLE_CUSTOMERS`), `list_campaigns`, `create_campaign`, `update_budget`, `enable_campaign`, `pause_campaign`, `keyword_ideas`, `campaign_detail`, `generate_copy`. Frontend contract unchanged (`{ ok, data }`). Composio toolkit slug names live in the `TOOLS` constant at the top of the file. Pass `customerId` in params; if omitted, the user must pick one via `list_customer_ids` first. |
-| `POST /api/replicate` `POST /api/higgsfield` `POST /api/luma` | Direct-API connector routes (provider: "direct" in seed.jsx). Actions: `initiate_connection` (validates apiKey against the provider's REST API, persists to `connector_credentials`, flips `channels` to connected), `disconnect`. Shared persistence helper in [api/lib/directCredentials.js](api/lib/directCredentials.js). |
+| `POST /api/google-ads` | **Zernio-backed** Google Ads wrapper (migrated from Composio 2026-05-24). Actions: `list_customer_ids`, `list_campaigns`, `create_campaign`, `update_budget`, `enable_campaign`, `pause_campaign`, `keyword_ideas`, `campaign_detail`, `generate_copy`. Frontend contract unchanged (`{ ok, data }`). Uses `ZERNIO_API_KEY`; resolves Zernio `accountId` via the tenant's Zernio profile. Pass `customerId` (Google Ads account number) in params; if omitted, uses the first connected account. |
+| `POST /api/replicate` `POST /api/higgsfield` | Direct-API connector routes (provider: "direct" in seed.jsx). Actions: `initiate_connection` (validates apiKey against the provider's REST API, persists to `connector_credentials`, flips `channels` to connected), `disconnect`. Shared persistence helper in [api/lib/directCredentials.js](api/lib/directCredentials.js). `/api/luma` and `/api/audiostack` exist as tombstones (connectors removed from catalog 2026-05-24). |
 | `GET/POST /api/google-ads-auth` | **REMOVED — 410 Gone tombstone.** Returns `{ error: "Google Ads OAuth has moved to Composio…", code: "GONE_USE_COMPOSIO" }`. Connect flow now goes through `/api/composio` like every other OAuth connector. The old `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET` env vars are no longer read at runtime. |
 
 ### Auth pattern (every /api/* handler)
@@ -419,8 +426,8 @@ All auth helpers live in [api/lib/auth.js](api/lib/auth.js). Each returns either
 import { requireAuth, requireCron, requireAuthOrCron } from "./lib/auth.js";
 
 // User-only endpoint (chat, brand-import, generate, klaviyo, scheduled-posts,
-// google-ads, composio, pipedream, the six Direct-API connector routes —
-// replicate / higgsfield / luma / optimizely / wordpress / audiostack — and
+// google-ads, composio, pipedream, the four active Direct-API connector routes —
+// replicate / higgsfield / optimizely / wordpress — and
 // GET on proactive-* endpoints):
 const auth = await requireAuth(req);
 if (auth instanceof Response) return auth;
@@ -477,11 +484,11 @@ All public-schema tables have RLS enabled (see [db/migrations/007_core_schema_an
 - `agent_overrides` — custom system prompts per agent per tenant.
 - `google_ads_tokens` — **DEPRECATED** (2026-05-17 Composio cutover). No longer read or written by runtime. Safe to drop once any reconnecting tenant has completed the new Composio flow. Original schema: `tenant_id` (pk), `refresh_token`, `customer_id`, `all_customer_ids` (array).
 - `scheduled_posts` — queued posts awaiting cron firing. Columns: `tenant_id` (text), `item_id` (calendar row id), `platform`, `fire_at` (timestamptz UTC), `payload` (jsonb — snapshot of `/api/<platform>` publish_now body, minus `action` and `tenantId`), `status` (`pending`|`publishing`|`published`|`failed`|`cancelled`), `attempts`, `last_error`, `fire_attempted_at`, `published_at`, `result` (jsonb response). Unique partial index on `item_id` where `status in (pending,publishing)` prevents double-queueing. `payload` is a snapshot, not a reference — editing the calendar row after Schedule does NOT change what fires; an explicit reschedule (cancel + new Schedule) is required.
-- `connector_credentials` — per-tenant API keys for Direct-API connectors (Replicate, Higgsfield, Luma today; the other 9 Direct connectors as they're wired). Primary key `(user_id, platform)`. Columns: `secret_kind` (default `api_key`), `secret_value`, `validated_at`, `updated_at`. Service-role only (RLS enabled, no policies). Migration: [supabase/migrations/2026-05-18-connector-credentials.sql](supabase/migrations/2026-05-18-connector-credentials.sql).
+- `connector_credentials` — per-tenant API keys for Direct-API connectors (Replicate, Higgsfield, Optimizely, WordPress; others as wired). Primary key `(user_id, platform)`. Columns: `secret_kind` (default `api_key`), `secret_value`, `validated_at`, `updated_at`. Service-role only (RLS enabled, no policies). Migration: [supabase/migrations/2026-05-18-connector-credentials.sql](supabase/migrations/2026-05-18-connector-credentials.sql).
 - `proactive_drafts` — weekly social calendar drafts (status `pending`/`archived`). Keys: `tenant_id`, `status`.
 - `proactive_emails` — analytics-triggered email drafts. Keys: `tenant_id`, `rule`, `source_insight_id`. Unique index enforces idempotency. Status: `proactive_draft` → `pushed` (via /api/klaviyo) | `dismissed`.
 - `proactive_sms` — analytics-triggered SMS drafts (flavor #1 for SMS channel). Keys: `tenant_id`, `rule`, `source_insight_id`. 4 rules: S1_winback, S2_replenish, S3_cart, S4_vip. Status: `proactive_draft` → `pushed` | `dismissed`. Surfaced in SmsCenter as `ProactiveSmsDrafts`. Migration: [supabase/migrations/2026-05-23-proactive-sms.sql](supabase/migrations/2026-05-23-proactive-sms.sql).
-- `generation_usage` — per-job AI generation cost tracking. Columns: `id uuid`, `tenant_id text`, `provider text` (runware/replicate/heygen/higgsfield/luma/elevenlabs/audiostack), `model text`, `job_type text` (image/video/voice/avatar), `job_id text`, `cost_estimate numeric`, `status text`, `created_at timestamptz`. Written by `/api/generate` on every generate_image and generate_video call (fire-and-forget, non-blocking). RLS: tenant can read own rows. Migration: [supabase/migrations/2026-05-24-generation-usage.sql](supabase/migrations/2026-05-24-generation-usage.sql).
+- `generation_usage` — per-job AI generation cost tracking. Columns: `id uuid`, `tenant_id text`, `provider text` (runware/replicate/heygen/higgsfield/elevenlabs), `model text`, `job_type text` (image/video/voice/avatar), `job_id text`, `cost_estimate numeric`, `status text`, `created_at timestamptz`. Written by `/api/generate` on every generate_image and generate_video call (fire-and-forget, non-blocking). RLS: tenant can read own rows. Migration: [supabase/migrations/2026-05-24-generation-usage.sql](supabase/migrations/2026-05-24-generation-usage.sql).
 
 ---
 

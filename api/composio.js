@@ -77,10 +77,9 @@ async function composioFetch(path, options = {}) {
 // is wrong, /auth_configs lookup fails and the user sees a clear error.
 
 const APP_MAP = {
-  // Paid Search / Ads
-  googleads:    "googleads",
+  // Paid Search / Ads — REMOVED (googleads migrated to Zernio 2026-05-24)
 
-  // Paid Social (metaads, liads, ttads, xads) — REMOVED (migrated to Zernio, b_a002 2026-05-24)
+  // Paid Social (metaads, liads, ttads, xads, pinads) — REMOVED (on Zernio)
 
   // Organic Social — REMOVED (all migrated to Zernio 2026-05-24)
 
@@ -92,15 +91,13 @@ const APP_MAP = {
   klaviyo_sms:  "klaviyo",
 
   // Email Verification
-  neverbounce:  "neverbounce",
-  kickbox:      "kickbox",
-  listclean:    "listclean",
+  // neverbounce, kickbox, listclean — REMOVED (no feature usage, 2026-05-24)
 
   // SEO & Search
   gsc:          "google_search_console",
   ahrefs:       "ahrefs",
   moz:          "moz",
-  neuronwriter: "neuronwriter",
+  // neuronwriter — REMOVED (no feature usage, 2026-05-24)
 
   // E-commerce
   shopify:      "shopify",
@@ -114,7 +111,7 @@ const APP_MAP = {
 
   // CRM
   hubspot:      "hubspot",
-  salesforce:   "salesforce",
+  // salesforce — REMOVED (no agent workflows, 2026-05-24)
 };
 
 function resolveApp(app) {
