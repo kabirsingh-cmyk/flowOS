@@ -92,15 +92,32 @@ function buildBrandVoiceBlock(brand) {
 
 // ─── Composio helpers ─────────────────────────────────────────────────────────
 
+// Social toolkits migrated to Zernio — exclude from Composio tool fetching.
+// Composio is now scoped to: googleads, ga4, gsc, hubspot, salesforce, mailchimp,
+// ahrefs, moz, neuronwriter, neverbounce, kickbox, listclean, elevenlabs, heygen.
+const COMPOSIO_SOCIAL_SLUGS = new Set([
+  "linkedin", "li", "liads",
+  "facebook", "fb", "metaads",
+  "instagram", "ig",
+  "twitter", "x", "xads",
+  "reddit",
+  "youtube", "yt",
+  "tiktok", "tt", "ttads",
+  "pinterest", "pn", "pinads",
+]);
+
 /**
  * Fetch Anthropic-compatible tool definitions for a tenant's connected accounts.
  * Returns [] gracefully if Composio not configured or tenant has no connections.
+ * Social platforms are excluded — they route through Zernio.
  */
 async function fetchComposioTools(tenantId) {
   if (!process.env.COMPOSIO_API_KEY2 || !tenantId) return [];
 
   try {
-    const slugs = await getConnectedAccountSlugs(tenantId);
+    const allSlugs = await getConnectedAccountSlugs(tenantId);
+    // Filter out social toolkits — those are now on Zernio.
+    const slugs = allSlugs.filter(s => !COMPOSIO_SOCIAL_SLUGS.has(s.toLowerCase()));
     if (slugs.length === 0) return [];
     const apps = slugs.join(",");
 
@@ -202,8 +219,8 @@ ${prohibited.length ? `\nPROHIBITED TOPICS\n${prohibited.map(p => `- ${p}`).join
   const brandVoiceBlock = buildBrandVoiceBlock(brand);
 
   const toolBlock = connectedApps.length > 0
-    ? `You have live tools to act on: ${connectedApps.join(", ")}. When asked to create, update, or report on campaigns — use the tools. Don't describe what to do, do it. Summarise results in plain English.`
-    : `No platforms connected yet. If asked to take action on a platform, tell the tenant to connect it in Settings → Connections.`;
+    ? `You have live tools to act on: ${connectedApps.join(", ")}. These are non-social tools (analytics, ads, CRM, email). When asked to create, update, or report on campaigns — use the tools. Don't describe what to do, do it. Summarise results in plain English. Note: social publishing (LinkedIn, Facebook, Instagram, X, Reddit, TikTok, Pinterest, Threads, Bluesky, YouTube, and more) goes through Zernio — use the create_draft tool to generate content and the user publishes from the Publishing Queue.`
+    : `No non-social platforms connected yet. Social publishing (all platforms) goes through Zernio and is handled from the Publishing Queue. For ads, analytics, email, or CRM actions, tell the tenant to connect those in Settings → Connections.`;
 
   const prompts = {
     supervisor: `You are Flow — the AI marketing operator for FlowOS.
@@ -618,7 +635,7 @@ const INTERNAL_TOOLS = [
     input_schema: {
       type: "object",
       properties: {
-        platform:    { type: "string", description: "Target platform slug: instagram, tiktok, linkedin, facebook, x, youtube, pinterest, email, sms, reddit, snapchat, threads, bluesky" },
+        platform:    { type: "string", description: "Target platform slug: instagram, tiktok, linkedin, facebook, x, youtube, pinterest, threads, bluesky, reddit, snapchat, discord, telegram, whatsapp, gbusiness, email, sms" },
         contentType: { type: "string", description: "Content format: Post, Reel, Carousel, Story, Email, SMS, Video, Short, Pin, Thread, Article, Ad" },
         copy:        { type: "string", description: "The full draft copy — body text, caption, email body, or script. Write in the brand voice. No preamble." },
         imagePrompt: { type: "string", description: "Optional Runware image-generation prompt if a visual is needed for this format. Describe the scene, not the brand." },

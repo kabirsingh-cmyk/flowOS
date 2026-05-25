@@ -24,12 +24,18 @@ export const config = { runtime: "edge" };
 
 // Platforms this cron knows how to fire. Must match scheduled-posts.js
 // SUPPORTED_PLATFORMS and the PLATFORM_PUBLISHERS map in workspaces3.jsx.
+// All social platforms now route through their thin Zernio proxy routes.
 const PLATFORM_ROUTES = {
   linkedin:  "/api/linkedin",
   facebook:  "/api/facebook",
   x:         "/api/x",
   instagram: "/api/instagram",
   reddit:    "/api/reddit",
+  tiktok:    "/api/tiktok",
+  pinterest: "/api/pinterest",
+  threads:   "/api/threads",
+  bluesky:   "/api/bluesky",
+  youtube:   "/api/youtube",
 };
 
 export default async function handler(req) {

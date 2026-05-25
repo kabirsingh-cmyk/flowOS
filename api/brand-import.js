@@ -19,6 +19,7 @@
  */
 
 import { requireAuth } from "./lib/auth.js";
+import { corsHeaders } from "./lib/cors.js";
 
 export const config = { runtime: "edge" };
 
@@ -30,6 +31,7 @@ const JINA_BASE      = "https://r.jina.ai";
 const CONNECTOR_IDS = [
   // Organic Social
   "ig", "tt", "fb", "li", "yt", "pn", "x", "reddit",
+  "threads", "bluesky", "whatsapp", "telegram", "snapchat", "discord", "gbusiness",
   // Paid Search + Paid Audio
   "googleads", "spotifyads",
   // Paid Social
@@ -156,6 +158,7 @@ async function upsertBrand(tenantId, brand) {
 // ─── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req) {
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders() });
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ ok: false, error: "POST required" }), { status: 405 });
   }
@@ -351,14 +354,14 @@ BRAND TYPE → ACCENT HUE REFERENCE (use these as anchors, refine from detected 
 
     return new Response(JSON.stringify({ ok: true, brand }), {
       status:  200,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...corsHeaders() },
     });
 
   } catch (e) {
     console.error("[brand-import] error:", e.message);
     return new Response(
       JSON.stringify({ ok: false, error: e.message }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders() } }
     );
   }
 }
