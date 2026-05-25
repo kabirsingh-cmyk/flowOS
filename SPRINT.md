@@ -14,6 +14,7 @@ Nothing actively in progress.
 
 | ID | What | Date |
 |----|------|------|
+| b_c002 | Social ads action layer (all 5 paid platforms) | `api/social-ads.js` — `list_campaigns`, `create_campaign`, `boost_post`, `get_analytics`, `create_audience` via Zernio; covers metaads/liads/ttads/xads/pinads | 2026-05-24 |
 | b_c001 | Wire 5 remaining organic platforms to publish cron | `api/whatsapp.js`, `api/telegram.js`, `api/snapchat.js`, `api/discord.js`, `api/googlebusiness.js` (thin Zernio proxies); `PLATFORM_ROUTES` in `api/cron/fire-scheduled.js` extended | 2026-05-24 |
 | b_a004 | Migrate googleads from Composio to Zernio | `api/google-ads.js` rewritten against Zernio `/v1/ads/*`; `ADS_TO_ORGANIC` routing added to `api/zernio.js`; `seed.jsx` provider flipped; Composio `APP_MAP` cleaned | 2026-05-24 |
 | b_a001 | Adopt Zernio for all organic social publishing | `api/zernio.js` unified publisher; all 10 cron-routed platforms wired; individual platform files are thin proxies; all organic social `seed.jsx` entries flipped to `provider: "zernio"` | 2026-05-24 |
@@ -35,7 +36,6 @@ Nothing actively in progress.
 
 | ID | Chat scope | What it touches | Effort |
 |----|-----------|-----------------|--------|
-| b_c002 | **Social ads action layer (all 5 paid platforms)** | New `api/social-ads.js` with actions: `list_campaigns`, `create_campaign`, `boost_post`, `get_analytics`, `create_audience`. Endpoints confirmed from Zernio docs: `POST /v1/ads/create`, `POST /v1/ads/boost`, `GET /v1/ads/{id}/analytics`, `POST /v1/ads/audiences`, `GET /v1/ads/interests`. Covers metaads, liads→linkedinads, ttads→tiktokads, xads, pinads→pinterestads. | Medium |
 | b_c003 | **Fix unverified inbox endpoints in zernio.js** | `get_dms`, `reply_dm`, `get_comments`, `reply_comment`, `get_analytics` — currently marked ENDPOINT_UNVERIFIED / ENDPOINT_PARTIAL. Resolve against Zernio docs. Affects InboxEscalation workspace. | Small |
 | b_60f8 | **BUG: Shopify 306 hangs Connect modal** | Frontend only — `workspaces4.jsx` doesn't handle 409 from Composio; modal spins forever. Show error message + link to Composio dashboard. | Small |
 
