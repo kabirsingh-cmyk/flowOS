@@ -70,6 +70,7 @@ async function callSpecialist({ messages, specialist, brand }) {
   return {
     text:     extractText(data.content),
     tools:    extractTools(data.content),
+    pmMeta:   data.pmMeta || null,
     fallback: false,
   };
 }
@@ -106,7 +107,7 @@ async function sendAIMessage({
   if (sup.text) {
     dispatch({ type: "STREAM_TOKEN", channel: channelId, token: sup.text });
   }
-  dispatch({ type: "STREAM_DONE", channel: channelId });
+  dispatch({ type: "STREAM_DONE", channel: channelId, pmMeta: sup.pmMeta });
 
   // ── Handle supervisor tools ────────────────────────────────────────────────
   let delegation = null;
@@ -232,7 +233,7 @@ async function sendAIMessage({
     if (spec.text) {
       dispatch({ type: "STREAM_TOKEN", channel: channelId, token: spec.text });
     }
-    dispatch({ type: "STREAM_DONE", channel: channelId, artifact: draftArtifact });
+    dispatch({ type: "STREAM_DONE", channel: channelId, artifact: draftArtifact, pmMeta: spec.pmMeta });
 
     for (const tool of spec.tools) {
       if (tool.name === "open_workspace") openWorkspace(tool.input.target);

@@ -66,6 +66,7 @@ function chatReducer(s, a) {
       const updated = [...msgs];
       const last = { ...updated[updated.length - 1], streaming: false };
       if (a.artifact) last.artifact = a.artifact;
+      if (a.pmMeta)   last.pmMeta   = a.pmMeta;
       updated[updated.length - 1] = last;
       return { ...s, threads: { ...s.threads, [a.channel]: updated } };
     }

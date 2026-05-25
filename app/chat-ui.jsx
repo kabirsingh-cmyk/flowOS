@@ -1095,8 +1095,28 @@ function Message({ m, onOpen, onConfirm }) {
           <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.04em" }}>{m.time}</span>
           {!isUser && !isSystem && <span className="mono" style={{ fontSize: 9.5, color: "var(--muted-2)", letterSpacing: "0.06em", textTransform: "uppercase" }}>· agent</span>}
           {isSystem && <Chip tone="accent">confirm</Chip>}
+          {!isUser && !isSystem && m.pmMeta && (
+            <span style={{
+              fontSize: 9.5, letterSpacing: "0.04em", fontFamily: "var(--font-mono)",
+              padding: "1px 6px", borderRadius: 3,
+              color:      m.pmMeta.resolved ? "oklch(40% 0.14 170)" : "oklch(45% 0.16 40)",
+              background: m.pmMeta.resolved ? "oklch(95% 0.04 170)" : "oklch(95% 0.05 40)",
+            }}>
+              PM · {m.pmMeta.resolved
+                ? `${m.pmMeta.corrections} fix${m.pmMeta.corrections !== 1 ? "es" : ""}`
+                : `${m.pmMeta.violations.length} unresolved`}
+            </span>
+          )}
         </div>
         {m.text && <div style={{ fontSize: 13, lineHeight: 1.55, color: "var(--ink)", whiteSpace: "pre-wrap" }}>{m.text}</div>}
+        {!isUser && !isSystem && m.pmMeta && !m.pmMeta.resolved && m.pmMeta.violations.length > 0 && (
+          <div style={{ marginTop: 6, padding: "6px 10px", borderRadius: 4, background: "oklch(95% 0.05 40)", border: "1px solid oklch(88% 0.08 40)" }}>
+            <div className="mono" style={{ fontSize: 9.5, color: "oklch(45% 0.16 40)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>PM · could not resolve</div>
+            {m.pmMeta.violations.map((v, i) => (
+              <div key={i} style={{ fontSize: 11.5, color: "oklch(35% 0.12 40)", lineHeight: 1.5 }}>{v}</div>
+            ))}
+          </div>
+        )}
         {m.artifact && <ArtifactCard artifact={m.artifact} onOpen={onOpen}/>}
         {m.confirm && (
           <div style={{ marginTop: 10, display: "flex", gap: 8 }}>

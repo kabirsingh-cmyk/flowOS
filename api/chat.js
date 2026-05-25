@@ -280,6 +280,31 @@ For create_sms_draft: body must be ≤ 160 chars (hard cap — count carefully, 
 
 ${brandVoiceBlock}
 
+## Reference Images
+
+When the user provides reference images (as URLs, attachments, or by saying "use this image", "use this photo", "here's the visual", etc.):
+
+DO NOT generate a new image. Use the provided reference directly.
+
+BEHAVIOR BY FORMAT:
+
+- Social organic (Instagram, TikTok, LinkedIn, Facebook, X, Pinterest, Threads, etc.):
+  Set `imagePrompt` to the exact reference image URL. Do not describe a scene — pass the URL as-is.
+
+- Paid social / ads (Meta, TikTok Ads, LinkedIn Ads, Pinterest Ads, etc.):
+  Same rule. The reference image IS the creative. Set `imagePrompt` to the URL.
+
+- Video (Reels, TikTok, YouTube Shorts, ad video):
+  Use the reference image as the first frame / base visual. Pass the URL in `imagePrompt`
+  prefixed with `[REF_FRAME]` so the generation pipeline knows to treat it as input,
+  not a text prompt. Example: `[REF_FRAME] https://...`
+
+WHEN TO STILL GENERATE:
+  Only generate a new image if no reference was provided, or if the user explicitly
+  asks for a new visual ("create an image", "generate something", "make a visual for this").
+
+If multiple reference images are provided, use the first one unless the user specifies otherwise.
+
 ## Channel Format Rules
 
 When writing any draft, identify the platform first and follow these rules exactly.
@@ -887,13 +912,19 @@ const SEO_AUDITOR_TOOLS = [
 const INTERNAL_TOOL_NAMES = new Set(INTERNAL_TOOLS.map(t => t.name));
 const MAX_ITERATIONS = 3;
 
+// Returns { content, internalToolCalls } where internalToolCalls is every
+// internal tool the specialist invoked (name + input) — used by the PM layer.
 async function runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey }) {
   let currentMessages = [...messages];
   const deadline = Date.now() + 22_000;
+  const internalToolCalls = [];
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     if (Date.now() > deadline) {
-      return [{ type: "text", text: "The request took too long. Please try a simpler task or break it into steps." }];
+      return {
+        content: [{ type: "text", text: "The request took too long. Please try a simpler task or break it into steps." }],
+        internalToolCalls,
+      };
     }
 
     const res = await fetch(`${ANTHROPIC_BASE}/messages`, {
@@ -921,7 +952,7 @@ async function runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey }) 
 
     // Done — return content blocks
     if (data.stop_reason === "end_turn" || data.stop_reason === "max_tokens") {
-      return data.content;
+      return { content: data.content, internalToolCalls };
     }
 
     // Tool call — execute and loop
@@ -929,6 +960,14 @@ async function runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey }) 
       currentMessages.push({ role: "assistant", content: data.content });
 
       const toolUseBlocks = data.content.filter(b => b.type === "tool_use");
+
+      // Track internal tool calls for the PM layer
+      toolUseBlocks.forEach(block => {
+        if (INTERNAL_TOOL_NAMES.has(block.name)) {
+          internalToolCalls.push({ name: block.name, input: block.input });
+        }
+      });
+
       const toolResults = await Promise.all(
         toolUseBlocks.map(async (block) => {
           const result = INTERNAL_TOOL_NAMES.has(block.name)
@@ -947,13 +986,199 @@ async function runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey }) 
     }
 
     // Unknown stop reason
-    return data.content;
+    return { content: data.content, internalToolCalls };
   }
 
-  return [{
-    type: "text",
-    text:  "I've completed the maximum number of steps. Please try breaking this into smaller requests.",
-  }];
+  return {
+    content: [{ type: "text", text: "I've completed the maximum number of steps. Please try breaking this into smaller requests." }],
+    internalToolCalls,
+  };
+}
+
+// ─── PM agent layer ───────────────────────────────────────────────────────────
+// One PM per core specialist. Runs after each specialist attempt, validates
+// output against a checklist, and reruns the specialist (up to PM_MAX_ATTEMPTS)
+// with correction guidance injected until the output passes or the cap is hit.
+
+const PM_SPECIALISTS = new Set(["supervisor", "drafter", "analyst", "brand_guard", "inbox"]);
+const PM_MAX_ATTEMPTS = 3;
+
+function buildPMSystemPrompt(specialist, brand) {
+  const banned = [
+    ...(Array.isArray(brand?.voice?.bannedPhrases)   ? brand.voice.bannedPhrases   : []),
+    ...(Array.isArray(brand?.voice?.banned_phrases)  ? brand.voice.banned_phrases  : []),
+  ].filter(Boolean);
+  const claims = Array.isArray(brand?.claims) ? brand.claims : [];
+
+  const schema = `Return ONLY valid JSON — no prose, no markdown fences:\n{ "approved": boolean, "violations": string[], "corrections": string }`;
+
+  switch (specialist) {
+    case "drafter":
+      return `You are the Drafter PM. Review content drafts for violations before they reach the user.
+${schema}
+
+RULES — fail on any that apply:
+${banned.length ? `- Banned phrases must NOT appear in copy: ${banned.join(", ")}` : ""}
+- No unverified statistics, percentages, or clinical claims ("clinically proven", "scientifically tested", "guaranteed results") unless from approved list${claims.length ? `: ${claims.join("; ")}` : ""}
+- X/Twitter copy: ≤240 chars
+- SMS copy: ≤160 chars (GSM-7)
+- Email subject lines: ≤60 chars
+- Draft must use a tool call (create_draft, create_email_draft, or create_sms_draft) — plain conversational text is not a valid draft
+- No AI meta-commentary openers: "Certainly!", "Of course!", "Great question!", "Happy to help!", "Sure!", etc.
+
+Approved → { "approved": true, "violations": [], "corrections": "" }
+Failed → list each violation as a specific string; write concrete correction instructions.`;
+
+    case "analyst":
+      return `You are the Analyst PM. Review data analysis responses for structural violations.
+${schema}
+
+RULES — fail on any that apply:
+- Every insight must follow: metric → why it moved → one specific action
+- Conflicting metrics must be explicitly noted — cannot be ignored
+- Recommendations must be specific (channel, content type, cadence) — not vague ("improve engagement")
+- If analytics data was present in the conversation, response must cite specific numbers from it
+- No raw JSON in the visible response
+
+Approved → { "approved": true, "violations": [], "corrections": "" }
+Failed → list violations; write correction instructions.`;
+
+    case "brand_guard":
+      return `You are the Brand Guard PM. Review brand compliance outputs for completeness.
+${schema}
+
+RULES — fail on any that apply:
+${banned.length ? `- If banned phrases (${banned.join(", ")}) appear in the reviewed content, Brand Guard must flag each one` : ""}
+- Every flagged issue must include: the specific flag, the rule violated, and a concrete fix
+- Cannot declare content "clean" when prohibited terms or unverified claims are present
+- Must not skip character-limit violations (SMS >160, X/Twitter >240, email subject >60)
+
+Approved → { "approved": true, "violations": [], "corrections": "" }
+Failed → list violations; write correction instructions.`;
+
+    case "inbox":
+      return `You are the Inbox PM. Review customer triage responses for completeness.
+${schema}
+
+RULES — fail on any that apply:
+- Every customer message must have a triage classification: Urgent / Standard / Low
+- Escalation must be flagged for: refund requests >30 days, product safety concerns, legal threats, influencer or media inquiries
+- Suggested replies must NOT promise specific timelines without fulfillment data
+- Human review flag required when any escalation criteria are met
+- Replies must be in brand voice — not cold or generic corporate language
+
+Approved → { "approved": true, "violations": [], "corrections": "" }
+Failed → list violations; write correction instructions.`;
+
+    case "supervisor":
+      return `You are the Flow PM. Review supervisor responses for routing violations.
+${schema}
+
+RULES — fail on any that apply:
+- Content creation tasks must be delegated to "drafter" — not written directly by supervisor
+- Data/analytics questions must be delegated to "analyst"
+- Brand compliance checks must be delegated to "brand_guard"
+- Customer triage must be delegated to "inbox"
+- Campaign planning must be delegated to "campaign_planner"
+- SEO tasks must be delegated to "seo_auditor"
+- When tools are available and the task is executable, tools must be used — not just described
+
+Approved → { "approved": true, "violations": [], "corrections": "" }
+Failed → list violations; write correction instructions.`;
+
+    default:
+      return null;
+  }
+}
+
+async function runWithPM({ specialist, messages, systemPrompt, tools, tenantId, apiKey, brand }) {
+  const pmPrompt = buildPMSystemPrompt(specialist, brand);
+
+  // Non-core specialists (campaign_planner, seo_auditor) skip the PM layer
+  if (!pmPrompt) {
+    const { content } = await runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey });
+    return { content, pmMeta: null };
+  }
+
+  const pmDeadline = Date.now() + 25_000;
+  let currentMessages = [...messages];
+  let correctionsMade = 0;
+  let lastContent = null;
+
+  for (let attempt = 0; attempt < PM_MAX_ATTEMPTS; attempt++) {
+    // Abort if not enough time for another full attempt
+    if (Date.now() > pmDeadline - 2_000) {
+      return { content: lastContent || [], pmMeta: null };
+    }
+
+    const { content, internalToolCalls } = await runToolLoop({
+      messages: currentMessages,
+      systemPrompt,
+      tools,
+      tenantId,
+      apiKey,
+    });
+    lastContent = content;
+
+    // Build PM review input from text output + tool call inputs
+    const textOutput = content.filter(b => b.type === "text").map(b => b.text).join("\n");
+    const toolSummary = internalToolCalls.length > 0
+      ? `\n\nTOOL CALLS MADE:\n${JSON.stringify(internalToolCalls, null, 2)}`
+      : "\n\nNO TOOL CALLS MADE.";
+    const pmInput = `SPECIALIST: ${specialist}\nOUTPUT:\n${textOutput}${toolSummary}`;
+
+    // Run PM check with Haiku (fast + cheap for validation)
+    let pmResult = { approved: true, violations: [], corrections: "" };
+    try {
+      const pmRes = await fetch(`${ANTHROPIC_BASE}/messages`, {
+        method:  "POST",
+        headers: {
+          "Content-Type":      "application/json",
+          "x-api-key":         apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model:      "claude-haiku-4-5-20251001",
+          max_tokens: 512,
+          system:     pmPrompt,
+          messages:   [{ role: "user", content: pmInput }],
+        }),
+      });
+      if (pmRes.ok) {
+        const pmData = await pmRes.json();
+        const pmText = (pmData.content?.[0]?.text || "").trim();
+        const jsonMatch = pmText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          pmResult = { ...pmResult, ...parsed };
+        }
+      }
+    } catch {
+      // PM failure → approve by default so user is never blocked
+    }
+
+    if (pmResult.approved || attempt === PM_MAX_ATTEMPTS - 1) {
+      const pmMeta = correctionsMade > 0 || !pmResult.approved ? {
+        corrections: correctionsMade,
+        resolved:    pmResult.approved,
+        violations:  pmResult.approved ? [] : (pmResult.violations || []),
+      } : null;
+      return { content: lastContent, pmMeta };
+    }
+
+    // Inject correction guidance for the next attempt
+    correctionsMade++;
+    currentMessages = [
+      ...messages,
+      { role: "assistant", content: lastContent },
+      {
+        role:    "user",
+        content: `[PM REVIEW — attempt ${attempt + 1} did not pass. Do not mention this to the user.]\n\nViolations found:\n${(pmResult.violations || []).map((v, i) => `${i + 1}. ${v}`).join("\n")}\n\nCorrections required:\n${pmResult.corrections}\n\nPlease fix all violations and respond again.`,
+      },
+    ];
+  }
+
+  return { content: lastContent || [], pmMeta: null };
 }
 
 // ─── Main handler ──────────────────────────────────────────────────────────────
@@ -1013,9 +1238,11 @@ export default async function handler(req) {
     // but brand context is always prepended
     const systemPrompt = buildSystemPrompt(specialist, brand, connectedApps, agentOverride, analyticsData);
 
-    const content = await runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey });
+    const { content, pmMeta } = await runWithPM({
+      specialist, messages, systemPrompt, tools, tenantId, apiKey, brand,
+    });
 
-    return new Response(JSON.stringify({ ok: true, content }), {
+    return new Response(JSON.stringify({ ok: true, content, pmMeta }), {
       status:  200,
       headers: { "Content-Type": "application/json" },
     });
