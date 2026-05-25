@@ -561,23 +561,26 @@ async function handleReplyComment({ tenantId, platform, postId, commentId, text,
 
 /**
  * reply_dm
- * ENDPOINT_UNVERIFIED: exact path not confirmed from Zernio docs.
+ * POST /v1/inbox/conversations/{conversationId}/messages
+ * Body: { accountId, message }
  */
-async function handleReplyDm({ platform, conversationId, text }) {
+async function handleReplyDm({ tenantId, platform, conversationId, text, accountId: bodyAccountId }) {
   if (!platform)       return errResponse("platform required");
-  if (!conversationId) return errResponse("conversation_id required");
+  if (!conversationId) return errResponse("conversationId required");
   if (!text)           return errResponse("text required");
 
-  const data = await zernioFetch("/messages/reply", {
-    method: "POST",
-    body: JSON.stringify({
-      platform:        resolvePlatform(platform.toLowerCase()),
-      conversation_id: conversationId,
-      text,
-    }),
-  });
+  const accountId = bodyAccountId || await getZernioAccountId(tenantId, platform);
+  if (!accountId) return errResponse(`No connected account for ${platform}. Reconnect and try again.`);
 
-  return jsonResponse({ ok: true, replyId: data.reply_id || data.id || null, raw: data });
+  const data = await zernioFetch(
+    `/inbox/conversations/${encodeURIComponent(conversationId)}/messages`,
+    {
+      method: "POST",
+      body:   JSON.stringify({ accountId, message: text }),
+    },
+  );
+
+  return jsonResponse({ ok: true, messageId: data.message?._id || data.id || null, raw: data });
 }
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
