@@ -46,7 +46,7 @@ const CONNECTOR_IDS = [
   // A/B Testing
   "optimizely",
   // Creative AI
-  "heygen", "runware", "luma", "elevenlabs", "replicate", "higgsfield", "audiostack",
+  "heygen", "runware", "elevenlabs", "replicate", "higgsfield",
 ];
 
 // ─── Jina reader ──────────────────────────────────────────────────────────────

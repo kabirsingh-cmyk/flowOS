@@ -695,7 +695,7 @@ FORMATS: 1:1 (IG feed), 9:16 (Stories/Reels), 16:9 (YouTube thumbnail), 4:5 (IG 
     name: "Video Generator",
     role: "AI video · Luma · Higgsfield",
     description: "Generates short-form video using Luma AI and Higgsfield. Produces product demo clips, lifestyle content, and social video ads. Storyboards before generating.",
-    connectors: ["luma", "higgsfield"],
+    connectors: ["higgsfield"],
     compound: false,
     category: "creative",
     alwaysActive: false,
@@ -906,8 +906,8 @@ const CONNECTOR_LABELS = {
   // A/B
   optimizely: "Optimizely",
   // Creative AI
-  heygen: "HeyGen", runware: "RunWare", luma: "Luma AI", elevenlabs: "ElevenLabs",
-  replicate: "Replicate", higgsfield: "Higgsfield", audiostack: "AudioStack",
+  heygen: "HeyGen", runware: "RunWare", elevenlabs: "ElevenLabs",
+  replicate: "Replicate", higgsfield: "Higgsfield",
   // CRM
   hubspot: "HubSpot",
 };
