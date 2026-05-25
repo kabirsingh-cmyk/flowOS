@@ -12,16 +12,22 @@
  *   Profiles are created on first connection and stored in
  *   connector_credentials(user_id, platform='zernio_profile').
  *
- * Supported platforms (organic social ONLY):
+ * Supported platforms (organic social):
  *   facebook, instagram, linkedin, tiktok, pinterest, youtube,
  *   twitter (X), reddit, bluesky, threads, googlebusiness,
  *   whatsapp, telegram, snapchat, discord
  *   + FlowOS short IDs: fb, ig, li, tt, pn, yt, x, gbusiness
  *
- * Supported ad platforms (via /v1/ads endpoint):
+ * Supported ad platforms (connection via /v1/connect/{platform}/ads):
  *   metaads, linkedinads, tiktokads, xads, pinterestads, googleads
  *   FlowOS IDs: metaads, liads→linkedinads, ttads→tiktokads, xads, pinads→pinterestads
  *   googleads→googleads (migrated from Composio 2026-05-24; actions in api/google-ads.js)
+ *
+ *   Paid social OAuth quirks:
+ *   - Same-token platforms (metaads/liads/pinads): Zernio copies token from the organic
+ *     account — returns { alreadyConnected: true, accountId } immediately, no popup.
+ *   - Separate-token (ttads/xads): new OAuth round-trip, returns { authUrl }.
+ *   - googleads: standalone Google Ads OAuth, returns { authUrl }.
  *
  * Actions:
  *   initiate_connection  — start OAuth flow for a tenant + platform
@@ -30,12 +36,12 @@
  *   publish_now          — post immediately to a platform
  *   schedule_post        — schedule post via Zernio natively
  *   get_analytics        — platform analytics
- *   get_dms              — unified DM inbox
- *   get_comments         — unified comments
- *   boost_post           — paid boost (endpoint unverified)
+ *   get_dms              — unified DM inbox (GET /inbox/conversations)
+ *   get_comments         — unified comments inbox (GET /inbox/comments)
+ *   boost_post           — paid boost via /v1/ads/boost
  *   resolve_authors      — list connected accounts / pages for a platform
- *   reply_comment        — reply to a comment (endpoint unverified)
- *   reply_dm             — reply to a DM (endpoint unverified)
+ *   reply_comment        — reply to a comment (POST /inbox/comments/{postId})
+ *   reply_dm             — reply to a DM (POST /inbox/conversations/{id}/messages)
  */
 
 import { requireAuthOrCron, requireAuth } from "./lib/auth.js";
@@ -112,6 +118,22 @@ const SUPPORTED_PLATFORMS = new Set([
   // Paid Search
   "googleads",
 ]);
+
+/**
+ * ADS_TO_ORGANIC: resolved Zernio ad slug → organic platform name used in
+ * GET /v1/connect/{platform}/ads.  Same-token platforms (metaads, linkedinads,
+ * pinterestads) return { alreadyConnected, accountId } immediately because
+ * Zernio copies the existing organic token.  Separate-token platforms (tiktokads,
+ * xads, googleads) start a fresh OAuth and return { authUrl }.
+ */
+const ADS_TO_ORGANIC = {
+  metaads:     "facebook",
+  linkedinads: "linkedin",
+  tiktokads:   "tiktok",
+  xads:        "twitter",
+  pinterestads:"pinterest",
+  googleads:   "googleads",
+};
 
 // ─── Zernio API helpers ───────────────────────────────────────────────────────
 
@@ -214,7 +236,11 @@ async function getZernioAccountId(tenantId, platform) {
 /**
  * initiate_connection
  * Creates (or reuses) a Zernio profile for the tenant, returns the OAuth URL.
- * Flow: GET /v1/connect/{platform}?profileId={id} → { authUrl }
+ *
+ * Organic social:  GET /v1/connect/{platform}?profileId={id}            → { authUrl }
+ * Paid social:     GET /v1/connect/{organic_platform}/ads?profileId={id} → { authUrl }
+ *                  Same-token ad platforms return { alreadyConnected: true, accountId }
+ *                  instead — no OAuth popup is needed in that case.
  */
 async function handleInitiateConnection({ tenantId, app, redirectUri }) {
   if (!app) return errResponse("app required");
@@ -224,17 +250,35 @@ async function handleInitiateConnection({ tenantId, app, redirectUri }) {
   }
 
   const profileId        = await getOrCreateZernioProfile(tenantId);
-  const resolvedPlatform = resolvePlatform(platform);
+  const resolvedPlatform = resolvePlatform(platform);   // e.g. liads → linkedinads
   const qs               = new URLSearchParams({ profileId });
   if (redirectUri) qs.set("redirectUrl", redirectUri);
 
+  // ── Paid social (ads) branch ──────────────────────────────────────────────
+  const adsPlatformBase = ADS_TO_ORGANIC[resolvedPlatform];
+  if (adsPlatformBase) {
+    const data = await zernioFetch(`/connect/${adsPlatformBase}/ads?${qs}`, { method: "GET" });
+
+    // Same-token platforms (Meta, LinkedIn, Pinterest): token copied from organic account.
+    if (data.alreadyConnected) {
+      return jsonResponse({ ok: true, mode: "already_connected", accountId: data.accountId, app });
+    }
+
+    const redirectUrl = data.authUrl || data.auth_url;
+    if (!redirectUrl) {
+      throw new Error(`No authUrl in Zernio ads response for ${platform}. Raw: ${JSON.stringify(data)}`);
+    }
+    return jsonResponse({ ok: true, mode: "oauth", redirectUrl, app });
+  }
+
+  // ── Organic social branch ─────────────────────────────────────────────────
   const data = await zernioFetch(`/connect/${resolvedPlatform}?${qs}`, { method: "GET" });
 
-  return jsonResponse({
-    ok:          true,
-    mode:        "oauth",
-    redirectUrl: data.authUrl || data.auth_url,
-  });
+  const redirectUrl = data.authUrl || data.auth_url;
+  if (!redirectUrl) {
+    throw new Error(`No authUrl in Zernio response for ${platform}. Raw: ${JSON.stringify(data)}`);
+  }
+  return jsonResponse({ ok: true, mode: "oauth", redirectUrl, app });
 }
 
 /**
@@ -371,44 +415,72 @@ async function handleGetAnalytics({ platform, period = "30d", metric = "follower
 
 /**
  * get_dms
- * ENDPOINT_UNVERIFIED: exact path not confirmed from Zernio docs.
+ * GET /v1/inbox/conversations?profileId=&platform=&accountId=&limit=&cursor=
+ * Response: { data: [...], pagination: { hasMore, nextCursor } }
  */
 async function handleGetDms({ tenantId, platform, limit = 50, cursor, accountId: bodyAccountId }) {
   if (!platform) return errResponse("platform required");
   const resolvedPlatform = resolvePlatform(platform.toLowerCase());
+
+  const profileId = await getZernioProfileId(tenantId);
   const accountId = bodyAccountId || await getZernioAccountId(tenantId, platform);
 
   const qs = new URLSearchParams({ platform: resolvedPlatform, limit: String(limit) });
-  if (cursor)    qs.set("cursor", cursor);
+  if (profileId) qs.set("profileId", profileId);
   if (accountId) qs.set("accountId", accountId);
+  if (cursor)    qs.set("cursor", cursor);
 
-  const data = await zernioFetch(`/messages?${qs}`, { method: "GET" });
+  const data = await zernioFetch(`/inbox/conversations?${qs}`, { method: "GET" });
   return jsonResponse({
-    ok:         true,
+    ok:            true,
     platform,
-    messages:   data.messages || data.dms || [],
-    nextCursor: data.next_cursor || null,
+    conversations: data.data || [],
+    nextCursor:    data.pagination?.nextCursor || null,
+    hasMore:       data.pagination?.hasMore ?? false,
   });
 }
 
 /**
  * get_comments
- * ENDPOINT_UNVERIFIED: exact path not confirmed from Zernio docs.
+ * With postId:    GET /v1/inbox/comments/{postId}?accountId=&limit=&cursor=
+ * Without postId: GET /v1/inbox/comments?profileId=&platform=&limit=&cursor=
+ * Response: { data: [...], pagination: { hasMore, nextCursor } }
  */
-async function handleGetComments({ platform, postId, limit = 50, cursor }) {
+async function handleGetComments({ tenantId, platform, postId, limit = 50, cursor, accountId: bodyAccountId }) {
   if (!platform) return errResponse("platform required");
   const resolvedPlatform = resolvePlatform(platform.toLowerCase());
 
-  const qs = new URLSearchParams({ platform: resolvedPlatform, limit: String(limit) });
-  if (postId) qs.set("post_id", postId);
-  if (cursor) qs.set("cursor", cursor);
+  if (postId) {
+    // Per-post comments: GET /inbox/comments/{postId}
+    const accountId = bodyAccountId || await getZernioAccountId(tenantId, platform);
+    const qs = new URLSearchParams({ limit: String(limit) });
+    if (accountId) qs.set("accountId", accountId);
+    if (cursor)    qs.set("cursor", cursor);
 
-  const data = await zernioFetch(`/comments?${qs}`, { method: "GET" });
+    const data = await zernioFetch(`/inbox/comments/${encodeURIComponent(postId)}?${qs}`, { method: "GET" });
+    return jsonResponse({
+      ok:         true,
+      platform,
+      postId,
+      comments:   data.data || [],
+      nextCursor: data.pagination?.nextCursor || null,
+      hasMore:    data.pagination?.hasMore ?? false,
+    });
+  }
+
+  // Inbox-wide comments: GET /inbox/comments
+  const profileId = await getZernioProfileId(tenantId);
+  const qs = new URLSearchParams({ platform: resolvedPlatform, limit: String(limit) });
+  if (profileId) qs.set("profileId", profileId);
+  if (cursor)    qs.set("cursor", cursor);
+
+  const data = await zernioFetch(`/inbox/comments?${qs}`, { method: "GET" });
   return jsonResponse({
     ok:         true,
     platform,
-    comments:   data.comments || [],
-    nextCursor: data.next_cursor || null,
+    comments:   data.data || [],
+    nextCursor: data.pagination?.nextCursor || null,
+    hasMore:    data.pagination?.hasMore ?? false,
   });
 }
 
@@ -465,23 +537,26 @@ async function handleResolveAuthors({ tenantId, platform }) {
 
 /**
  * reply_comment
- * ENDPOINT_UNVERIFIED: exact path not confirmed from Zernio docs.
+ * POST /v1/inbox/comments/{postId}
+ * Body: { accountId, message, commentId? }
  */
-async function handleReplyComment({ platform, commentId, text }) {
-  if (!platform)  return errResponse("platform required");
-  if (!commentId) return errResponse("comment_id required");
-  if (!text)      return errResponse("text required");
+async function handleReplyComment({ tenantId, platform, postId, commentId, text, accountId: bodyAccountId }) {
+  if (!platform) return errResponse("platform required");
+  if (!postId)   return errResponse("postId required");
+  if (!text)     return errResponse("text required");
 
-  const data = await zernioFetch("/comments/reply", {
+  const accountId = bodyAccountId || await getZernioAccountId(tenantId, platform);
+  if (!accountId) return errResponse(`No connected account for ${platform}. Reconnect and try again.`);
+
+  const body = { accountId, message: text };
+  if (commentId) body.commentId = commentId;
+
+  const data = await zernioFetch(`/inbox/comments/${encodeURIComponent(postId)}`, {
     method: "POST",
-    body: JSON.stringify({
-      platform:   resolvePlatform(platform.toLowerCase()),
-      comment_id: commentId,
-      text,
-    }),
+    body:   JSON.stringify(body),
   });
 
-  return jsonResponse({ ok: true, replyId: data.reply_id || data.id || null, raw: data });
+  return jsonResponse({ ok: true, replyId: data.reply?._id || data.id || null, raw: data });
 }
 
 /**
