@@ -270,7 +270,7 @@ if (hasCreateVerb && hasContentNoun) { return makeDraftArtifact(t); }
 
 ### Connector catalog (`seed.jsx` is the source of truth)
 
-The canonical 49-connector list lives in `SEED.connectorCatalog` in [seed.jsx](app/seed.jsx) and is based on [docs/composio_marketing_connectors.md](docs/composio_marketing_connectors.md) (WooCommerce dropped post-verification — not in Pipedream's catalog and out of product scope). Every entry has:
+The canonical connector list (now 56 connectors — 7 new Zernio platforms added 2026-05-24) lives in `SEED.connectorCatalog` in [seed.jsx](app/seed.jsx). Every entry has:
 
 ```js
 {
@@ -280,7 +280,8 @@ The canonical 49-connector list lives in `SEED.connectorCatalog` in [seed.jsx](a
   group,      // pill-filter bucket: "Social" | "Ads" | "Email & SMS" | "Commerce" | "Analytics & Ops" | "Creative AI"
   desc,       // short description — tooltip + setup modal
   auth,       // "OAuth" | "API key" | "Manual" — drives Connect-modal fork (paragraph vs. input vs. handoff explanation)
-  provider,   // "composio" | "pipedream" | "direct" — drives the initiate path (provider-agnostic surface)
+  provider,   // "composio" | "zernio" | "direct" — drives the initiate path (provider-agnostic surface)
+              // "pipedream" is REMOVED — all Pipedream connectors migrated 2026-05-24
   slug,       // Simple Icons CDN slug, or null
   domain,     // Google S2 favicon fallback host (always set)
 }
@@ -311,44 +312,38 @@ The connect surface in [workspaces4.jsx](app/workspaces4.jsx) is provider-agnost
 5. The OAuth popup lands on [oauth-callback.html](oauth-callback.html) (static, served at site root) which `postMessage`s `{ type: "flowos_oauth_connected", app }` to the opener as a fast-path then self-closes after 1.5s. Polling is the redundant fallback.
 6. Click a Connected tile → `ManageConnectorModal` (status + Read/Write/Admin permission toggles + Re-sync + Disconnect). Permissions live on `state.connectors[id].permissions = { read, write, admin }` (default `{true,true,false}`); persisted to client state only — server-side enforcement is a follow-up.
 
-### Composio integration state (verified against live backend.composio.dev)
+### Zernio integration state (2026-05-24 — new)
 
-[api/composio.js](api/composio.js) handles both OAuth and API-key flows. Field naming is inconsistent in Composio's API — `authScheme` is camelCase, everything else is snake_case.
+[api/zernio.js](api/zernio.js) handles all 15 social platforms via Zernio's OAuth-as-a-service. Auth: `ZERNIO_API_KEY` + `X-External-User-ID: {tenantId}` per call. Zernio manages per-user OAuth tokens internally.
 
-| Mode | Composio shape | Works for |
-|---|---|---|
-| **OAuth** | `auth_config: { type: "use_composio_managed_auth" }` + connected_account with `callback_url` | 13 toolkits with Composio managed credentials: googleads, ga4, gsc, hubspot, salesforce, mailchimp, reddit, youtube, fb (+ metaads), ig, li (+ liads) |
-| **API key** | `auth_config: { type: "use_custom_auth", authScheme: "API_KEY" }` + connected_account with `connection.data.apiKey` | 10 toolkits without managed credentials but supporting API-key auth: klaviyo (+ klaviyo_sms), ahrefs, moz, neuronwriter, neverbounce, kickbox, listclean, elevenlabs, heygen |
-| **OAuth — needs custom app** | Same OAuth shape, but Composio has no default managed credentials → returns error code 306 | 5 toolkits where you must register your own OAuth app in the Composio dashboard: shopify, tiktok (tt + ttads), twitter (x + xads) |
+| Scope | Platforms |
+|---|---|
+| **Organic Social** | linkedin, facebook, instagram, x, reddit, tiktok, pinterest, threads, bluesky, youtube, whatsapp, telegram, snapchat, discord, gbusiness |
+| **Paid Social (via Zernio boost_post)** | pinads (Pinterest Ads) |
 
-Surface treatment of code 306: `/api/composio` returns a 409 with an actionable message — "configure a Composio auth_config for `<slug>` in the dashboard, or switch to direct provider."
+Platform routes (`/api/linkedin` etc.) are thin proxies — they auth-check, then forward to `/api/zernio` with `platform` set.
 
-`/api/composio` debug actions: `list_toolkits` (1041 slugs available), `verify_app` (per-id check). Use [scripts/verify-composio.mjs](scripts/verify-composio.mjs) to regression-check the full APP_MAP against live Composio:
+### Composio integration state (non-social only)
 
-```bash
-COMPOSIO_API_KEY2=<key> node scripts/verify-composio.mjs
-```
+[api/composio.js](api/composio.js) handles OAuth and API-key flows for **non-social** toolkits only. Social platforms migrated to Zernio 2026-05-24.
+
+| Mode | Works for |
+|---|---|
+| **OAuth (Composio managed)** | googleads, ga4, gsc, hubspot, salesforce, mailchimp |
+| **API key (Composio custom auth)** | klaviyo (+ klaviyo_sms), ahrefs, moz, neuronwriter, neverbounce, kickbox, listclean, elevenlabs, heygen |
+| **OAuth (needs custom app in Composio dashboard)** | shopify, metaads, liads, ttads, xads |
+
+`/api/composio` debug actions: `list_toolkits`, `verify_app`. `COMPOSIO_SOCIAL_SLUGS` in [api/chat.js](api/chat.js) excludes social toolkits from the tool-fetch for the Claude prompt.
 
 ### Pipedream integration state (verified against live api.pipedream.com)
 
-[api/pipedream.js](api/pipedream.js) handles Pipedream Connect — Pipedream's hosted OAuth + API-key product, equivalent to Composio's managed flow. Server-to-server auth uses the OAuth client_credentials grant for a 1-hour Bearer; per-user auth mints a short-lived **Connect Token** that the frontend opens in a popup at the `connect_link_url`.
+**Pipedream REMOVED (2026-05-24).** [api/pipedream.js](api/pipedream.js) is now a 410 tombstone. All connectors formerly on Pipedream have migrated:
+- `pn`, `pinads` (Pinterest) → Zernio (`provider: "zernio"`)
+- `sendgrid` → Direct (`/api/sendgrid.js`)
+- `twilio` → Direct (`/api/twilio.js`)
+- `runware` → Direct (`/api/runware.js`)
 
-Pipedream's API has one important quirk: the **`x-pd-environment` header** (values: `production` | `development`) is required on every `/connect/{project_id}/*` call. Body fields don't satisfy it.
-
-| FlowOS id | Pipedream slug | Auth type | State |
-|---|---|---|---|
-| `pn`, `pinads` | `pinterest` | oauth | ✓ Connect token mints, popup opens Pipedream's hosted flow |
-| `sendgrid` | `sendgrid` | keys | ✓ |
-| `twilio` | `twilio` | keys | ✓ |
-| `runware` | `runware` | keys | ✓ |
-
-Env vars (all required):
-```
-PIPEDREAM_PROJECT_ID     proj_XXXXXX  (Project → Connect → Configuration → Project ID)
-PIPEDREAM_CLIENT_ID      Account settings → API → OAuth client
-PIPEDREAM_CLIENT_SECRET  (rotate-only)
-PIPEDREAM_ENVIRONMENT    "production" (default) | "development"
-```
+Pipedream env vars (`PIPEDREAM_PROJECT_ID`, `PIPEDREAM_CLIENT_ID`, `PIPEDREAM_CLIENT_SECRET`, `PIPEDREAM_ENVIRONMENT`) are no longer read at runtime.
 
 `/api/pipedream` debug actions: `list_apps` (3000 apps available), `verify_app` (per-id check). Regression-check the APP_MAP against live Pipedream:
 
@@ -392,12 +387,18 @@ All in `/api/`. All use `export const config = { runtime: "edge" }`.
 | `POST /api/chat` | Anthropic proxy + Composio tool execution. Takes `{ messages, specialist, tenantId, brand }`. |
 | `POST /api/brand-import` | Scrapes URL via Jina AI, sends to Claude, upserts to Supabase `brands` table. |
 | `POST /api/analytics-ingest` | Fetches analytics from connected platforms via Composio, stores snapshots. |
-| `POST /api/generate` | Image/video generation via Runware, HeyGen, Runway, etc. |
-| `POST /api/linkedin` | LinkedIn organic posting via Composio. Actions: `resolve_author` (returns normalized `authors:[{urn,name,kind}]`, kind ∈ "person"\|"organization", caches into `state.connectors.li.meta.authors`), `publish_now` (authorUrn + text + optional imageUrl — uploads via `LINKEDIN_INITIALIZE_IMAGE_UPLOAD`, posts via `LINKEDIN_CREATE_LINKED_IN_POST`). Scheduling not yet wired — see `/BACKLOG.md`. |
-| `POST /api/facebook` | Facebook Page posting via Composio. Actions: `resolve_pages` (`FACEBOOK_LIST_MANAGED_PAGES` → `authors:[{urn:pageId,kind:"page",extra:{igUserId?}}]`), `publish_now` (pageId + text + optional imageUrl — `FACEBOOK_CREATE_PHOTO_POST` for images, else `FACEBOOK_CREATE_POST`). Page tokens are injected transparently by Composio when `page_id` is supplied. |
-| `POST /api/x` | X (Twitter) posting via Composio. Single authenticated user — no author picker. Action: `publish_now` (text ≤280 + optional imageUrl). Image flow: fetch bytes → `TWITTER_UPLOAD_MEDIA` (base64) → `TWITTER_CREATION_OF_A_POST` with `media_media_ids:[id]`. |
-| `POST /api/instagram` | Instagram Business posting via Composio. Actions: `resolve_accounts` (thin wrapper over `FACEBOOK_LIST_MANAGED_PAGES` with `fields=...,instagram_business_account` — IG accounts are reachable only via linked FB Pages), `publish_now` (igUserId + caption ≤2200 + **required** imageUrl — two-step: `INSTAGRAM_POST_IG_USER_MEDIA` → `INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH`). Personal IG accounts can't post via API; drawer surfaces a warn when `resolve_accounts` returns empty. |
-| `POST /api/reddit` | Reddit posting via Composio. Actions: `search_subreddits` (`REDDIT_GET_SUBREDDITS_SEARCH` — typeahead, since Composio exposes no `mine/*` listing), `publish_now` (subreddit + title ≤300 + text ≤40000 + optional imageUrl). **Image gap**: `REDDIT_CREATE_REDDIT_POST` doesn't support `kind:image` — when imageUrl is supplied we fall back to `kind:link` with the hosted image URL and surface `imageAsLink:true` so the drawer toasts a warn. The drawer renders subreddit as a free-text input, not a dropdown. |
+| `POST /api/generate` | Image/video generation via Runware, Replicate, HeyGen, Higgsfield, etc. Provider selection: if tenant has a Replicate key in connector_credentials it wins; otherwise uses the explicit `provider` param. Writes to `generation_usage` on every job (fire-and-forget). |
+| `POST /api/zernio` | **Zernio social publishing** — all 15 social platforms via a single OAuth-as-a-service provider. Actions: `initiate_connection`, `connection_status`, `disconnect`, `publish_now`, `schedule_post`, `get_analytics`, `get_dms`, `get_comments`, `boost_post`, `resolve_authors`. Dual-auth for `publish_now` / `schedule_post` (user JWT or cron). Env: `ZERNIO_API_KEY`. |
+| `POST /api/linkedin` | LinkedIn posting — thin proxy to `/api/zernio` with `platform: "linkedin"`. Actions: `resolve_author` → `resolve_authors`, `publish_now`. |
+| `POST /api/facebook` | Facebook posting — thin proxy to `/api/zernio` with `platform: "facebook"`. Actions: `resolve_pages` → `resolve_authors`, `publish_now`. |
+| `POST /api/x` | X posting — thin proxy to `/api/zernio` with `platform: "x"`. Action: `publish_now` (enforces ≤280 chars). |
+| `POST /api/instagram` | Instagram posting — thin proxy to `/api/zernio` with `platform: "instagram"`. Actions: `resolve_accounts` → `resolve_authors`, `publish_now`. |
+| `POST /api/reddit` | Reddit posting — thin proxy to `/api/zernio` with `platform: "reddit"`. Actions: `search_subreddits` (stub → empty), `publish_now`. |
+| `POST /api/tiktok` | TikTok posting — thin proxy to `/api/zernio`. Action: `publish_now`. |
+| `POST /api/pinterest` | Pinterest posting — thin proxy to `/api/zernio`. Action: `publish_now`. |
+| `POST /api/threads` | Threads posting — thin proxy to `/api/zernio`. Action: `publish_now`. |
+| `POST /api/bluesky` | Bluesky posting — thin proxy to `/api/zernio`. Action: `publish_now`. |
+| `POST /api/youtube` | YouTube posting — thin proxy to `/api/zernio`. Action: `publish_now`. |
 | `POST /api/klaviyo` | Klaviyo push via Composio. Actions: `create_draft_campaign` (email — template + campaign + assign), `create_draft_sms` (SMS — single campaign with inline message body, ≤160 chars, no template), `list_audiences`. Audience resolution shared (fuzzy name match → fallback to largest list). Writes land in `state.outbound.{emails,sms}` and surface in EmailStudio / SmsCenter `ChatDraftsToKlaviyo*` strips. |
 | `GET/POST/PATCH /api/proactive-emails` | Flavor #1 (Proactive) for email. POST reads latest `analytics_insights` for tenant, classifies `recommended_actions` into 5 rules (R1 win-back · R2 replenish · R3 rescue · R4 cart aging · R5 VIP quiet, max 2/run), Claude-generates subject/preheader/body using brand voice, persists to `proactive_emails`. Idempotent by `(tenant, rule, source_insight_id)`. Demo fallback emits 1 seeded draft if no insights row exists. GET hydrates `state.outbound.proactiveEmails`. PATCH updates status/Klaviyo IDs after client push. |
 | `GET/POST/PATCH /api/proactive-sms` | Flavor #1 (Proactive) for SMS. POST reads latest `analytics_insights`, classifies into 4 rules (S1 win-back · S2 replenish · S3 cart-recovery · S4 VIP, max 2/run), Claude-generates body ≤160 chars, persists to `proactive_sms`. Idempotent by `(tenant, rule, source_insight_id)`. Demo fallback (S1 win-back) when no insights row. GET hydrates `state.outbound.proactiveSms`. PATCH updates status/Klaviyo IDs. Auth: `requireAuthOrCron`. |
@@ -480,6 +481,7 @@ All public-schema tables have RLS enabled (see [db/migrations/007_core_schema_an
 - `proactive_drafts` — weekly social calendar drafts (status `pending`/`archived`). Keys: `tenant_id`, `status`.
 - `proactive_emails` — analytics-triggered email drafts. Keys: `tenant_id`, `rule`, `source_insight_id`. Unique index enforces idempotency. Status: `proactive_draft` → `pushed` (via /api/klaviyo) | `dismissed`.
 - `proactive_sms` — analytics-triggered SMS drafts (flavor #1 for SMS channel). Keys: `tenant_id`, `rule`, `source_insight_id`. 4 rules: S1_winback, S2_replenish, S3_cart, S4_vip. Status: `proactive_draft` → `pushed` | `dismissed`. Surfaced in SmsCenter as `ProactiveSmsDrafts`. Migration: [supabase/migrations/2026-05-23-proactive-sms.sql](supabase/migrations/2026-05-23-proactive-sms.sql).
+- `generation_usage` — per-job AI generation cost tracking. Columns: `id uuid`, `tenant_id text`, `provider text` (runware/replicate/heygen/higgsfield/luma/elevenlabs/audiostack), `model text`, `job_type text` (image/video/voice/avatar), `job_id text`, `cost_estimate numeric`, `status text`, `created_at timestamptz`. Written by `/api/generate` on every generate_image and generate_video call (fire-and-forget, non-blocking). RLS: tenant can read own rows. Migration: [supabase/migrations/2026-05-24-generation-usage.sql](supabase/migrations/2026-05-24-generation-usage.sql).
 
 ---
 
@@ -571,15 +573,22 @@ Planner-created items have `channel` (display name), `tone`, `campaign`, `day` (
 ANTHROPIC_API_KEY        Claude API — required for live AI
 SUPABASE_URL             Supabase project URL
 SUPABASE_SERVICE_KEY     Supabase service role key (server-side only)
-COMPOSIO_API_KEY2        Composio tool execution
+COMPOSIO_API_KEY2        Composio tool execution (non-social only: ads, analytics, CRM, email, SEO)
 CRON_SECRET              Vercel cron auth — REQUIRED (fail-closed; see api/lib/auth.js)
 SUPABASE_JWT_SECRET      Verifies user JWTs in requireAuth (Supabase project settings → JWT Secret)
 OAUTH_STATE_SECRET       HMAC for google-ads-auth OAuth state — any high-entropy string
-RUNWARE_API_KEY          Runware image + video generation
+ZERNIO_API_KEY           Zernio social publishing — all 15 platforms (added 2026-05-24)
+RUNWARE_API_KEY          Runware image + video generation (global fallback; per-tenant key takes priority)
 HIGGSFIELD_API_KEY       Higgsfield video (cinematic_studio_3_0, kling3_0)
+REPLICATE_API_KEY        Replicate ML models — global fallback; per-tenant key via connector_credentials
+APP_ORIGIN               CORS allowlist origin (e.g. https://flowos.vercel.app) — defaults to * if unset
 GOOGLE_ADS_DEVELOPER_TOKEN  DEPRECATED — no longer read (Composio cutover 2026-05-17)
 GOOGLE_ADS_CLIENT_ID        DEPRECATED — no longer read (Composio cutover 2026-05-17)
 GOOGLE_ADS_CLIENT_SECRET    DEPRECATED — no longer read (Composio cutover 2026-05-17)
+PIPEDREAM_PROJECT_ID         REMOVED — Pipedream integration removed 2026-05-24
+PIPEDREAM_CLIENT_ID          REMOVED
+PIPEDREAM_CLIENT_SECRET      REMOVED
+PIPEDREAM_ENVIRONMENT        REMOVED
 ```
 
 Frontend uses the Supabase anon key baked into `supabase.jsx` (public — safe).
