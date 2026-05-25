@@ -69,12 +69,33 @@ export const config = { runtime: "edge" };
 
 const ZERNIO_BASE = "https://api.zernio.io/v1";
 
+// Maps FlowOS short connector IDs → Zernio platform slugs.
+// Organic connectors use abbreviated IDs in seed.jsx (fb, ig, li, tt, pn, yt)
+// but Zernio expects full platform names. workspaces4 always sends connector.id,
+// so we resolve here rather than changing the call shape.
+const PLATFORM_ID_MAP = {
+  fb:  "facebook",
+  ig:  "instagram",
+  li:  "linkedin",
+  tt:  "tiktok",
+  pn:  "pinterest",
+  yt:  "youtube",
+};
+
+function resolvePlatform(id) {
+  return PLATFORM_ID_MAP[id] || id;
+}
+
+// Gate check uses FlowOS IDs (short or full — both accepted).
 const SUPPORTED_PLATFORMS = new Set([
+  // Organic social — full Zernio slugs
   "linkedin", "facebook", "instagram", "x", "reddit",
   "tiktok", "pinterest", "threads", "bluesky", "youtube",
   "whatsapp", "telegram", "snapchat", "discord", "gbusiness",
-  // Paid social — each uses its FlowOS connector id as the platform slug.
-  // Zernio platform slug support for metaads/liads/ttads/xads is UNCONFIRMED
+  // Organic social — FlowOS short IDs (resolved to full names via PLATFORM_ID_MAP before API calls)
+  "fb", "ig", "li", "tt", "pn", "yt",
+  // Paid social — FlowOS connector IDs passed directly to Zernio.
+  // Zernio slug support for metaads/liads/ttads/xads is UNCONFIRMED
   // (see b_a002 migration notes above). pinads is confirmed working.
   "pinads", "metaads", "liads", "ttads", "xads",
 ]);
@@ -121,7 +142,7 @@ async function handleInitiateConnection({ tenantId, app, redirectUri }) {
   const data = await zernioFetch("/connections/initiate", {
     method: "POST",
     body: JSON.stringify({
-      platform,
+      platform:         resolvePlatform(platform),
       external_user_id: tenantId,
       callback_url:     redirectUri || null,
     }),
@@ -144,7 +165,7 @@ async function handleConnectionStatus({ tenantId, app }) {
   const platform = app.toLowerCase();
 
   const data = await zernioFetch(
-    `/connections/status?platform=${encodeURIComponent(platform)}`,
+    `/connections/status?platform=${encodeURIComponent(resolvePlatform(platform))}`,
     { method: "GET" },
     tenantId,
   );
@@ -169,7 +190,7 @@ async function handleDisconnect({ tenantId, app, accountId }) {
 
   await zernioFetch("/connections/disconnect", {
     method: "POST",
-    body: JSON.stringify({ platform, connection_id: accountId || null }),
+    body: JSON.stringify({ platform: resolvePlatform(platform), connection_id: accountId || null }),
   }, tenantId);
 
   return jsonResponse({ ok: true });

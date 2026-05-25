@@ -82,14 +82,7 @@ const APP_MAP = {
 
   // Paid Social (metaads, liads, ttads, xads) — REMOVED (migrated to Zernio, b_a002 2026-05-24)
 
-  // Organic Social
-  fb:           "facebook",
-  ig:           "instagram",
-  li:           "linkedin",
-  x:            "twitter",
-  tt:           "tiktok",
-  reddit:       "reddit",
-  yt:           "youtube",
+  // Organic Social — REMOVED (all migrated to Zernio 2026-05-24)
 
   // Email Marketing
   mailchimp:    "mailchimp",
