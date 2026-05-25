@@ -578,6 +578,7 @@ CRON_SECRET              Vercel cron auth — REQUIRED (fail-closed; see api/lib
 SUPABASE_JWT_SECRET      Verifies user JWTs in requireAuth (Supabase project settings → JWT Secret)
 OAUTH_STATE_SECRET       HMAC for google-ads-auth OAuth state — any high-entropy string
 ZERNIO_API_KEY           Zernio social publishing — all 15 platforms (added 2026-05-24)
+ZERNIO_WEBHOOK_SECRET    Zernio webhook HMAC verification (added 2026-05-24)
 RUNWARE_API_KEY          Runware image + video generation (global fallback; per-tenant key takes priority)
 HIGGSFIELD_API_KEY       Higgsfield video (cinematic_studio_3_0, kling3_0)
 REPLICATE_API_KEY        Replicate ML models — global fallback; per-tenant key via connector_credentials

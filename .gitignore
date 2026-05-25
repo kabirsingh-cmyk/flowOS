@@ -14,3 +14,4 @@ scripts/backlog-proposal-*.md
 BACKLOG.proposed.md
 *.bak
 FlowOS_SRS_*.docx
+.vscode/

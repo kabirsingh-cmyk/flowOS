@@ -1205,9 +1205,75 @@ function PublishingQueue({ state, actions }) {
 }
 
 
+function timeAgoFromDate(iso) {
+  const ms = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  return `${Math.floor(hr / 24)}d`;
+}
+
 // ────────────────────────────── INBOX & ESCALATION ──────────────────────────────
 function InboxEscalation({ state, actions }) {
-  const open     = state.inbox.filter(i => i.status !== "replied" && i.status !== "archived");
+  const [fetchedItems, setFetchedItems] = useState3(null);
+  const [isLoading, setIsLoading] = useState3(true);
+
+  useEffect3(() => {
+    let mounted = true;
+    let intervalId = null;
+
+    async function fetchInbox() {
+      try {
+        const { data, error } = await sb
+          .from("inbox_events")
+          .select("*")
+          .eq("status", "open")
+          .order("created_at", { ascending: false })
+          .limit(50);
+
+        if (error) throw error;
+        if (!mounted) return;
+
+        if (data && data.length > 0) {
+          setFetchedItems(data.map(row => ({
+            id: row.id,
+            author: row.author_name || row.author_handle || "Unknown",
+            source: `${row.platform} · ${row.event_type}`,
+            text: row.text || "",
+            risk: row.risk || "low",
+            status: row.status || "open",
+            draft: row.ai_draft || "",
+            reason: row.ai_triage_note || "",
+            timeAgo: timeAgoFromDate(row.created_at),
+            category: row.event_type,
+            platform: row.platform,
+            eventType: row.event_type,
+            externalId: row.external_id,
+          })));
+        } else {
+          setFetchedItems([]);
+        }
+      } catch (e) {
+        console.error("[InboxEscalation] fetch error:", e);
+        if (mounted) setFetchedItems(null);
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    }
+
+    fetchInbox();
+    intervalId = setInterval(fetchInbox, 30000);
+
+    return () => {
+      mounted = false;
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, []);
+
+  const inboxSource = (fetchedItems && fetchedItems.length > 0) ? fetchedItems : state.inbox;
+  const open     = inboxSource.filter(i => i.status !== "replied" && i.status !== "archived");
   const urgent   = open.filter(i => i.risk === "high" || i.risk === "medium")
                        .sort((a, b) => (a.risk === "high" ? -1 : b.risk === "high" ? 1 : 0));
   const ready    = open.filter(i => i.risk === "low");
@@ -1225,13 +1291,17 @@ function InboxEscalation({ state, actions }) {
   const riskBorder = { high: "var(--danger)", medium: "var(--warn)", low: "var(--success)" };
   const riskTone   = { high: "danger",        medium: "warn",        low: "ok" };
 
-  const archive = (item) => actions.updateInbox(item.id, { status: "archived" }, {
-    logEvent: `archived · ${item.author}`,
-    notify:   { tone: "neutral", text: `Archived · ${item.author}` },
-  });
+  const archive = (item) => {
+    actions.updateInbox(item.id, { status: "archived" }, {
+      logEvent: `archived · ${item.author}`,
+      notify:   { tone: "neutral", text: `Archived · ${item.author}` },
+    });
+    // fire-and-forget DB sync
+    sb.from("inbox_events").update({ status: "archived" }).eq("id", item.id).then(() => {}, () => {});
+  };
 
   const INBOX_CHANNEL_NAMES = ["Instagram", "LinkedIn", "TikTok", "Facebook", "X", "Twitter", "YouTube", "Email", "Pinterest"];
-  const sendReply = (item, replyDraft) => {
+  const sendReply = async (item, replyDraft) => {
     // Enforce reply rule from Autonomy Settings
     const matchedChannel = INBOX_CHANNEL_NAMES.find(ch => (item.source || "").startsWith(ch));
     const rule = matchedChannel ? (state.channelRules || []).find(r => r.name === matchedChannel) : null;
@@ -1239,10 +1309,65 @@ function InboxEscalation({ state, actions }) {
       actions.notify("warn", `${matchedChannel}: replies not configured — check Autonomy Settings`);
       return;
     }
-    actions.updateInbox(item.id, { status: "replied", draft: replyDraft }, {
-      logEvent: `replied · ${item.source} · ${item.author}`,
-      notify:   { tone: "ok", text: `Reply sent to ${item.author}` },
-    });
+
+    // Daily cap enforcement for auto mode
+    if (state.autonomyMode === "auto" && rule && rule.reply === "auto") {
+      const startOfDay = new Date();
+      startOfDay.setUTCHours(0, 0, 0, 0);
+      const { count, error } = await sb
+        .from("inbox_events")
+        .select("id", { count: "exact" })
+        .eq("status", "replied")
+        .gte("updated_at", startOfDay.toISOString());
+      if (!error && count >= state.thresholds.dailyCap) {
+        actions.notify("warn", `Daily auto-reply cap reached (${state.thresholds.dailyCap}) — reply queued for manual review`);
+        return;
+      }
+    }
+
+    // Seed/demo items have no externalId — fall back to local-only update
+    if (!item.externalId || !item.platform) {
+      actions.updateInbox(item.id, { status: "replied", draft: replyDraft }, {
+        logEvent: `replied · ${item.source} · ${item.author}`,
+        notify:   { tone: "ok", text: `Reply sent to ${item.author}` },
+      });
+      sb.from("inbox_events").update({ status: "replied" }).eq("id", item.id).then(() => {}, () => {});
+      return;
+    }
+
+    const action = item.eventType === "dm" ? "reply_dm" : "reply_comment";
+    const payload = {
+      action,
+      platform: item.platform,
+      text: replyDraft,
+    };
+    if (action === "reply_dm") {
+      payload.conversation_id = item.externalId;
+    } else {
+      payload.comment_id = item.externalId;
+    }
+
+    try {
+      const res = await apiFetch("/api/zernio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const result = await res.json().catch(() => ({ ok: false, error: "Invalid response" }));
+      if (!result.ok) {
+        actions.notify("danger", `Reply failed — ${result.error || "check connection"}`);
+        return;
+      }
+      // Success: update local state + DB
+      actions.updateInbox(item.id, { status: "replied", draft: replyDraft }, {
+        logEvent: `replied · ${item.source} · ${item.author}`,
+        notify:   { tone: "ok", text: `Reply sent to ${item.author}` },
+      });
+      sb.from("inbox_events").update({ status: "replied" }).eq("id", item.id).then(() => {}, () => {});
+    } catch (e) {
+      console.error("[sendReply]", e);
+      actions.notify("danger", "Reply failed — check connection");
+    }
   };
 
   // Left panel row
@@ -1298,20 +1423,28 @@ function InboxEscalation({ state, actions }) {
 
         {/* ── Left panel ── */}
         <div style={{ borderRight: "1px solid var(--rule)", background: "var(--paper)", overflow: "auto", display: "flex", flexDirection: "column" }}>
-          {urgent.length > 0 && (
+          {isLoading ? (
+            <div style={{ padding: "20px 14px", color: "var(--muted)", fontSize: 12 }}>
+              Loading…
+            </div>
+          ) : (
             <>
-              <div style={{ padding: "8px 14px 4px", background: "var(--paper-2)", borderBottom: "1px solid var(--rule)" }}>
-                <span className="mono" style={{ fontSize: 9.5, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Needs a decision</span>
-              </div>
-              {urgent.map(item => <Row key={item.id} item={item}/>)}
-            </>
-          )}
-          {ready.length > 0 && (
-            <>
-              <div style={{ padding: "8px 14px 4px", background: "var(--paper-2)", borderBottom: "1px solid var(--rule)", borderTop: urgent.length > 0 ? "1px solid var(--rule)" : "none" }}>
-                <span className="mono" style={{ fontSize: 9.5, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Ready to send</span>
-              </div>
-              {ready.map(item => <Row key={item.id} item={item}/>)}
+              {urgent.length > 0 && (
+                <>
+                  <div style={{ padding: "8px 14px 4px", background: "var(--paper-2)", borderBottom: "1px solid var(--rule)" }}>
+                    <span className="mono" style={{ fontSize: 9.5, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Needs a decision</span>
+                  </div>
+                  {urgent.map(item => <Row key={item.id} item={item}/>)}
+                </>
+              )}
+              {ready.length > 0 && (
+                <>
+                  <div style={{ padding: "8px 14px 4px", background: "var(--paper-2)", borderBottom: "1px solid var(--rule)", borderTop: urgent.length > 0 ? "1px solid var(--rule)" : "none" }}>
+                    <span className="mono" style={{ fontSize: 9.5, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Ready to send</span>
+                  </div>
+                  {ready.map(item => <Row key={item.id} item={item}/>)}
+                </>
+              )}
             </>
           )}
         </div>

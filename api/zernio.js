@@ -340,6 +340,50 @@ async function handleResolveAuthors({ tenantId, platform }) {
   return jsonResponse({ ok: true, platform, authors });
 }
 
+/**
+ * reply_comment
+ * Reply to a comment on a platform via Zernio.
+ * Endpoint inferred from existing /comments path; confirmed at runtime.
+ */
+async function handleReplyComment({ tenantId, platform, commentId, text }) {
+  if (!platform) return errResponse("platform required");
+  if (!commentId) return errResponse("comment_id required");
+  if (!text) return errResponse("text required");
+
+  const data = await zernioFetch("/comments/reply", {
+    method: "POST",
+    body: JSON.stringify({
+      platform: platform.toLowerCase(),
+      comment_id: commentId,
+      text,
+    }),
+  }, tenantId);
+
+  return jsonResponse({ ok: true, replyId: data.reply_id || data.id || null, raw: data });
+}
+
+/**
+ * reply_dm
+ * Reply to a DM conversation on a platform via Zernio.
+ * Endpoint inferred from existing /messages path; confirmed at runtime.
+ */
+async function handleReplyDm({ tenantId, platform, conversationId, text }) {
+  if (!platform) return errResponse("platform required");
+  if (!conversationId) return errResponse("conversation_id required");
+  if (!text) return errResponse("text required");
+
+  const data = await zernioFetch("/messages/reply", {
+    method: "POST",
+    body: JSON.stringify({
+      platform: platform.toLowerCase(),
+      conversation_id: conversationId,
+      text,
+    }),
+  }, tenantId);
+
+  return jsonResponse({ ok: true, replyId: data.reply_id || data.id || null, raw: data });
+}
+
 // ─── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req) {
@@ -380,10 +424,13 @@ export default async function handler(req) {
       case "get_comments":         return await handleGetComments(body);
       case "boost_post":           return await handleBoostPost(body);
       case "resolve_authors":      return await handleResolveAuthors(body);
+      case "reply_comment":        return await handleReplyComment(body);
+      case "reply_dm":             return await handleReplyDm(body);
       default:
         return errResponse(
           `Unknown action "${action}". Supported: initiate_connection, connection_status, disconnect, ` +
-          `publish_now, schedule_post, get_analytics, get_dms, get_comments, boost_post, resolve_authors`,
+          `publish_now, schedule_post, get_analytics, get_dms, get_comments, boost_post, resolve_authors, ` +
+          `reply_comment, reply_dm`,
         );
     }
   } catch (e) {
