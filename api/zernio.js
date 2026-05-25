@@ -399,7 +399,6 @@ async function handleSchedulePost(body) {
 /**
  * get_analytics
  * GET /v1/analytics/{platform}/{metric}
- * ENDPOINT_PARTIAL: metric enum values not fully confirmed from docs.
  */
 async function handleGetAnalytics({ platform, period = "30d", metric = "followers" }) {
   if (!platform) return errResponse("platform required");
@@ -486,7 +485,7 @@ async function handleGetComments({ tenantId, platform, postId, limit = 50, curso
 
 /**
  * boost_post
- * ENDPOINT_UNVERIFIED: Zernio paid boost endpoint not confirmed from docs.
+ * POST /v1/ads/boost
  */
 async function handleBoostPost({ platform, postId, budgetUsd, durationDays, targetAudience }) {
   if (!platform)  return errResponse("platform required");
