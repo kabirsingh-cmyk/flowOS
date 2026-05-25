@@ -24,6 +24,7 @@ import {
   modelsExplore,
 }                                          from './lib/providerRouter.js';
 import { requireAuth }                     from './lib/auth.js';
+import { loadCredential }                  from './lib/directCredentials.js';
 
 export const config = { runtime: 'edge' };
 
@@ -101,6 +102,44 @@ async function supabaseSelect(table, filters = {}) {
   return res.json();
 }
 
+// ─── Cost estimates per provider (USD per job, rough) ────────────────────────
+const COST_MAP = {
+  runware:    0.0008,  // ~$0.0008/image at FLUX Schnell pricing
+  replicate:  0.0030,  // varies by model; $0.003 is a conservative estimate
+  heygen:     0.0500,  // avatar video ~$0.05 per render
+  higgsfield: 0.0200,  // cinematic video
+  luma:       0.0150,
+  elevenlabs: 0.0030,
+  audiostack: 0.0100,
+};
+
+async function logGenerationUsage({ tenantId, provider, model, jobType, jobId, status = "completed" }) {
+  const base = process.env.SUPABASE_URL;
+  if (!base) return; // best-effort — don't fail generation if tracking fails
+  try {
+    await fetch(`${base}/rest/v1/generation_usage`, {
+      method:  "POST",
+      headers: { ...supabaseHeaders(), "Prefer": "return=minimal" },
+      body:    JSON.stringify({
+        tenant_id:     tenantId,
+        provider,
+        model:         model || null,
+        job_type:      jobType,
+        job_id:        jobId  || null,
+        cost_estimate: COST_MAP[provider] ?? null,
+        status,
+      }),
+    });
+  } catch (_) { /* non-blocking */ }
+}
+
+// Resolve Replicate API key: per-tenant key in connector_credentials takes
+// precedence over the global REPLICATE_API_KEY env var.
+async function resolveReplicateKey(tenantId) {
+  const perTenant = await loadCredential({ tenantId, platform: "replicate" }).catch(() => null);
+  return perTenant || process.env.REPLICATE_API_KEY || null;
+}
+
 // ─── Brand + Product context fetch ───────────────────────────────────────────
 
 async function fetchBrand(tenantId) {
@@ -162,11 +201,23 @@ async function handleUploadReference(body) {
  * Assemble prompt from intent + brand context, submit image job, persist row.
  */
 async function handleGenerateImage(body) {
-  const { tenantId, provider, model, aspectRatio, resolution, promptIntent, referenceMediaId } = body;
+  let { tenantId, provider, model, aspectRatio, resolution, promptIntent, referenceMediaId } = body;
   if (!tenantId)     return err('tenantId required');
-  if (!provider)     return err('provider required');
-  if (!model)        return err('model required');
   if (!promptIntent) return err('promptIntent required');
+
+  // Provider selection: if caller doesn't specify a provider, or specifies
+  // "replicate", check whether this tenant has a Replicate key and use it.
+  // Otherwise fall back to the request-supplied provider (typically "runware").
+  if (!provider || provider === 'replicate') {
+    const replicateKey = await resolveReplicateKey(tenantId);
+    if (replicateKey) {
+      provider = 'replicate';
+      model = model || 'black-forest-labs/flux-schnell';
+    } else if (!provider) {
+      return err('provider required — no Replicate key found for this tenant');
+    }
+  }
+  if (!model) return err('model required');
 
   // Reject unworkable models early
   if (UNWORKABLE_MODELS.has(model)) {
@@ -225,6 +276,9 @@ async function handleGenerateImage(body) {
     completed_at:    isTerminal ? new Date().toISOString() : null,
   });
 
+  // Fire-and-forget usage tracking.
+  logGenerationUsage({ tenantId, provider, model, jobType: 'image', jobId: row?.id || providerJobId, status: immediateStatus || 'pending' });
+
   return json({
     ok:       true,
     jobId:    row?.id || providerJobId,
@@ -240,14 +294,24 @@ async function handleGenerateImage(body) {
  * Assemble prompt, validate aspect ratio, submit video job, persist row.
  */
 async function handleGenerateVideo(body) {
-  const {
+  let {
     tenantId, provider, model, aspectRatio, duration,
     startImageJobId, startImageAspectRatio, promptIntent,
   } = body;
   if (!tenantId)     return err('tenantId required');
-  if (!provider)     return err('provider required');
-  if (!model)        return err('model required');
   if (!promptIntent) return err('promptIntent required');
+
+  // Provider selection: same Replicate fallback as handleGenerateImage.
+  if (!provider || provider === 'replicate') {
+    const replicateKey = await resolveReplicateKey(tenantId);
+    if (replicateKey) {
+      provider = 'replicate';
+      model = model || 'minimax/video-01';
+    } else if (!provider) {
+      return err('provider required — no Replicate key found for this tenant');
+    }
+  }
+  if (!model) return err('model required');
 
   // Reject unworkable models early
   if (UNWORKABLE_MODELS.has(model)) {
@@ -307,6 +371,9 @@ async function handleGenerateVideo(body) {
     thumbnail_url:   thumbnailUrl,
     completed_at:    isTerminal ? new Date().toISOString() : null,
   });
+
+  // Fire-and-forget usage tracking.
+  logGenerationUsage({ tenantId, provider, model, jobType: 'video', jobId: row?.id || providerJobId, status: immediateStatus || 'pending' });
 
   return json({
     ok:       true,
