@@ -309,6 +309,61 @@ async function getKeywordIdeas() {
   return [];
 }
 
+// AI campaign recommendation — pre-fills the entire Create campaign form
+async function recommendCampaign({ brandName, brandUrl, brandVoice, hint, existingCampaignNames }) {
+  const existing = (existingCampaignNames || []).join(", ") || "none";
+  const hintLine = hint ? `The user opened the dialog from this recommendation card: "${hint}". Tailor the campaign to address this opportunity.` : "";
+  const prompt = `You are a Google Ads strategist. Recommend a complete new search campaign for the brand below.
+
+Brand: ${brandName || "Unknown brand"}
+Website: ${brandUrl || ""}
+Brand voice: ${brandVoice || "professional"}
+Existing campaigns (avoid duplicating): ${existing}
+${hintLine}
+
+Output ONLY valid JSON — no other text:
+{
+  "name": "Campaign name (concise, ≤60 chars)",
+  "type": "search",
+  "keywordsRaw": "keyword 1\\nkeyword 2\\nkeyword 3\\nkeyword 4\\nkeyword 5",
+  "headlines": ["H1 (≤30 chars)", "H2 (≤30 chars)", "H3 (≤30 chars)"],
+  "descriptions": ["Description 1 (≤90 chars)", "Description 2 (≤90 chars)"],
+  "budget": "500",
+  "bidding": "target-roas",
+  "finalUrl": "${brandUrl || ""}"
+}
+
+Rules:
+- name: descriptive, includes brand or product + intent (e.g. "MVEDA hair oil · intent")
+- keywordsRaw: newline-separated, high-intent, relevant to the opportunity
+- headlines: max 30 chars each, benefit-led, vary across price / quality / urgency
+- descriptions: max 90 chars each, action-oriented with CTA
+- budget: monthly USD as a plain number string, realistic for the brand scale
+- bidding: one of target-roas | target-cpa | max-clicks | max-conversions | manual-cpc`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key":         process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+      "Content-Type":      "application/json",
+    },
+    body: JSON.stringify({
+      model:      "claude-3-5-haiku-20241022",
+      max_tokens: 600,
+      messages:   [{ role: "user", content: prompt }],
+    }),
+  });
+  const data = await res.json();
+  const raw  = data.content?.[0]?.text || "{}";
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const match = raw.match(/\{[\s\S]*\}/);
+    return match ? JSON.parse(match[0]) : {};
+  }
+}
+
 // AI ad copy — no Google credentials, just Claude
 async function generateAdCopy({ brandName, productName, keywords, tone, url, voiceNote }) {
   const prompt = `You are an expert Google Ads copywriter. Generate high-converting responsive search ad copy.
@@ -375,6 +430,9 @@ export default async function handler(req) {
   try {
     let result;
     switch (action) {
+      case "recommend_campaign":
+        result = await recommendCampaign(params);
+        break;
       case "generate_copy":
         result = await generateAdCopy(params);
         break;

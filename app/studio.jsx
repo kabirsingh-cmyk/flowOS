@@ -811,6 +811,8 @@ function SearchStudio({ state, actions }) {
   const [tab,            setTab]            = useStateS("campaigns"); // campaigns | keywords | copy
   const [activeCampaign, setActiveCampaign] = useStateS(null);
   const [createOpen,     setCreateOpen]     = useStateS(false);
+  const [createHint,     setCreateHint]     = useStateS("");
+  const [recLoading,     setRecLoading]     = useStateS(false);
   const [detailLoading,  setDetailLoading]  = useStateS(false);
   const [detail,         setDetail]         = useStateS(null);
 
@@ -856,6 +858,22 @@ function SearchStudio({ state, actions }) {
 
   // Load on mount
   React.useEffect(() => { load(); }, [tenantId]);
+
+  // Pre-fill form with AI recommendations when dialog opens
+  React.useEffect(() => {
+    if (!createOpen) return;
+    setRecLoading(true);
+    gadsCall("recommend_campaign", {
+      brandName:             brand?.name  || "",
+      brandUrl:              brand?.url   || "",
+      brandVoice:            brand?.voice || "",
+      hint:                  createHint,
+      existingCampaignNames: CAMPAIGNS.map(c => c.name),
+    })
+      .then(rec => { if (rec && Object.keys(rec).length) setForm(f => ({ ...f, ...rec })); })
+      .catch(() => {})
+      .finally(() => setRecLoading(false));
+  }, [createOpen]);
 
   // Open campaign → load detail
   function openCampaign(c) {
@@ -1038,7 +1056,7 @@ function SearchStudio({ state, actions }) {
                 <button style={TAB_STYLE("copy")}      onClick={() => setTab("copy")}>AI Copy Gen</button>
               </div>
               <Btn size="sm" variant="ghost" onClick={load}><Icon name="refresh" size={12}/></Btn>
-              <Btn variant="primary" onClick={() => setCreateOpen(true)}><Icon name="spark" size={13}/> Create campaign</Btn>
+              <Btn variant="primary" onClick={() => { setCreateHint(""); setCreateOpen(true); }}><Icon name="spark" size={13}/> Create campaign</Btn>
             </div>
           </div>
           {error && (
@@ -1071,7 +1089,7 @@ function SearchStudio({ state, actions }) {
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
                   {RECS.map((r, i) => (
-                    <FlowRec key={i} title={r.title} body={r.body} cta={r.cta} urgent={r.urgent} onClick={() => setCreateOpen(true)}/>
+                    <FlowRec key={i} title={r.title} body={r.body} cta={r.cta} urgent={r.urgent} onClick={() => { setCreateHint(r.title); setCreateOpen(true); }}/>
                   ))}
                 </div>
               </div>
@@ -1140,7 +1158,7 @@ function SearchStudio({ state, actions }) {
                       <span className="mono" style={{ fontSize: 12 }}>{r.highCpc ? `$${r.highCpc}` : "—"}</span>
                       <Btn size="sm" variant="ghost" onClick={() => {
                         setKwSeeds(s => s ? s + "\n" + r.keyword : r.keyword);
-                        setTab("campaigns"); setCreateOpen(true);
+                        setCreateHint(""); setTab("campaigns"); setCreateOpen(true);
                         setForm(f => ({ ...f, keywordsRaw: f.keywordsRaw ? f.keywordsRaw + "\n" + r.keyword : r.keyword }));
                       }}>Add to campaign</Btn>
                     </div>
@@ -1211,7 +1229,7 @@ function SearchStudio({ state, actions }) {
                     </div>
                     <div style={{ marginTop: 14 }}>
                       <Btn variant="primary" onClick={() => {
-                        setTab("campaigns"); setCreateOpen(true);
+                        setCreateHint(""); setTab("campaigns"); setCreateOpen(true);
                         setForm(f => ({
                           ...f,
                           headlines:    (generatedCopy.headlines || []).slice(0, 15),
@@ -1307,8 +1325,15 @@ function SearchStudio({ state, actions }) {
 
       {/* Create campaign dialog */}
       {createOpen && (
-        <Dialog open onClose={() => setCreateOpen(false)} title="Create search campaign" width={680}>
+        <Dialog open onClose={() => { setCreateOpen(false); setForm({ ...BLANK_FORM }); setCreateHint(""); }} title="Create search campaign" width={680}>
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+            {recLoading && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--muted)" }}>
+                <span className="dot-pulse" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", display: "inline-block" }}/>
+                Flow AI is drafting recommendations…
+              </div>
+            )}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <FormRow label="Campaign name">
@@ -1390,17 +1415,6 @@ function SearchStudio({ state, actions }) {
               </FormRow>
             </div>
 
-            {/* Quick AI copy fill */}
-            {!form.headlines.some(Boolean) && (
-              <div style={{ padding: 12, borderRadius: 5, background: "var(--accent-wash)", border: "1px solid var(--accent)", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.5, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span>✦ <strong>Flow AI:</strong> Headlines empty — generate ad copy from your brand + keywords.</span>
-                <Btn size="sm" variant="primary" onClick={() => {
-                  setCreateOpen(false); setTab("copy");
-                  setCopyProduct(brand?.name || form.name);
-                  setCopyKeywords(form.keywordsRaw);
-                }}>Generate copy →</Btn>
-              </div>
-            )}
 
             <div style={{ padding: 12, borderRadius: 5, background: "var(--paper-2)", border: "1px solid var(--rule)", fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
               Campaign will be created as <strong>Paused</strong> — click <em>Launch</em> to enable immediately, or save and launch from the campaign list.
