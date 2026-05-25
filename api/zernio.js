@@ -2,118 +2,113 @@
  * FlowOS — Zernio social publishing connector
  * Vercel Edge Function: POST /api/zernio
  *
- * Zernio is the single provider for all 15 social platforms. It handles:
- *   - OAuth-as-a-service per tenant per platform
- *   - Unified publishing API
- *   - Native scheduling (eliminates need for FlowOS cron on social posts)
- *   - Analytics, DMs, comments, and paid boost
+ * Zernio handles all 15 organic social platforms via OAuth-as-a-service.
+ * https://zernio.com  |  https://docs.zernio.com
  *
  * Auth:
  *   ZERNIO_API_KEY — platform-level API key (server-side only)
- *   Per-user identity is passed as X-External-User-ID: {tenantId}
+ *   Header: Authorization: Bearer {key}
+ *   Per-user isolation via Zernio profiles (one profile per FlowOS tenant).
+ *   Profiles are created on first connection and stored in
+ *   connector_credentials(user_id, platform='zernio_profile').
  *
- * Supported platforms:
- *   linkedin, facebook, instagram, x, reddit, tiktok, pinterest, threads,
- *   bluesky, youtube, whatsapp, telegram, snapchat, discord, gbusiness
- *   + paid social: pinads, metaads, liads, ttads, xads
+ * Supported platforms (organic social ONLY):
+ *   facebook, instagram, linkedin, tiktok, pinterest, youtube,
+ *   twitter (X), reddit, bluesky, threads, googlebusiness,
+ *   whatsapp, telegram, snapchat, discord
+ *   + FlowOS short IDs: fb, ig, li, tt, pn, yt, x, gbusiness
+ *
+ * Paid social ad accounts (metaads, liads, ttads, xads, pinads) are NOT handled
+ * here — Zernio is an organic social platform only. Those connectors route
+ * through Composio (provider: "composio" in seed.jsx).
  *
  * Actions:
  *   initiate_connection  — start OAuth flow for a tenant + platform
  *   connection_status    — poll whether OAuth completed
  *   disconnect           — revoke connection
  *   publish_now          — post immediately to a platform
- *   schedule_post        — hand scheduling to Zernio natively
- *   get_analytics        — impressions, reach, engagement, followers
- *   get_dms              — unified DM inbox for a platform
- *   get_comments         — unified comments for a platform
- *   boost_post           — paid social / ads boost
- */
-
-/*
- * # b_a002 migration notes (2026-05-24)
- *
- * metaads, liads, ttads, xads migrated from Composio to Zernio for OAuth.
- * Full ad campaign management APIs are out of scope — only the auth/connection
- * layer is wired here.
- *
- * Platform identifier uncertainty:
- *   workspaces4.jsx sends connector.id as `app` (i.e. "metaads", "liads",
- *   "ttads", "xads"). These are added to SUPPORTED_PLATFORMS and passed
- *   directly to Zernio as the `platform` field, following the same pattern
- *   as "pinads". UNCONFIRMED: whether Zernio's OAuth endpoint recognises
- *   "metaads", "liads", "ttads", "xads" as valid platform slugs. If Zernio
- *   uses different identifiers (e.g. "facebook_ads", "linkedin_ads"), add a
- *   mapping in handleInitiateConnection / handleConnectionStatus /
- *   handleDisconnect before shipping to users.
- *
- * Connection flow on paper for each of the four connectors:
- *   1. User clicks tile → handleConnectSubmit → POST /api/zernio
- *        { action: "initiate_connection", app: "<id>", redirectUri }
- *   2. zernio.js validates platform ∈ SUPPORTED_PLATFORMS ✓ (after this PR)
- *      → forwards platform:"<id>" to Zernio /connections/initiate
- *      → returns { ok, mode:"oauth", redirectUrl }  [UNCONFIRMED: Zernio accepts slug]
- *   3. Popup opens redirectUrl. Zernio handles the OAuth handshake with the
- *      ad platform (Meta / LinkedIn / TikTok / X).
- *   4. Callback hits oauth-callback.html?zernio_connected=<id>
- *      → postMessage to opener, then polling picks it up.
- *   5. Poll: POST /api/zernio { action:"connection_status", app:"<id>" }
- *      → Zernio /connections/status?platform=<id>  [UNCONFIRMED]
- *      → returns connected:true → verifyAndPersistConnection → Supabase upsert
- *   6. Tile flips green.
+ *   schedule_post        — schedule post via Zernio natively
+ *   get_analytics        — platform analytics
+ *   get_dms              — unified DM inbox
+ *   get_comments         — unified comments
+ *   boost_post           — paid boost (endpoint unverified)
+ *   resolve_authors      — list connected accounts / pages for a platform
+ *   reply_comment        — reply to a comment (endpoint unverified)
+ *   reply_dm             — reply to a DM (endpoint unverified)
  */
 
 import { requireAuthOrCron, requireAuth } from "./lib/auth.js";
-import { corsHeaders, corsPreflightResponse, jsonResponse, errResponse } from "./lib/cors.js";
+import { corsPreflightResponse, jsonResponse, errResponse } from "./lib/cors.js";
 
 export const config = { runtime: "edge" };
 
-const ZERNIO_BASE = "https://api.zernio.io/v1";
+const ZERNIO_BASE = "https://zernio.com/api/v1";
 
-// Maps FlowOS short connector IDs → Zernio platform slugs.
-// Organic connectors use abbreviated IDs in seed.jsx (fb, ig, li, tt, pn, yt)
-// but Zernio expects full platform names. workspaces4 always sends connector.id,
-// so we resolve here rather than changing the call shape.
+/**
+ * PLATFORM_ID_MAP: FlowOS short connector IDs → Zernio platform slugs.
+ * workspaces4.jsx always sends connector.id as `app`; we resolve here.
+ * Confirmed against https://docs.zernio.com (2026-05-24).
+ */
 const PLATFORM_ID_MAP = {
-  fb:  "facebook",
-  ig:  "instagram",
-  li:  "linkedin",
-  tt:  "tiktok",
-  pn:  "pinterest",
-  yt:  "youtube",
+  fb:        "facebook",
+  ig:        "instagram",
+  li:        "linkedin",
+  tt:        "tiktok",
+  pn:        "pinterest",
+  yt:        "youtube",
+  x:         "twitter",       // Zernio uses "twitter", not "x"
+  gbusiness: "googlebusiness", // Zernio uses "googlebusiness"
+};
+
+/**
+ * ZERNIO_TO_FLOWOS: reverse map for Supabase channel lookups.
+ * channels.platform stores FlowOS connector IDs (fb, ig, li…);
+ * some callers (thin proxies) pass resolved Zernio slugs — this maps back.
+ */
+const ZERNIO_TO_FLOWOS = {
+  facebook:       "fb",
+  instagram:      "ig",
+  linkedin:       "li",
+  tiktok:         "tt",
+  pinterest:      "pn",
+  youtube:        "yt",
+  twitter:        "x",
+  googlebusiness: "gbusiness",
 };
 
 function resolvePlatform(id) {
   return PLATFORM_ID_MAP[id] || id;
 }
 
-// Gate check uses FlowOS IDs (short or full — both accepted).
+function flowOSId(platform) {
+  return ZERNIO_TO_FLOWOS[platform] || platform;
+}
+
+// Organic social platforms only.
 const SUPPORTED_PLATFORMS = new Set([
-  // Organic social — full Zernio slugs
-  "linkedin", "facebook", "instagram", "x", "reddit",
-  "tiktok", "pinterest", "threads", "bluesky", "youtube",
-  "whatsapp", "telegram", "snapchat", "discord", "gbusiness",
-  // Organic social — FlowOS short IDs (resolved to full names via PLATFORM_ID_MAP before API calls)
-  "fb", "ig", "li", "tt", "pn", "yt",
-  // Paid social — FlowOS connector IDs passed directly to Zernio.
-  // Zernio slug support for metaads/liads/ttads/xads is UNCONFIRMED
-  // (see b_a002 migration notes above). pinads is confirmed working.
-  "pinads", "metaads", "liads", "ttads", "xads",
+  // FlowOS short IDs
+  "fb", "ig", "li", "tt", "pn", "yt", "x", "gbusiness",
+  // Full Zernio slugs (confirmed)
+  "facebook", "instagram", "linkedin", "tiktok", "pinterest", "youtube",
+  "twitter", "reddit", "bluesky", "threads", "googlebusiness",
+  "whatsapp", "telegram", "snapchat", "discord",
 ]);
 
-function zernioHeaders(tenantId) {
+// ─── Zernio API helpers ───────────────────────────────────────────────────────
+
+function zernioHeaders() {
   const key = process.env.ZERNIO_API_KEY;
   if (!key) throw new Error("ZERNIO_API_KEY env var not set");
   return {
-    "Authorization":      `Bearer ${key}`,
-    "Content-Type":       "application/json",
-    "X-External-User-ID": tenantId,
+    "Authorization": `Bearer ${key}`,
+    "Content-Type":  "application/json",
   };
 }
 
-async function zernioFetch(path, options = {}, tenantId) {
+async function zernioFetch(path, options = {}) {
   const res = await fetch(`${ZERNIO_BASE}${path}`, {
     ...options,
-    headers: { ...zernioHeaders(tenantId), ...(options.headers || {}) },
+    headers: { ...zernioHeaders(), ...(options.headers || {}) },
   });
   const text = await res.text();
   let data;
@@ -125,12 +120,82 @@ async function zernioFetch(path, options = {}, tenantId) {
   return data;
 }
 
+// ─── Supabase helpers (profile storage + channel lookup) ─────────────────────
+
+function sbHeaders() {
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  return {
+    "apikey":        key,
+    "Authorization": `Bearer ${key}`,
+    "Content-Type":  "application/json",
+  };
+}
+
+async function getZernioProfileId(tenantId) {
+  const url = `${process.env.SUPABASE_URL}/rest/v1/connector_credentials` +
+    `?user_id=eq.${encodeURIComponent(tenantId)}&platform=eq.zernio_profile` +
+    `&select=secret_value&limit=1`;
+  const res = await fetch(url, { headers: sbHeaders() });
+  if (!res.ok) return null;
+  const rows = await res.json();
+  return rows?.[0]?.secret_value || null;
+}
+
+async function storeZernioProfileId(tenantId, profileId) {
+  await fetch(`${process.env.SUPABASE_URL}/rest/v1/connector_credentials`, {
+    method:  "POST",
+    headers: { ...sbHeaders(), "Prefer": "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify({
+      user_id:      tenantId,
+      platform:     "zernio_profile",
+      secret_kind:  "profile_id",
+      secret_value: profileId,
+      validated_at: new Date().toISOString(),
+      updated_at:   new Date().toISOString(),
+    }),
+  });
+}
+
+/**
+ * Returns the cached Zernio profileId for a tenant, creating one if absent.
+ * Each FlowOS tenant gets exactly one Zernio profile (named by tenantId).
+ */
+async function getOrCreateZernioProfile(tenantId) {
+  const cached = await getZernioProfileId(tenantId);
+  if (cached) return cached;
+
+  const data = await zernioFetch("/profiles", {
+    method: "POST",
+    body:   JSON.stringify({ name: tenantId, description: "FlowOS tenant" }),
+  });
+  const profileId = data.profile?._id || data._id;
+  if (!profileId) throw new Error("Zernio profile creation returned no _id");
+  await storeZernioProfileId(tenantId, profileId);
+  return profileId;
+}
+
+/**
+ * Load the Zernio accountId (_id from GET /accounts) for a connected platform.
+ * Stored in channels.composio_connection_id at verify-and-persist time.
+ * Accepts either a Zernio slug ("linkedin") or FlowOS ID ("li").
+ */
+async function getZernioAccountId(tenantId, platform) {
+  const channelPlatform = flowOSId(platform); // normalize to FlowOS ID for DB lookup
+  const url = `${process.env.SUPABASE_URL}/rest/v1/channels` +
+    `?user_id=eq.${encodeURIComponent(tenantId)}&platform=eq.${encodeURIComponent(channelPlatform)}` +
+    `&select=composio_connection_id&limit=1`;
+  const res = await fetch(url, { headers: sbHeaders() });
+  if (!res.ok) return null;
+  const rows = await res.json();
+  return rows?.[0]?.composio_connection_id || null;
+}
+
 // ─── Action handlers ──────────────────────────────────────────────────────────
 
 /**
  * initiate_connection
- * Starts the Zernio OAuth flow for a tenant + platform. Returns a redirectUrl
- * the frontend opens in a popup. Zernio handles the full OAuth handshake.
+ * Creates (or reuses) a Zernio profile for the tenant, returns the OAuth URL.
+ * Flow: GET /v1/connect/{platform}?profileId={id} → { authUrl }
  */
 async function handleInitiateConnection({ tenantId, app, redirectUri }) {
   if (!app) return errResponse("app required");
@@ -139,143 +204,147 @@ async function handleInitiateConnection({ tenantId, app, redirectUri }) {
     return errResponse(`Unsupported platform: ${platform}. Supported: ${[...SUPPORTED_PLATFORMS].join(", ")}`);
   }
 
-  const data = await zernioFetch("/connections/initiate", {
-    method: "POST",
-    body: JSON.stringify({
-      platform:         resolvePlatform(platform),
-      external_user_id: tenantId,
-      callback_url:     redirectUri || null,
-    }),
-  }, tenantId);
+  const profileId        = await getOrCreateZernioProfile(tenantId);
+  const resolvedPlatform = resolvePlatform(platform);
+  const qs               = new URLSearchParams({ profileId });
+  if (redirectUri) qs.set("redirectUrl", redirectUri);
+
+  const data = await zernioFetch(`/connect/${resolvedPlatform}?${qs}`, { method: "GET" });
 
   return jsonResponse({
-    ok:           true,
-    mode:         "oauth",
-    redirectUrl:  data.oauth_url || data.redirect_url,
-    connectionId: data.connection_id || null,
+    ok:          true,
+    mode:        "oauth",
+    redirectUrl: data.authUrl || data.auth_url,
   });
 }
 
 /**
  * connection_status
- * Polls Zernio for an active connection for this tenant + platform.
+ * Polls whether OAuth completed for this tenant + platform.
+ * GET /v1/accounts?profileId={id}&platform={slug}
  */
 async function handleConnectionStatus({ tenantId, app }) {
   if (!app) return errResponse("app required");
-  const platform = app.toLowerCase();
+  const platform         = app.toLowerCase();
+  const resolvedPlatform = resolvePlatform(platform);
 
-  const data = await zernioFetch(
-    `/connections/status?platform=${encodeURIComponent(resolvePlatform(platform))}`,
-    { method: "GET" },
-    tenantId,
-  );
+  const profileId = await getZernioProfileId(tenantId);
+  if (!profileId) {
+    return jsonResponse({ ok: true, connected: false, accountId: null, status: "not_connected", app });
+  }
+
+  const qs   = new URLSearchParams({ profileId, platform: resolvedPlatform });
+  const data = await zernioFetch(`/accounts?${qs}`, { method: "GET" });
+
+  // Filter client-side in case Zernio ignores the query params
+  const accounts = data.accounts || [];
+  const account  = accounts.find(a => a.platform === resolvedPlatform);
 
   return jsonResponse({
     ok:        true,
-    connected: data.connected ?? !!data.connection_id,
-    accountId: data.connection_id || null,
-    handle:    data.handle || data.username || null,
-    status:    data.connected ? "ACTIVE" : "not_connected",
+    connected: !!account,
+    accountId: account?._id || null,
+    handle:    account?.handle || account?.username || null,
+    status:    account ? "ACTIVE" : "not_connected",
     app,
   });
 }
 
 /**
  * disconnect
- * Revokes the Zernio connection for a tenant + platform.
+ * Deletes the Zernio social account connection.
+ * DELETE /v1/accounts/{accountId}
  */
-async function handleDisconnect({ tenantId, app, accountId }) {
-  if (!app) return errResponse("app required");
-  const platform = app.toLowerCase();
+async function handleDisconnect({ app, accountId }) {
+  if (!app)       return errResponse("app required");
+  if (!accountId) return errResponse("accountId required");
 
-  await zernioFetch("/connections/disconnect", {
-    method: "POST",
-    body: JSON.stringify({ platform: resolvePlatform(platform), connection_id: accountId || null }),
-  }, tenantId);
-
+  await zernioFetch(`/accounts/${encodeURIComponent(accountId)}`, { method: "DELETE" });
   return jsonResponse({ ok: true });
 }
 
 /**
  * publish_now
- * Post to a platform immediately via Zernio.
- * Body fields vary by platform but the common shape is:
- *   { platform, text, imageUrl?, videoUrl?, title?, subreddit?, authorId? }
+ * Posts immediately via Zernio.
+ * POST /v1/posts with { content, publishNow: true, platforms: [{platform, accountId}] }
+ * Loads accountId from channels table if not in body.
  */
 async function handlePublishNow(body) {
-  const { tenantId, platform, text, imageUrl, videoUrl, title,
-          subreddit, authorId, authorUrn, pageId, igUserId } = body;
+  const { tenantId, platform, text, imageUrl, videoUrl, title, subreddit } = body;
   if (!platform) return errResponse("platform required");
   if (!text && !imageUrl && !videoUrl) return errResponse("text, imageUrl, or videoUrl required");
 
+  const resolvedPlatform = resolvePlatform(platform.toLowerCase());
+  const accountId = body.accountId || await getZernioAccountId(tenantId, platform);
+  if (!accountId) return errResponse(`No connected account found for ${platform}. Reconnect and try again.`);
+
   const payload = {
-    platform:         platform.toLowerCase(),
-    text:             text || null,
-    image_url:        imageUrl || null,
-    video_url:        videoUrl || null,
-    title:            title   || null,
-    subreddit:        subreddit || null,
-    author_id:        authorId || authorUrn || pageId || igUserId || null,
+    content:    text || null,
+    publishNow: true,
+    platforms:  [{ platform: resolvedPlatform, accountId }],
+    ...(imageUrl  ? { media: [{ url: imageUrl, type: "image" }] } : {}),
+    ...(videoUrl  ? { media: [{ url: videoUrl, type: "video" }] } : {}),
+    ...(title     ? { title }     : {}),
+    ...(subreddit ? { subreddit } : {}),
   };
 
-  const data = await zernioFetch("/posts/publish", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  }, tenantId);
+  const data = await zernioFetch("/posts", { method: "POST", body: JSON.stringify(payload) });
 
   return jsonResponse({
     ok:      true,
-    postId:  data.post_id   || data.id      || null,
-    postUrl: data.post_url  || data.url      || null,
+    postId:  data.post?._id || data.id    || null,
+    postUrl: data.post?.url || data.url   || null,
     raw:     data,
   });
 }
 
 /**
  * schedule_post
- * Hand scheduling entirely to Zernio — no FlowOS cron needed for social.
+ * Delegates scheduling to Zernio natively (no FlowOS cron needed for social).
+ * POST /v1/posts with { content, scheduledFor, timezone, platforms: [{platform, accountId}] }
  */
 async function handleSchedulePost(body) {
-  const { tenantId, platform, text, imageUrl, videoUrl, title,
-          subreddit, authorId, authorUrn, pageId, igUserId, scheduledAt } = body;
+  const { tenantId, platform, text, imageUrl, videoUrl, title, subreddit, scheduledAt } = body;
   if (!platform)    return errResponse("platform required");
   if (!scheduledAt) return errResponse("scheduledAt (ISO 8601 UTC) required");
 
+  const resolvedPlatform = resolvePlatform(platform.toLowerCase());
+  const accountId = body.accountId || await getZernioAccountId(tenantId, platform);
+  if (!accountId) return errResponse(`No connected account found for ${platform}. Reconnect and try again.`);
+
   const payload = {
-    platform:         platform.toLowerCase(),
-    text:             text     || null,
-    image_url:        imageUrl || null,
-    video_url:        videoUrl || null,
-    title:            title    || null,
-    subreddit:        subreddit || null,
-    author_id:        authorId || authorUrn || pageId || igUserId || null,
-    scheduled_at:     scheduledAt,
+    content:      text    || null,
+    scheduledFor: scheduledAt,
+    timezone:     "UTC",
+    platforms:    [{ platform: resolvedPlatform, accountId }],
+    ...(imageUrl  ? { media: [{ url: imageUrl, type: "image" }] } : {}),
+    ...(videoUrl  ? { media: [{ url: videoUrl, type: "video" }] } : {}),
+    ...(title     ? { title }     : {}),
+    ...(subreddit ? { subreddit } : {}),
   };
 
-  const data = await zernioFetch("/posts/schedule", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  }, tenantId);
+  const data = await zernioFetch("/posts", { method: "POST", body: JSON.stringify(payload) });
 
   return jsonResponse({
     ok:          true,
-    scheduleId:  data.schedule_id || data.id || null,
-    scheduledAt: data.scheduled_at || scheduledAt,
+    scheduleId:  data.post?._id || data.id || null,
+    scheduledAt: scheduledAt,
     platform,
   });
 }
 
 /**
  * get_analytics
- * Impressions, reach, engagement rate, follower count for a platform.
+ * GET /v1/analytics/{platform}/{metric}
+ * ENDPOINT_PARTIAL: metric enum values not fully confirmed from docs.
  */
-async function handleGetAnalytics({ tenantId, platform, period = "30d" }) {
+async function handleGetAnalytics({ platform, period = "30d", metric = "followers" }) {
   if (!platform) return errResponse("platform required");
+  const resolvedPlatform = resolvePlatform(platform.toLowerCase());
 
   const data = await zernioFetch(
-    `/analytics?platform=${encodeURIComponent(platform)}&period=${encodeURIComponent(period)}`,
+    `/analytics/${resolvedPlatform}/${metric}?period=${encodeURIComponent(period)}`,
     { method: "GET" },
-    tenantId,
   );
 
   return jsonResponse({ ok: true, platform, period, analytics: data });
@@ -283,136 +352,146 @@ async function handleGetAnalytics({ tenantId, platform, period = "30d" }) {
 
 /**
  * get_dms
- * Unified DM inbox for a platform.
+ * ENDPOINT_UNVERIFIED: exact path not confirmed from Zernio docs.
  */
-async function handleGetDms({ tenantId, platform, limit = 50, cursor }) {
+async function handleGetDms({ tenantId, platform, limit = 50, cursor, accountId: bodyAccountId }) {
   if (!platform) return errResponse("platform required");
+  const resolvedPlatform = resolvePlatform(platform.toLowerCase());
+  const accountId = bodyAccountId || await getZernioAccountId(tenantId, platform);
 
-  const qs = new URLSearchParams({ platform, limit: String(limit) });
-  if (cursor) qs.set("cursor", cursor);
+  const qs = new URLSearchParams({ platform: resolvedPlatform, limit: String(limit) });
+  if (cursor)    qs.set("cursor", cursor);
+  if (accountId) qs.set("accountId", accountId);
 
-  const data = await zernioFetch(`/messages/dms?${qs}`, { method: "GET" }, tenantId);
-
-  return jsonResponse({ ok: true, platform, messages: data.messages || data.dms || [], nextCursor: data.next_cursor || null });
+  const data = await zernioFetch(`/messages?${qs}`, { method: "GET" });
+  return jsonResponse({
+    ok:         true,
+    platform,
+    messages:   data.messages || data.dms || [],
+    nextCursor: data.next_cursor || null,
+  });
 }
 
 /**
  * get_comments
- * Unified comments for a platform (optionally filtered by post).
+ * ENDPOINT_UNVERIFIED: exact path not confirmed from Zernio docs.
  */
-async function handleGetComments({ tenantId, platform, postId, limit = 50, cursor }) {
+async function handleGetComments({ platform, postId, limit = 50, cursor }) {
   if (!platform) return errResponse("platform required");
+  const resolvedPlatform = resolvePlatform(platform.toLowerCase());
 
-  const qs = new URLSearchParams({ platform, limit: String(limit) });
+  const qs = new URLSearchParams({ platform: resolvedPlatform, limit: String(limit) });
   if (postId) qs.set("post_id", postId);
   if (cursor) qs.set("cursor", cursor);
 
-  const data = await zernioFetch(`/comments?${qs}`, { method: "GET" }, tenantId);
-
-  return jsonResponse({ ok: true, platform, comments: data.comments || [], nextCursor: data.next_cursor || null });
+  const data = await zernioFetch(`/comments?${qs}`, { method: "GET" });
+  return jsonResponse({
+    ok:         true,
+    platform,
+    comments:   data.comments || [],
+    nextCursor: data.next_cursor || null,
+  });
 }
 
 /**
  * boost_post
- * Submit a paid social / ads boost request via Zernio.
+ * ENDPOINT_UNVERIFIED: Zernio paid boost endpoint not confirmed from docs.
  */
-async function handleBoostPost({ tenantId, platform, postId, budgetUsd, durationDays, targetAudience }) {
-  if (!platform) return errResponse("platform required");
-  if (!postId)   return errResponse("postId required");
+async function handleBoostPost({ platform, postId, budgetUsd, durationDays, targetAudience }) {
+  if (!platform)  return errResponse("platform required");
+  if (!postId)    return errResponse("postId required");
   if (!budgetUsd) return errResponse("budgetUsd required");
 
   const data = await zernioFetch("/ads/boost", {
     method: "POST",
     body: JSON.stringify({
-      platform,
+      platform:        resolvePlatform(platform.toLowerCase()),
       post_id:         postId,
       budget_usd:      budgetUsd,
       duration_days:   durationDays || 7,
       target_audience: targetAudience || null,
     }),
-  }, tenantId);
+  });
 
   return jsonResponse({ ok: true, boostId: data.boost_id || data.id || null, platform, raw: data });
 }
 
 /**
  * resolve_authors
- * Returns normalized author/page list for platforms that support multiple
- * publishing identities (LinkedIn, Facebook, Instagram).
- * Replaces the per-platform resolve_author / resolve_pages / resolve_accounts actions.
+ * Returns connected accounts for a platform (pages, orgs, etc.).
+ * GET /v1/accounts?profileId={id}&platform={slug}
  */
 async function handleResolveAuthors({ tenantId, platform }) {
   if (!platform) return errResponse("platform required");
+  const resolvedPlatform = resolvePlatform(platform.toLowerCase());
 
-  const data = await zernioFetch(
-    `/accounts/authors?platform=${encodeURIComponent(platform)}`,
-    { method: "GET" },
-    tenantId,
-  );
+  const profileId = await getZernioProfileId(tenantId);
+  const qs        = new URLSearchParams({ platform: resolvedPlatform });
+  if (profileId) qs.set("profileId", profileId);
 
-  const raw = data.authors || data.pages || data.accounts || [];
-  const authors = raw.map(a => ({
-    urn:  a.id || a.urn,
-    name: a.name || a.handle || null,
-    kind: a.kind || a.type || "page",
-    extra: a.extra || {},
-  }));
+  const data = await zernioFetch(`/accounts?${qs}`, { method: "GET" });
+  const raw  = data.accounts || [];
+
+  const authors = raw
+    .filter(a => a.platform === resolvedPlatform)
+    .map(a => ({
+      urn:   a._id || a.id,
+      name:  a.name || a.handle || a.username || null,
+      kind:  a.kind || a.type || "account",
+      extra: a,
+    }));
 
   return jsonResponse({ ok: true, platform, authors });
 }
 
 /**
  * reply_comment
- * Reply to a comment on a platform via Zernio.
- * Endpoint inferred from existing /comments path; confirmed at runtime.
+ * ENDPOINT_UNVERIFIED: exact path not confirmed from Zernio docs.
  */
-async function handleReplyComment({ tenantId, platform, commentId, text }) {
-  if (!platform) return errResponse("platform required");
+async function handleReplyComment({ platform, commentId, text }) {
+  if (!platform)  return errResponse("platform required");
   if (!commentId) return errResponse("comment_id required");
-  if (!text) return errResponse("text required");
+  if (!text)      return errResponse("text required");
 
   const data = await zernioFetch("/comments/reply", {
     method: "POST",
     body: JSON.stringify({
-      platform: platform.toLowerCase(),
+      platform:   resolvePlatform(platform.toLowerCase()),
       comment_id: commentId,
       text,
     }),
-  }, tenantId);
+  });
 
   return jsonResponse({ ok: true, replyId: data.reply_id || data.id || null, raw: data });
 }
 
 /**
  * reply_dm
- * Reply to a DM conversation on a platform via Zernio.
- * Endpoint inferred from existing /messages path; confirmed at runtime.
+ * ENDPOINT_UNVERIFIED: exact path not confirmed from Zernio docs.
  */
-async function handleReplyDm({ tenantId, platform, conversationId, text }) {
-  if (!platform) return errResponse("platform required");
+async function handleReplyDm({ platform, conversationId, text }) {
+  if (!platform)       return errResponse("platform required");
   if (!conversationId) return errResponse("conversation_id required");
-  if (!text) return errResponse("text required");
+  if (!text)           return errResponse("text required");
 
   const data = await zernioFetch("/messages/reply", {
     method: "POST",
     body: JSON.stringify({
-      platform: platform.toLowerCase(),
+      platform:        resolvePlatform(platform.toLowerCase()),
       conversation_id: conversationId,
       text,
     }),
-  }, tenantId);
+  });
 
   return jsonResponse({ ok: true, replyId: data.reply_id || data.id || null, raw: data });
 }
 
-// ─── Main handler ──────────────────────────────────────────────────────────────
+// ─── Main handler ─────────────────────────────────────────────────────────────
 
 export default async function handler(req) {
   if (req.method === "OPTIONS") return corsPreflightResponse();
   if (req.method !== "POST") return errResponse("POST required", 405);
 
-  // publish_now and schedule_post support dual-auth (user JWT or cron secret)
-  // so the cron can fire scheduled social posts via Zernio.
   let body;
   try { body = await req.json(); } catch { return errResponse("Invalid JSON body", 400); }
 
@@ -430,7 +509,6 @@ export default async function handler(req) {
     tenantId = auth.tenantId;
   }
 
-  // Override tenantId from verified auth — never trust client-supplied value.
   body = { ...body, tenantId };
 
   try {
@@ -450,8 +528,8 @@ export default async function handler(req) {
       default:
         return errResponse(
           `Unknown action "${action}". Supported: initiate_connection, connection_status, disconnect, ` +
-          `publish_now, schedule_post, get_analytics, get_dms, get_comments, boost_post, resolve_authors, ` +
-          `reply_comment, reply_dm`,
+          `publish_now, schedule_post, get_analytics, get_dms, get_comments, boost_post, ` +
+          `resolve_authors, reply_comment, reply_dm`,
         );
     }
   } catch (e) {

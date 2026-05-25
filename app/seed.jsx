@@ -115,11 +115,11 @@ const SEED = {
     { id: "spotifyads", name: "Spotify Ads",      category: "Paid Audio",  group: "Ads",            desc: "Audio + video spots · creative handoff (manual upload to Ad Studio)", auth: "Manual",  provider: "direct",   slug: "spotify", domain: "adstudio.spotify.com"  },
 
     // ── Paid Social ──────────────────────────────────────────────────────────
-    { id: "metaads",    name: "Meta Ads",         category: "Paid Social", group: "Ads",            desc: "Facebook + Instagram paid · Advantage+",          auth: "OAuth",   provider: "zernio",   slug: "meta", domain: "business.facebook.com"  },
-    { id: "liads",      name: "LinkedIn Ads",     category: "Paid Social", group: "Ads",            desc: "Sponsored content · B2B",                         auth: "OAuth",   provider: "zernio",   slug: "linkedin", domain: "business.linkedin.com"  },
-    { id: "ttads",      name: "TikTok Ads",       category: "Paid Social", group: "Ads",            desc: "Spark Ads, paid creator content",                 auth: "OAuth",   provider: "zernio",   slug: "tiktok", domain: "ads.tiktok.com"  },
-    { id: "xads",       name: "X Ads",            category: "Paid Social", group: "Ads",            desc: "Promoted posts, Amplify",                         auth: "OAuth",   provider: "zernio",   slug: "x", domain: "ads.x.com"  },
-    { id: "pinads",     name: "Pinterest Ads",    category: "Paid Social", group: "Ads",            desc: "Promoted pins · discovery intent",                auth: "OAuth",   provider: "zernio",   slug: "pinterest", domain: "business.pinterest.com"  },
+    { id: "metaads",    name: "Meta Ads",         category: "Paid Social", group: "Ads",            desc: "Facebook + Instagram paid · Advantage+",          auth: "OAuth",   provider: "composio", slug: "meta", domain: "business.facebook.com"  },
+    { id: "liads",      name: "LinkedIn Ads",     category: "Paid Social", group: "Ads",            desc: "Sponsored content · B2B",                         auth: "OAuth",   provider: "composio", slug: "linkedin", domain: "business.linkedin.com"  },
+    { id: "ttads",      name: "TikTok Ads",       category: "Paid Social", group: "Ads",            desc: "Spark Ads, paid creator content",                 auth: "OAuth",   provider: "composio", slug: "tiktok", domain: "ads.tiktok.com"  },
+    { id: "xads",       name: "X Ads",            category: "Paid Social", group: "Ads",            desc: "Promoted posts, Amplify",                         auth: "OAuth",   provider: "composio", slug: "x", domain: "ads.x.com"  },
+    { id: "pinads",     name: "Pinterest Ads",    category: "Paid Social", group: "Ads",            desc: "Promoted pins · discovery intent",                auth: "OAuth",   provider: "composio", slug: "pinterest", domain: "business.pinterest.com"  },
 
     // ── Organic Social (all via Zernio) ──────────────────────────────────────
     { id: "fb",         name: "Facebook",         category: "Organic Social", group: "Social",      desc: "Pages & posts",                                   auth: "OAuth",   provider: "zernio",   slug: "facebook", domain: "facebook.com"  },
