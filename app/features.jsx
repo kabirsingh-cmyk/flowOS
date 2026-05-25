@@ -980,6 +980,7 @@ function OrganicSocialStudio({ state, actions }) {
   const [subredditSuggestions, setSubredditSuggestions] = useStateF([]);
   const [subredditLoading, setSubredditLoading] = useStateF(false);
   const subredditDebounce = useRefF(null);
+  const [recLoading, setRecLoading] = useStateF(false);
 
   // ── Real data from Supabase ────────────────────────────────────────────────
   const [posts, setPosts]       = useStateF([]);
@@ -1365,11 +1366,38 @@ function OrganicSocialStudio({ state, actions }) {
             )}
 
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-                Caption <span style={{ textTransform: "none", fontWeight: 400, letterSpacing: 0 }}>— ask Drafter to write this</span>
+              <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Caption</span>
+                <button
+                  type="button"
+                  disabled={recLoading}
+                  onClick={async () => {
+                    const brand = state?.brandPreset || {};
+                    setRecLoading(true);
+                    try {
+                      const res = await apiFetch("/api/google-ads", {
+                        method: "POST",
+                        body: JSON.stringify({
+                          action:    "recommend_social_post",
+                          platform:  draft.platform,
+                          postType:  draft.type,
+                          brandName: brand.name  || "",
+                          brandVoice:brand.voice || "",
+                          brandUrl:  brand.url   || "",
+                        }),
+                      });
+                      const caption = res?.data?.caption || res?.caption || "";
+                      if (caption) setDraft(d => ({ ...d, caption }));
+                    } catch {}
+                    setRecLoading(false);
+                  }}
+                  style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: recLoading ? "var(--muted)" : "var(--accent-ink)", background: "var(--accent)", border: "none", borderRadius: 4, padding: "3px 8px", cursor: recLoading ? "default" : "pointer", letterSpacing: "0.04em" }}
+                >
+                  {recLoading ? "Generating…" : "Generate ✦"}
+                </button>
               </span>
               <textarea value={draft.caption} onChange={e => setDraft(d => ({ ...d, caption: e.target.value }))}
-                rows={4} placeholder="Write a caption, or leave blank and ask Drafter in chat…"
+                rows={4} placeholder="Write a caption, or click Generate ✦ for an AI draft…"
                 style={{ padding: "10px 12px", border: "1px solid var(--rule-strong)", borderRadius: 5, fontSize: 13.5, fontFamily: "var(--font-serif)", fontStyle: "italic", lineHeight: 1.6, background: "var(--paper)", resize: "vertical" }}/>
             </label>
 

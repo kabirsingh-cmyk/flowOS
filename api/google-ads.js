@@ -417,6 +417,59 @@ Rules:
   }
 }
 
+// AI social post caption recommendation — returns { caption } tuned to platform + format
+async function recommendSocialPost({ brandName, brandVoice, brandUrl, platform, postType, hint }) {
+  const platformGuide = {
+    instagram: "engaging, visual-first, 1–3 sentences + 3–5 relevant hashtags, emoji encouraged",
+    tiktok:    "punchy hook in first line, casual tone, trending-aware, 1–2 sentences + 3 hashtags",
+    linkedin:  "professional, insight-led, 2–3 short paragraphs, no more than 2 hashtags",
+    facebook:  "conversational, community-first, 2–3 sentences, 1–2 hashtags optional",
+    x:         "concise, max 280 chars total, punchy opinion or fact, 1 hashtag max",
+    pinterest: "descriptive, keyword-rich for discovery, 2–3 sentences, no hashtags",
+    youtube:   "compelling hook for description or script intro, 3–4 sentences, benefit-led",
+    reddit:    "genuine, community-aware, no marketing speak, 2–3 sentences, no hashtags",
+  }[platform] || "engaging, on-brand, 2–3 sentences";
+
+  const hintLine = hint ? `Context hint: "${hint}".` : "";
+  const prompt = `You are a social media copywriter. Write a single ${platform} ${postType || "post"} caption for the brand below.
+
+Brand: ${brandName || "Unknown brand"}
+Website: ${brandUrl || ""}
+Brand voice: ${brandVoice || "professional, benefit-led"}
+Platform style guide: ${platformGuide}
+${hintLine}
+
+Output ONLY valid JSON — no other text:
+{ "caption": "complete post caption ready to publish" }
+
+Rules:
+- Follow the platform style guide exactly
+- Match the brand voice
+- Do not include any explanation or wrapper text — only the JSON`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key":         process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+      "Content-Type":      "application/json",
+    },
+    body: JSON.stringify({
+      model:      "claude-3-5-haiku-20241022",
+      max_tokens: 400,
+      messages:   [{ role: "user", content: prompt }],
+    }),
+  });
+  const data = await res.json();
+  const raw  = data.content?.[0]?.text || "{}";
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const match = raw.match(/\{[\s\S]*\}/);
+    return match ? JSON.parse(match[0]) : { caption: "" };
+  }
+}
+
 // AI ad copy — no Google credentials, just Claude
 async function generateAdCopy({ brandName, productName, keywords, tone, url, voiceNote }) {
   const prompt = `You are an expert Google Ads copywriter. Generate high-converting responsive search ad copy.
@@ -488,6 +541,9 @@ export default async function handler(req) {
         break;
       case "recommend_email_campaign":
         result = await recommendEmailCampaign(params);
+        break;
+      case "recommend_social_post":
+        result = await recommendSocialPost(params);
         break;
       case "generate_copy":
         result = await generateAdCopy(params);
