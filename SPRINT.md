@@ -30,30 +30,29 @@ Nothing actively in progress.
 
 ---
 
-## Up next (top of backlog)
+## Up next — one chat each, in priority order
 
-| ID | What | Why it matters |
-|----|------|----------------|
-| b_60f8 | **BUG: Composio code 306 hangs Connect modal forever** | Now only affects Shopify (all ads + social on Zernio); modal hangs indefinitely on 409 response |
-| b_43d9 | Reddit native image posts | Zernio may support natively; needs verification |
-| b_b259 | Chat AI drafts for platforms with no publish path | Drafter should flag non-publishable drafts rather than silently produce them |
-| b_317a | Strip or preview-tag platform pickers without backends | 10 Zernio platforms now have backends in cron; remaining 5 (whatsapp/telegram/snap/discord/gbusiness) have connection flows but no cron route |
+| ID | Chat scope | What it touches | Effort |
+|----|-----------|-----------------|--------|
+| b_c001 | **Wire 5 remaining organic platforms to cron** | New thin proxy files: `api/whatsapp.js`, `api/telegram.js`, `api/snapchat.js`, `api/discord.js`, `api/googlebusiness.js` — all identical to existing proxies. Add to `PLATFORM_ROUTES` in `api/cron/fire-scheduled.js`. Discord needs `channelId` in `platformSpecificData`. | Small |
+| b_c002 | **Social ads action layer (all 5 paid platforms)** | New `api/social-ads.js` with actions: `list_campaigns`, `create_campaign`, `boost_post`, `get_analytics`, `create_audience`. Endpoints confirmed from Zernio docs: `POST /v1/ads/create`, `POST /v1/ads/boost`, `GET /v1/ads/{id}/analytics`, `POST /v1/ads/audiences`, `GET /v1/ads/interests`. Covers metaads, liads→linkedinads, ttads→tiktokads, xads, pinads→pinterestads. | Medium |
+| b_c003 | **Fix unverified inbox endpoints in zernio.js** | `get_dms`, `reply_dm`, `get_comments`, `reply_comment`, `get_analytics` — currently marked ENDPOINT_UNVERIFIED / ENDPOINT_PARTIAL. Resolve against Zernio docs. Affects InboxEscalation workspace. | Small |
+| b_60f8 | **BUG: Shopify 306 hangs Connect modal** | Frontend only — `workspaces4.jsx` doesn't handle 409 from Composio; modal spins forever. Show error message + link to Composio dashboard. | Small |
 
 ---
 
-## Known issues (not yet backlog items)
+## Known issues
 
-- Cron for `fire-scheduled` requires **Vercel Pro** (1-min schedule). On Hobby plan it won't fire reliably.
-- **b_60f8 scope (2026-05-24)**: Composio code 306 now only affects non-social connectors — Shopify and the four paid social ad connectors (metaads, liads, ttads, xads) that remain on Composio. X and TikTok organic use Zernio and are unaffected.
-- `sourceBriefId` on calendar items is wired but no UI reads it yet (backlog: b_2504).
+- Cron `fire-scheduled` requires **Vercel Pro** for guaranteed 1-min execution; Hobby plan won't fire reliably.
+- `sourceBriefId` on calendar items is wired but no UI reads it yet (b_2504).
 
 ---
 
 ## Health check
 
 Run `node scripts/health-check.mjs` after any session. Silent = all clear.
-*(Also runs automatically via Claude Code Stop hook — you'll see a red warning if something breaks.)*
+*(Also runs automatically via Claude Code Stop hook.)*
 
 ---
 
-*Last updated: 2026-05-24 — Zernio migration complete (b_a001, b_a003, b_8cad done)*
+*Last updated: 2026-05-24 — googleads migrated to Zernio; backlog restructured with one-chat scopes*
