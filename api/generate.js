@@ -320,6 +320,18 @@ async function handleGenerateVideo(body) {
     });
   }
 
+  // Reference image as first frame — if [REF_FRAME] prefix found in scene hint,
+  // extract the URL and use it directly instead of a generated start image.
+  let startImageUrl = null;
+  const videoSceneHint = promptIntent?.extra?.scene || '';
+  if (videoSceneHint.startsWith('[REF_FRAME]')) {
+    const refUrl = videoSceneHint.replace('[REF_FRAME]', '').trim();
+    if (refUrl && !startImageJobId) {
+      startImageUrl = refUrl;
+      promptIntent  = { ...promptIntent, extra: { ...(promptIntent.extra || {}), scene: '' } };
+    }
+  }
+
   // Fetch brand + product context
   const [brand, product] = await Promise.all([
     fetchBrand(tenantId),
@@ -337,7 +349,7 @@ async function handleGenerateVideo(body) {
   try {
     const result = await generateVideo(provider, {
       model, prompt, negative, aspectRatio, duration,
-      startImageJobId, startImageAspectRatio,
+      startImageJobId, startImageAspectRatio, startImageUrl,
     });
     providerJobId   = result.providerJobId;
     immediateStatus = result.status       || null;
