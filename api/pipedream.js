@@ -5,8 +5,6 @@
  *
  * Migration:
  *   - Pinterest (pn, pinads) → /api/zernio  (provider: "zernio")
- *   - SendGrid               → /api/sendgrid (provider: "direct")
- *   - Twilio                 → /api/twilio   (provider: "direct")
  *   - Runware                → /api/runware  (provider: "direct")
  *
  * Env vars that are no longer read:

@@ -2,6 +2,8 @@
 
 Read this at the start of every session. It replaces the need to re-discover the architecture by reading source files.
 
+> **Coding guidelines** (Think Before Coding · Simplicity First · Surgical Changes · Goal-Driven Execution) are in `~/CLAUDE.md` and apply here.
+
 ---
 
 ## What this is

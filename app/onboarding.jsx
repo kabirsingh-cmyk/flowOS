@@ -313,7 +313,6 @@ const ALL_CHANNELS = [
   { id: "gsc",        label: "Google Search Console", sub: "SEO & search performance",               color: "#4285f4" },
   { id: "ahrefs",     label: "Ahrefs",                sub: "SEO & backlink analysis",                color: "#ff6200" },
   { id: "moz",        label: "Moz",                   sub: "Domain authority & rank tracking",       color: "#005ea2" },
-  { id: "hubspot",    label: "HubSpot",               sub: "CRM & marketing hub",                    color: "#ff7a59" },
 ];
 
 // ─── Progress dots ─────────────────────────────────────────────────────────
