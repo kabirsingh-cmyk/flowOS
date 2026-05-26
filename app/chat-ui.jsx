@@ -911,6 +911,195 @@ function SeoAuditCard({ artifact, onOpen }) {
   );
 }
 
+// MediaPlanCard — inline render of the `media_plan` artifact from
+// create_media_plan. Each channel row shows priority, name, allocation bar,
+// percentage, and monthly spend. Tap a row to expand format / target CAC /
+// expected conversions / rationale. Footer surfaces excluded channels, risks,
+// and assumptions.
+function MediaPlanCard({ artifact }) {
+  const [openChannel, setOpenChannel] = useStateChat(null);
+  const accent = "oklch(54% 0.13 280)"; // distinct from seo-audit's 200 hue
+
+  const ds = artifact.dataSource || "benchmarks_only";
+  const dsLabel = ds === "tenant_analytics" ? "Tenant data"
+                : ds === "mixed"            ? "Mixed"
+                                            : "Benchmarks";
+  const dsTone  = ds === "tenant_analytics" ? "ok"
+                : ds === "mixed"            ? "accent"
+                                            : "neutral";
+
+  const currency = artifact.currency || "USD";
+  // Intl format → fail-safe (some currency codes can throw). Falls back to plain number.
+  const fmt = (n) => {
+    try {
+      return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(n || 0);
+    } catch {
+      return `${currency} ${Math.round(n || 0).toLocaleString("en-US")}`;
+    }
+  };
+
+  const channels    = Array.isArray(artifact.channels)    ? artifact.channels    : [];
+  const excluded    = Array.isArray(artifact.excluded)    ? artifact.excluded    : [];
+  const risks       = Array.isArray(artifact.risks)       ? artifact.risks       : [];
+  const assumptions = Array.isArray(artifact.assumptions) ? artifact.assumptions : [];
+
+  return (
+    <div data-testid="media-plan-card" style={{
+      marginTop: 10,
+      border: "1px solid var(--rule-strong)",
+      borderRadius: 6,
+      background: "var(--paper)",
+      overflow: "hidden",
+    }}>
+      {/* Header */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "9px 12px",
+        borderBottom: "1px solid var(--rule)",
+        background: "var(--paper-2)",
+      }}>
+        <Icon name="target" size={12}/>
+        <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", flex: 1 }}>
+          Media plan · {channels.length} channel{channels.length === 1 ? "" : "s"}
+        </span>
+        <Chip tone={dsTone}>{dsLabel}</Chip>
+      </div>
+
+      {/* Title + budget + summary + goal */}
+      <div style={{
+        padding: "10px 14px 12px 17px",
+        borderLeft: `3px solid ${accent}`,
+        fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55,
+      }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)", marginBottom: 4 }}>
+          {artifact.title || "Media plan"}
+        </div>
+        <div style={{ display: "flex", gap: 12, marginBottom: artifact.summary || artifact.goal ? 8 : 0, fontSize: 11.5, color: "var(--muted)" }}>
+          <span><strong style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>{fmt(artifact.totalBudgetMonthly)}</strong> / mo</span>
+          {artifact.timeline && <span>· {artifact.timeline}</span>}
+        </div>
+        {artifact.summary && (
+          <div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>{artifact.summary}</div>
+        )}
+        {artifact.goal && (
+          <div style={{ marginTop: 6, fontSize: 11.5, color: "var(--muted)" }}>
+            <span className="mono" style={{ textTransform: "uppercase", letterSpacing: "0.06em" }}>Goal · </span>
+            {artifact.goal}
+          </div>
+        )}
+      </div>
+
+      {/* Channel allocation rows */}
+      <div style={{ borderTop: "1px solid var(--rule)" }}>
+        {channels.map((c, i) => {
+          const isOpen = openChannel === i;
+          const pct    = Math.max(0, Math.min(100, c.pctOfTotal || 0));
+          const cacIsMeasured = c.cacConfidence === "measured";
+          return (
+            <div key={i} style={{ borderBottom: i < channels.length - 1 ? "1px solid var(--rule)" : "none" }}>
+              <button
+                onClick={() => setOpenChannel(isOpen ? null : i)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  width: "100%", padding: "10px 14px",
+                  background: isOpen ? "var(--paper-2)" : "transparent",
+                  border: "none", cursor: "pointer", textAlign: "left",
+                }}
+              >
+                <span className="mono" style={{ fontSize: 10, color: "var(--muted-2)", width: 14, flexShrink: 0 }}>
+                  {c.priority || i + 1}
+                </span>
+                <span style={{ fontSize: 12.5, color: "var(--ink)", fontWeight: 500, minWidth: 110, flexShrink: 0 }}>
+                  {c.channel}
+                </span>
+                <div style={{ flex: 1, height: 4, background: "var(--rule)", borderRadius: 2, overflow: "hidden", maxWidth: 120 }}>
+                  <div style={{ width: `${pct}%`, height: "100%", background: accent }}/>
+                </div>
+                <span className="mono" style={{ fontSize: 10.5, color: "var(--muted)", width: 36, textAlign: "right", flexShrink: 0 }}>
+                  {pct.toFixed(0)}%
+                </span>
+                <span className="mono" style={{ fontSize: 11, color: "var(--ink-2)", width: 72, textAlign: "right", flexShrink: 0 }}>
+                  {fmt(c.monthlySpend)}
+                </span>
+                <Icon name={isOpen ? "chevron-up" : "chevron-down"} size={11}/>
+              </button>
+
+              {isOpen && (
+                <div style={{ padding: "0 14px 12px 38px", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.55 }}>
+                  {c.format && (
+                    <div style={{ marginTop: 4 }}>
+                      <span className="mono" style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Format · </span>
+                      {c.format}
+                    </div>
+                  )}
+                  <div style={{ marginTop: 6, display: "flex", gap: 16, flexWrap: "wrap" }}>
+                    <span>
+                      <span className="mono" style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Target CAC · </span>
+                      <strong style={{ fontFamily: "var(--font-mono)", color: "var(--ink)" }}>{fmt(c.targetCAC)}</strong>
+                      <span className="mono" style={{
+                        fontSize: 10, marginLeft: 6, textTransform: "uppercase", letterSpacing: "0.06em",
+                        color: cacIsMeasured ? "oklch(54% 0.14 160)" : "var(--muted-2)",
+                      }}>
+                        {c.cacConfidence || "estimated"}
+                      </span>
+                    </span>
+                    {c.expectedConversions != null && (
+                      <span>
+                        <span className="mono" style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Conv/mo · </span>
+                        <strong style={{ fontFamily: "var(--font-mono)", color: "var(--ink)" }}>{c.expectedConversions}</strong>
+                      </span>
+                    )}
+                  </div>
+                  {c.cacSource && (
+                    <div style={{ marginTop: 4, fontSize: 11, color: "var(--muted-2)" }}>CAC source: {c.cacSource}</div>
+                  )}
+                  {c.rationale && (
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--rule)" }}>
+                      {c.rationale}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Excluded + risks + assumptions footer */}
+      {(excluded.length > 0 || risks.length > 0 || assumptions.length > 0) && (
+        <div style={{ padding: "10px 14px", background: "var(--paper-2)", borderTop: "1px solid var(--rule)", fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
+          {excluded.length > 0 && (
+            <div style={{ marginBottom: risks.length > 0 || assumptions.length > 0 ? 8 : 0 }}>
+              <div className="mono" style={{ fontSize: 9.5, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Excluded</div>
+              {excluded.map((e, i) => (
+                <div key={i} style={{ marginBottom: 3 }}>
+                  <strong style={{ color: "var(--ink)" }}>{e.channel}</strong> — {e.reason}
+                </div>
+              ))}
+            </div>
+          )}
+          {risks.length > 0 && (
+            <div style={{ marginBottom: assumptions.length > 0 ? 8 : 0 }}>
+              <div className="mono" style={{ fontSize: 9.5, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Risks</div>
+              {risks.map((r, i) => (
+                <div key={i} style={{ marginBottom: 3 }}>· {r}</div>
+              ))}
+            </div>
+          )}
+          {assumptions.length > 0 && (
+            <div>
+              <div className="mono" style={{ fontSize: 9.5, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Assumptions</div>
+              {assumptions.map((a, i) => (
+                <div key={i} style={{ marginBottom: 3 }}>· {a}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ArtifactCard({ artifact, onOpen }) {
   if (!artifact) return null;
   const t = artifact.type;
@@ -929,6 +1118,10 @@ function ArtifactCard({ artifact, onOpen }) {
 
   if (t === "seo_audit") {
     return <SeoAuditCard artifact={artifact} onOpen={onOpen}/>;
+  }
+
+  if (t === "media_plan") {
+    return <MediaPlanCard artifact={artifact}/>;
   }
 
   if (t === "email") {

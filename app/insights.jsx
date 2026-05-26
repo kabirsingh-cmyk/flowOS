@@ -4,7 +4,10 @@
  */
 
 (function () {
-  const { useState, useEffect, useRef, useCallback } = React;
+  const useStateI    = React.useState;
+  const useEffectI   = React.useEffect;
+  const useRefI      = React.useRef;
+  const useCallbackI = React.useCallback;
 
   // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -16,16 +19,17 @@
 
   // Channel display config
   const CHANNEL_META = {
-    meta_ads:    { label: "Meta Ads",     icon: "📘", group: "paid",    color: "#1877F2" },
-    google_ads:  { label: "Google Ads",   icon: "🔍", group: "paid",    color: "#4285F4" },
-    tiktok_ads:  { label: "TikTok Ads",   icon: "🎵", group: "paid",    color: "#000000" },
-    ga4:         { label: "Web / GA4",    icon: "📊", group: "organic", color: "#E37400" },
-    ig_organic:  { label: "Instagram",    icon: "📸", group: "organic", color: "#E1306C" },
-    tiktok_org:  { label: "TikTok",       icon: "🎵", group: "organic", color: "#69C9D0" },
-    pinterest:   { label: "Pinterest",    icon: "📌", group: "organic", color: "#E60023" },
-    klaviyo:     { label: "Email",        icon: "📧", group: "owned",   color: "#2C9B63" },
-    sms:         { label: "SMS",          icon: "💬", group: "owned",   color: "#7C3AED" },
-    shopify:     { label: "Shopify",      icon: "🛍️", group: "owned",   color: "#96BF48" },
+    meta_ads:    { label: "Meta Ads",      icon: "📘", group: "paid",    color: "#1877F2" },
+    google_ads:  { label: "Google Ads",    icon: "🔍", group: "paid",    color: "#4285F4" },
+    tiktok_ads:  { label: "TikTok Ads",    icon: "🎵", group: "paid",    color: "#000000" },
+    ga4:         { label: "Web / GA4",     icon: "📊", group: "organic", color: "#E37400" },
+    gsc:         { label: "Search Console",icon: "🔎", group: "organic", color: "#34A853" },
+    ig_organic:  { label: "Instagram",     icon: "📸", group: "organic", color: "#E1306C" },
+    tiktok_org:  { label: "TikTok",        icon: "🎵", group: "organic", color: "#69C9D0" },
+    pinterest:   { label: "Pinterest",     icon: "📌", group: "organic", color: "#E60023" },
+    klaviyo:     { label: "Email",         icon: "📧", group: "owned",   color: "#2C9B63" },
+    sms:         { label: "SMS",           icon: "💬", group: "owned",   color: "#7C3AED" },
+    shopify:     { label: "Shopify",       icon: "🛍️", group: "owned",   color: "#96BF48" },
   };
 
   const CHANNEL_GROUPS = [
@@ -39,6 +43,7 @@
     meta_ads:   ["spend","roas","ctr","cpm","cpc","impressions","clicks","conversions","revenue"],
     google_ads: ["spend","roas","ctr","cpc","impressions","clicks","conversions","conv_value"],
     ga4:        ["sessions","active_users","bounce_rate","engagement_rate","conversions","revenue"],
+    gsc:        ["clicks","impressions","avg_ctr","avg_position"],
     klaviyo:    ["campaigns_sent","open_rate","click_rate","revenue","sends"],
     shopify:    ["orders","revenue","aov","unique_customers","net_revenue"],
   };
@@ -50,6 +55,7 @@
       revenue: "Revenue", conv_value: "Conv. Value", sessions: "Sessions",
       active_users: "Active Users", bounce_rate: "Bounce Rate",
       engagement_rate: "Engagement", avg_session_dur: "Avg. Duration",
+      avg_ctr: "Avg. CTR", avg_position: "Avg. Position",
       campaigns_sent: "Campaigns", open_rate: "Open Rate",
       click_rate: "Click Rate", sends: "Sends",
       orders: "Orders", aov: "AOV", unique_customers: "Customers",
@@ -61,7 +67,7 @@
   function fmtMetricValue(key, val) {
     if (val === null || val === undefined || val === 0) return "—";
     const curr = ["spend","cpc","cpm","revenue","conv_value","aov","net_revenue"].includes(key);
-    const pct  = ["ctr","bounce_rate","engagement_rate","open_rate","click_rate"].includes(key);
+    const pct  = ["ctr","bounce_rate","engagement_rate","open_rate","click_rate","avg_ctr"].includes(key);
     const mult = ["roas"].includes(key);
     const dur  = ["avg_session_dur"].includes(key);
     if (curr)  return `$${Number(val).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -71,6 +77,33 @@
     if (Number.isInteger(val) || val > 100) return Number(Math.round(val)).toLocaleString("en-US");
     return Number(val).toFixed(2);
   }
+
+  // ─── CTA label maps ──────────────────────────────────────────────────────────
+
+  const WORKSPACE_LABELS = {
+    emailstudio:  "Open in EmailStudio",
+    studio:       "Open Studio",
+    planner:      "Create campaign",
+    organic:      "Open Social Studio",
+    searchstudio: "Open Search Studio",
+    seo:          "Open SEO Studio",
+    insights:     "View Analytics",
+    connections:  "Connect Platform",
+    publish:      "Open Queue",
+    sms:          "Open SMS Center",
+  };
+
+  // Maps insight channel → workspace to navigate to
+  const CHANNEL_WORKSPACE = {
+    klaviyo:         "emailstudio",
+    email:           "emailstudio",
+    meta_ads:        "studio",
+    google_ads:      "studio",
+    gsc:             "searchstudio",
+    ga4:             "insights",
+    shopify:         "insights",
+    "cross-channel": "planner",
+  };
 
   // ─── Shared micro-components ─────────────────────────────────────────────────
   // Spinner, Chip, Dot are provided by ui.jsx via window globals
@@ -100,13 +133,15 @@
     const gads = snapshots.find(s => s.channel === "google_ads");
     const mail = snapshots.find(s => s.channel === "klaviyo");
     const web  = snapshots.find(s => s.channel === "ga4");
+    const gsc  = snapshots.find(s => s.channel === "gsc");
 
-    if (shop) kpis.push({ label: "Revenue",    value: fmtMetricValue("revenue", shop.metrics?.revenue),    sub: "Shopify" });
-    if (shop) kpis.push({ label: "Orders",     value: fmtMetricValue("orders", shop.metrics?.orders),      sub: "Shopify" });
-    if (meta) kpis.push({ label: "ROAS",       value: fmtMetricValue("roas", meta.metrics?.roas),          sub: "Meta Ads" });
-    if (gads) kpis.push({ label: "ROAS",       value: fmtMetricValue("roas", gads.metrics?.roas),          sub: "Google Ads" });
-    if (mail) kpis.push({ label: "Open Rate",  value: fmtMetricValue("open_rate", mail.metrics?.open_rate), sub: "Email" });
-    if (web)  kpis.push({ label: "Sessions",   value: fmtMetricValue("sessions", web.metrics?.sessions),   sub: "Web" });
+    if (shop) kpis.push({ label: "Revenue",       value: fmtMetricValue("revenue",   shop.metrics?.revenue),          sub: "Shopify" });
+    if (shop) kpis.push({ label: "Orders",        value: fmtMetricValue("orders",    shop.metrics?.orders),           sub: "Shopify" });
+    if (meta) kpis.push({ label: "ROAS",          value: fmtMetricValue("roas",      meta.metrics?.roas),             sub: "Meta Ads" });
+    if (gads) kpis.push({ label: "ROAS",          value: fmtMetricValue("roas",      gads.metrics?.roas),             sub: "Google Ads" });
+    if (mail) kpis.push({ label: "Open Rate",     value: fmtMetricValue("open_rate", mail.metrics?.open_rate),        sub: "Email" });
+    if (web)  kpis.push({ label: "Sessions",      value: fmtMetricValue("sessions",  web.metrics?.sessions),          sub: "Web" });
+    if (gsc)  kpis.push({ label: "Search Clicks", value: fmtMetricValue("clicks",    gsc.metrics?.clicks),            sub: "Search Console" });
 
     return (
       <section style={{ marginBottom: 28 }}>
@@ -186,7 +221,7 @@
                     cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap",
                   }}
                 >
-                  Open →
+                  {WORKSPACE_LABELS[item.workspace] || "Open →"}
                 </button>
               )}
             </div>
@@ -198,7 +233,7 @@
 
   // ─── Insights cards ───────────────────────────────────────────────────────────
 
-  function InsightsGrid({ items, loading }) {
+  function InsightsGrid({ items, loading, onNavigate }) {
     if (loading) return null;
     if (!items || items.length === 0) return null;
 
@@ -209,11 +244,15 @@
         </h3>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
           {items.map((item, i) => {
-            const channelMeta = Object.values(CHANNEL_META).find(m => m.label.toLowerCase() === (item.channel || "").toLowerCase());
+            // Key-first lookup so "gsc", "ga4", "klaviyo" etc. resolve by key before falling back to label match
+            const channelMeta = CHANNEL_META[(item.channel || "").toLowerCase()] ||
+              Object.values(CHANNEL_META).find(m => m.label.toLowerCase() === (item.channel || "").toLowerCase());
+            const ws = CHANNEL_WORKSPACE[(item.channel || "").toLowerCase()];
             return (
               <div key={i} style={{
                 background: "var(--paper)", border: "1px solid var(--rule)",
                 borderRadius: 8, padding: "14px 16px",
+                display: "flex", flexDirection: "column",
               }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
                   <SeverityDot severity={item.severity} />
@@ -226,7 +265,20 @@
                     )}
                   </div>
                 </div>
-                <div style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.6 }}>{item.body}</div>
+                <div style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.6, flex: 1 }}>{item.body}</div>
+                {ws && onNavigate && (
+                  <button
+                    onClick={() => onNavigate(ws)}
+                    style={{
+                      marginTop: 10, padding: "4px 12px", borderRadius: 6,
+                      border: "1px solid var(--rule)", background: "transparent",
+                      fontSize: 11.5, color: "var(--muted)", cursor: "pointer",
+                      alignSelf: "flex-start",
+                    }}
+                  >
+                    {WORKSPACE_LABELS[ws] || "Open →"}
+                  </button>
+                )}
               </div>
             );
           })}
@@ -239,7 +291,7 @@
 
   function ChannelMetricTable({ snapshot }) {
     const meta   = CHANNEL_META[snapshot.channel] || { label: snapshot.channel, icon: "📊", color: "#666" };
-    const keys   = CHANNEL_KEY_METRICS[snapshot.channel] || Object.keys(snapshot.metrics).filter(k => k !== "period" && k !== "date_start" && k !== "date_end");
+    const keys   = CHANNEL_KEY_METRICS[snapshot.channel] || Object.keys(snapshot.metrics).filter(k => k !== "period" && k !== "date_start" && k !== "date_end" && !Array.isArray(snapshot.metrics[k]));
     const values = snapshot.metrics;
 
     return (
@@ -263,7 +315,7 @@
         </div>
         {/* Metric grid */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))" }}>
-          {keys.map((key, i) => (
+          {keys.map((key) => (
             <div key={key} style={{
               padding: "10px 14px",
               borderRight: "1px solid var(--rule)",
@@ -312,12 +364,12 @@
   // ─── Analytics Chat ───────────────────────────────────────────────────────────
 
   function AnalyticsChat({ tenantId, snapshots, insights, period }) {
-    const [messages, setMessages] = useState([]);
-    const [input, setInput]   = useState("");
-    const [busy, setBusy]     = useState(false);
-    const bottomRef = useRef(null);
+    const [messages, setMessages] = useStateI([]);
+    const [input, setInput]   = useStateI("");
+    const [busy, setBusy]     = useStateI(false);
+    const bottomRef = useRefI(null);
 
-    useEffect(() => {
+    useEffectI(() => {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
@@ -352,7 +404,6 @@
           body: JSON.stringify({
             messages: apiMessages,
             specialist: "analyst",
-            // Inject analytics context via a special brand override
             brand: { name: "Analytics Assistant", voice: { tone: systemContext } },
           }),
         });
@@ -460,6 +511,33 @@
     );
   }
 
+  // ─── Error state ─────────────────────────────────────────────────────────────
+
+  function ErrorState({ onRetry, errorMsg }) {
+    return (
+      <div style={{
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        padding: "60px 24px", textAlign: "center", gap: 12,
+      }}>
+        <div style={{ fontSize: 36 }}>⚠️</div>
+        <div style={{ fontSize: 15, fontWeight: 500, color: "var(--ink)" }}>Could not load analytics</div>
+        <div style={{ fontSize: 13, color: "var(--muted)", maxWidth: 320, lineHeight: 1.6 }}>
+          {errorMsg || "Check your connection and make sure you're signed in."}
+        </div>
+        <button
+          onClick={onRetry}
+          style={{
+            marginTop: 8, padding: "9px 20px", borderRadius: 8,
+            background: "var(--accent)", color: "#fff", border: "none",
+            fontSize: 13.5, fontWeight: 500, cursor: "pointer",
+          }}
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
   // ─── Empty state ──────────────────────────────────────────────────────────────
 
   function EmptyState({ onRefresh, loading }) {
@@ -492,27 +570,22 @@
 
   function InsightsCenter({ state }) {
     const tenantId   = state?.auth?.user?.id || state?.tenantId || null;
-    const [period, setPeriod]         = useState("30d");
-    const [snapshots, setSnapshots]   = useState([]);
-    const [insights, setInsights]     = useState(null);
-    const [loading, setLoading]       = useState(false);
-    const [refreshing, setRefreshing] = useState(false);
-    const [lastUpdated, setLastUpdated] = useState(null);
-    const [error, setError]           = useState(null);
+    const [period, setPeriod]           = useStateI("30d");
+    const [snapshots, setSnapshots]     = useStateI([]);
+    const [insights, setInsights]       = useStateI(null);
+    const [loading, setLoading]         = useStateI(false);
+    const [refreshing, setRefreshing]   = useStateI(false);
+    const [lastUpdated, setLastUpdated] = useStateI(null);
+    const [error, setError]             = useStateI(null);
 
     const sb = window.sb;
 
     // Load existing data from Supabase on mount / period change
-    const loadCached = useCallback(async () => {
+    const loadCached = useCallbackI(async () => {
       if (!tenantId || !sb) return;
       setLoading(true);
       setError(null);
       try {
-        // Reads use the Supabase JS client which auto-attaches the user's
-        // session token, so RLS in 007_core_schema_and_rls.sql does the
-        // row scoping (tenant_id = auth.uid()::text). For the dev seed
-        // bypass the sb client doesn't have a session — those reads return
-        // empty arrays under RLS, which is fine for the smoke tests.
         const [snapRes, insRes] = await Promise.all([
           sb.from("analytics_snapshots")
             .select("*")
@@ -526,7 +599,10 @@
             .limit(1),
         ]);
 
-        if (!snapRes.error && Array.isArray(snapRes.data)) {
+        if (snapRes.error) throw new Error(snapRes.error.message || "Snapshot fetch failed");
+        if (insRes.error)  throw new Error(insRes.error.message  || "Insights fetch failed");
+
+        if (Array.isArray(snapRes.data)) {
           const rows = snapRes.data;
           setSnapshots(rows.map(r => ({ channel: r.channel, metrics: r.metrics, fetched_at: r.fetched_at })));
           if (rows.length > 0) {
@@ -534,7 +610,7 @@
           }
         }
 
-        if (!insRes.error && Array.isArray(insRes.data) && insRes.data.length > 0) {
+        if (Array.isArray(insRes.data) && insRes.data.length > 0) {
           const row = insRes.data[0];
           setInsights({
             summary:             row.summary,
@@ -543,15 +619,15 @@
           });
         }
       } catch (e) {
-        setError("Failed to load analytics data");
+        setError(e.message || "Failed to load analytics data");
       } finally {
         setLoading(false);
       }
     }, [tenantId, period]);
 
-    useEffect(() => { loadCached(); }, [loadCached]);
+    useEffectI(() => { loadCached(); }, [loadCached]);
 
-    // Pull live data from Composio + re-generate insights
+    // Pull live data from connected platforms + re-generate insights
     async function handleRefresh() {
       if (!tenantId || refreshing) return;
       setRefreshing(true);
@@ -564,7 +640,6 @@
         });
         const data = await res.json();
         if (data.ok) {
-          // Reload from DB to pick up freshly written data
           await loadCached();
         } else {
           setError(data.error || "Refresh failed");
@@ -577,7 +652,6 @@
     }
 
     function handleNavigate(workspace) {
-      // Dispatch a navigation event the shell listens to
       window.dispatchEvent(new CustomEvent("flowos:navigate", { detail: { workspace } }));
     }
 
@@ -646,8 +720,8 @@
           </div>
         </div>
 
-        {/* Error banner */}
-        {error && (
+        {/* Error banner (shows alongside data when a refresh fails) */}
+        {error && hasData && (
           <div style={{
             background: "#FEF2F2", borderBottom: "1px solid #FECACA",
             padding: "8px 20px", fontSize: 13, color: "#DC2626",
@@ -662,13 +736,15 @@
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 20px 40px" }}>
           {loading && !hasData ? (
             <Spinner />
+          ) : !hasData && error ? (
+            <ErrorState onRetry={loadCached} errorMsg={error} />
           ) : !hasData ? (
             <EmptyState onRefresh={handleRefresh} loading={refreshing} />
           ) : (
             <>
               <SummarySection insights={insights} snapshots={snapshots} loading={loading} />
               <RecommendedActions actions={insights?.recommended_actions} loading={loading} onNavigate={handleNavigate} />
-              <InsightsGrid items={insights?.insights} loading={loading} />
+              <InsightsGrid items={insights?.insights} loading={loading} onNavigate={handleNavigate} />
               <DataByChannel snapshots={snapshots} loading={loading} />
               <AnalyticsChat tenantId={tenantId} snapshots={snapshots} insights={insights} period={period} />
             </>

@@ -9,6 +9,7 @@
 
 import { requireAuth } from "./lib/auth.js";
 import { corsPreflightResponse, jsonResponse, errResponse } from "./lib/cors.js";
+import { getFastModel } from "./lib/anthropic.js";
 
 export const config = { runtime: "edge" };
 
@@ -340,7 +341,7 @@ Rules:
       "Content-Type":      "application/json",
     },
     body: JSON.stringify({
-      model:      "claude-3-5-haiku-20241022",
+      model:      getFastModel(),
       max_tokens: 800,
       messages:   [{ role: "user", content: prompt }],
     }),

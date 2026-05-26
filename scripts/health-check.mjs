@@ -25,7 +25,7 @@ for (const src of scriptSrcs) {
 
 // ─── Check 2: Load order matches the documented order in CLAUDE.md ───────────
 const EXPECTED_ORDER = [
-  'app/supabase.jsx', 'app/seed.jsx', 'app/ui.jsx', 'app/store.jsx',
+  'app/supabase.jsx', 'app/seed.jsx', 'app/ui.jsx', 'app/ui2.jsx', 'app/store.jsx',
   'app/workspaces1.jsx', 'app/workspaces2.jsx', 'app/workspaces3.jsx', 'app/workspaces4.jsx',
   'app/chat-data.jsx', 'app/chat-ui.jsx', 'app/channel-strategy.jsx',
   'app/features.jsx', 'app/studio.jsx', 'app/login.jsx', 'app/onboarding.jsx',

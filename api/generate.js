@@ -25,15 +25,12 @@ import {
 }                                          from './lib/providerRouter.js';
 import { requireAuth }                     from './lib/auth.js';
 import { loadCredential }                  from './lib/directCredentials.js';
+import { corsHeaders }                     from './lib/cors.js';
 
 export const config = { runtime: 'edge' };
 
-// ─── CORS headers (mirrors api/social.js pattern) ─────────────────────────────
-const CORS = {
-  'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+// ─── CORS headers ──────────────────────────────────────────────────────────────
+const CORS = corsHeaders();
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -457,6 +454,12 @@ async function handleGenerateVideo(body) {
     thumbnail_url:   thumbnailUrl,
     completed_at:    isTerminal ? new Date().toISOString() : null,
   });
+
+  // Re-host sync video URLs to durable Supabase Storage (b_img1).
+  if (rawUrl && row?.id) {
+    rawUrl = await rehost(rawUrl, tenantId, row.id, 'video', provider);
+    supabaseUpdate('generation_jobs', row.id, { raw_url: rawUrl }).catch(() => {});
+  }
 
   // Fire-and-forget usage tracking.
   logGenerationUsage({ tenantId, provider, model, jobType: 'video', jobId: row?.id || providerJobId, status: immediateStatus || 'pending' });

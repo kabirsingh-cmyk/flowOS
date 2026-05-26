@@ -69,22 +69,23 @@ A file can only use globals defined by files loaded before it. If you add a new 
 
 Every file aliases React hooks to avoid collisions across the global scope:
 
-| File | useState | useMemo | useEffect | useRef | useReducer |
-|---|---|---|---|---|---|
-| `ui.jsx` | useState | useMemo | useEffect | useRef | — |
-| `ui2.jsx` | useStateUI2 | — | useEffectUI2 | useRefUI2 | — |
-| `store.jsx` | — | — | — | — | useReducerStore |
-| `workspaces1.jsx` | useState1 | useMemo1 | useEffect1 | useRef1 | — |
-| `workspaces2.jsx` | useState2 | useMemo2 | useEffect2 | — | — |
-| `workspaces3.jsx` | useState3 | useMemo3 | useEffect3 | useRef3 | — |
-| `workspaces4.jsx` | useState4 | useMemo4 | useEffect4 | useRef4 | — |
-| `chat-app.jsx` | useStateApp | useMemoApp | useEffectApp | — | useReducerApp |
-| `chat-ui.jsx` | useStateChat | useMemoChat | useEffectChat | useRefChat | — |
-| `features.jsx` | useStateF | useMemoF | useEffectF | useRefF | — |
-| `studio.jsx` | useStateS | — | — | — | — |
-| `onboarding.jsx` | useStateOB | — | useEffectOB | useRefOB | — |
-| `agents.jsx` | useStateA | — | useEffectA | — | — |
-| `channel-strategy.jsx` | useStateCS | useMemoCS | useEffectCS | — | — |
+| File | useState | useMemo | useEffect | useRef | useReducer | useCallback |
+|---|---|---|---|---|---|---|
+| `ui.jsx` | useState | useMemo | useEffect | useRef | — | — |
+| `ui2.jsx` | useStateUI2 | — | useEffectUI2 | useRefUI2 | — | — |
+| `store.jsx` | — | — | — | — | useReducerStore | useCallbackStore |
+| `workspaces1.jsx` | useState1 | useMemo1 | useEffect1 | useRef1 | — | — |
+| `workspaces2.jsx` | useState2 | useMemo2 | useEffect2 | — | — | — |
+| `workspaces3.jsx` | useState3 | useMemo3 | useEffect3 | useRef3 | — | — |
+| `workspaces4.jsx` | useState4 | useMemo4 | useEffect4 | useRef4 | — | — |
+| `chat-app.jsx` | useStateApp | useMemoApp | useEffectApp | — | useReducerApp | — |
+| `chat-ui.jsx` | useStateChat | useMemoChat | useEffectChat | useRefChat | — | — |
+| `features.jsx` | useStateF | useMemoF | useEffectF | useRefF | — | — |
+| `studio.jsx` | useStateS | — | — | — | — | — |
+| `onboarding.jsx` | useStateOB | — | useEffectOB | useRefOB | — | — |
+| `agents.jsx` | useStateA | — | useEffectA | — | — | useCallbackA |
+| `channel-strategy.jsx` | useStateCS | useMemoCS | useEffectCS | — | — | — |
+| `insights.jsx` | useStateI | — | useEffectI | useRefI | — | useCallbackI |
 
 **Always use the alias for the file you're editing.** Never use bare `useState` unless you're in `ui.jsx`.
 
@@ -142,7 +143,7 @@ state.calendar items shape:
     facebookPostId,  facebookUrl,  facebookPageId,
     xPostId,         xUrl,
     instagramPostId, instagramUrl, instagramCreationId, instagramAccountId,
-    redditPostId,    redditUrl,    redditSubreddit, redditTitle, redditImageAsLink }
+    redditPostId,    redditUrl,    redditSubreddit, redditTitle }
 
   imageStatus: "none" | "pending" | "completed" | "failed" | "failed_content_policy"
     — set on QUEUE_ADD_DRAFT based on whether imagePrompt is present
@@ -235,6 +236,7 @@ User sends message
 | `metric` | Big number card |
 | `strategy` | Channel mix bar chart |
 | `campaign-plan` | Campaign summary → opens planner |
+| `media_plan` | `MediaPlanCard` — title + total monthly budget + summary + goal. Each channel row shows priority, name, allocation bar, %, monthly spend. Tap row to expand format / target CAC (with measured/estimated confidence) / expected conversions / CAC source / rationale. Footer surfaces excluded channels, risks, assumptions. Data-source chip (Tenant data / Mixed / Benchmarks) signals CAC provenance at a glance. |
 | `email` | Email preview → expand (legacy seeded) |
 | `policy-review` | Flag list |
 | `workspace` | (handled before render — opens workspace directly) |
@@ -254,8 +256,8 @@ if (hasCreateVerb && hasContentNoun) { return makeDraftArtifact(t); }
 
 | Tool | Available to | Effect |
 |---|---|---|
-| `delegate_to` | Supervisor | Routes to specialist (enum: drafter, analyst, brand_guard, inbox, campaign_planner, seo_auditor) |
-| `open_workspace` | Supervisor, **Campaign Planner**, **SEO Auditor** | Opens a workspace panel. SEO Auditor calls it with target `"seo"` after producing an audit. |
+| `delegate_to` | Supervisor | Routes to specialist (enum: drafter, analyst, brand_guard, inbox, campaign_planner, seo_auditor, media_planner) |
+| `open_workspace` | Supervisor, **Campaign Planner**, **SEO Auditor**, **Media Planner** | Opens a workspace panel. SEO Auditor calls it with target `"seo"` after producing an audit. Media Planner has no dedicated workspace yet, but the tool is in its set for future use. |
 | `show_drafts` | Supervisor | Opens drafts canvas |
 | `show_metric` | Supervisor | Shows metric card |
 | `create_draft` | **Drafter** | Produces `draft_created` artifact in chat |
@@ -264,6 +266,7 @@ if (hasCreateVerb && hasContentNoun) { return makeDraftArtifact(t); }
 | `create_email_sequence` | **Drafter** | Produces `email_sequence` artifact — sequenceType, goal, audience, emails[], branchingLogic, exitCondition, abTestSuggestions, benchmarks. Triggered by drip/nurture/onboarding/re-engagement/win-back/launch language. Supervisor delegates to drafter for these. |
 | `create_campaign_plan` | **Campaign Planner** | Produces `campaign-plan` artifact (title, summary, itemCount, goal, audience, timeline, channels) — usually paired with `open_workspace("planner")` |
 | `create_seo_audit` | **SEO Auditor** | Produces `seo_audit` artifact — url, auditType, overallAssessment (strong_foundation/needs_work/critical_issues), executiveSummary, keywords[], onPageIssues[], contentGaps[], technicalChecks[], competitors[]/competitorNames[], quickWins[], strategicInvestments[]. Replaces the legacy markdown dump. Rendered by `SeoAuditCard` in [chat-ui.jsx](app/chat-ui.jsx) with one collapsible section per table; "Open in SEO Studio" action dispatches `open_seostudio` → `openWorkspace("seo")`. Paired with `open_workspace("seo")`. |
+| `create_media_plan` | **Media Planner** | Produces `media_plan` artifact — title, summary, goal, audience, timeline, currency (default USD), totalBudgetMonthly, dataSource (tenant_analytics/benchmarks_only/mixed), channels[] (priority, monthlySpend, pctOfTotal, format, targetCAC, cacConfidence measured/estimated, cacSource, expectedConversions, rationale), excluded[], risks[], assumptions[]. Channel monthlySpend values must sum to totalBudgetMonthly; pctOfTotal must sum to 100. Specialist reads the tenant's latest `analytics_insights` row (same fetch path as Analyst) so CAC numbers can be anchored to real data when available. Rendered by `MediaPlanCard` in [chat-ui.jsx](app/chat-ui.jsx). PM-validated. |
 | `web_search` (Anthropic server tool, `web_search_20250305`) | **SEO Auditor** | Anthropic-executed web search. Capped at `max_uses: 10` per audit. Returns `server_tool_use` + `web_search_tool_result` blocks inline — we don't execute or post results back; our `tool_use` filter in `runToolLoop` naturally ignores server-tool blocks. Defined as `WEB_SEARCH_TOOL` constant in [api/chat.js](api/chat.js). |
 
 ---
@@ -580,6 +583,8 @@ Planner-created items have `channel` (display name), `tone`, `campaign`, `day` (
 
 ```
 ANTHROPIC_API_KEY        Claude API — required for live AI
+ANTHROPIC_MODEL          Main Claude model (default: claude-opus-4-5) — used by chat, insights, drafts, brand-import
+ANTHROPIC_MODEL_FAST     Fast Claude model (default: claude-haiku-4-5-20251001) — used by title gen, SMS drafts, Google Ads copy
 SUPABASE_URL             Supabase project URL
 SUPABASE_SERVICE_KEY     Supabase service role key (server-side only)
 COMPOSIO_API_KEY2        Composio tool execution (non-social only: ads, analytics, CRM, email, SEO)

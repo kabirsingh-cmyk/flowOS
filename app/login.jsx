@@ -9,6 +9,7 @@ function LoginScreen() {
   const [loading, setLoading]     = useStateLogin(false);
   const [error, setError]         = useStateLogin("");
   const [confirmSent, setConfirmSent] = useStateLogin(false);
+  const [showPassword, setShowPassword] = useStateLogin(false);
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
@@ -182,9 +183,16 @@ function LoginScreen() {
 
           <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
             <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Password</span>
-            <input type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} placeholder="••••••••"
-              value={password} onChange={e => setPassword(e.target.value)} disabled={loading}
-              style={{ padding: "10px 12px", border: "1px solid var(--rule-strong)", borderRadius: 5, fontSize: 13.5, fontFamily: "var(--font-sans)", background: "var(--paper)", color: "var(--ink)", outline: "none" }}/>
+            <div style={{ position: "relative" }}>
+              <input type={showPassword ? "text" : "password"} autoComplete={mode === "signup" ? "new-password" : "current-password"} placeholder="••••••••"
+                value={password} onChange={e => setPassword(e.target.value)} disabled={loading}
+                style={{ padding: "10px 44px 10px 12px", border: "1px solid var(--rule-strong)", borderRadius: 5, fontSize: 13.5, fontFamily: "var(--font-sans)", background: "var(--paper)", color: "var(--ink)", outline: "none", width: "100%", boxSizing: "border-box" }}/>
+              <button type="button" onClick={() => setShowPassword(s => !s)} tabIndex={-1}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", padding: 4, cursor: "pointer", color: "var(--muted)", fontSize: 11, fontFamily: "var(--font-sans)", letterSpacing: "0.04em" }}>
+                {showPassword ? "Hide" : "Show"}
+              </button>
+            </div>
           </label>
 
           {error && <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 2 }}>{error}</div>}

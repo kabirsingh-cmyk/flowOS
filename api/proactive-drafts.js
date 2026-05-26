@@ -13,57 +13,68 @@
 
 import { fetchBrandProfile, sbHeaders } from './lib/supabase.js';
 import { requireAuth, requireAuthOrCron } from './lib/auth.js';
+import { getModel } from './lib/anthropic.js';
 
 export const config = { runtime: "edge" };
 
 const ANTHROPIC_BASE = "https://api.anthropic.com/v1";
 
 // ─── Fallback drafts (returned when API key is absent or Claude fails) ────────
+// Brand-aware: uses the tenant's name/industry so non-MVEDA tenants don't see
+// Ayurveda content. All copy is intentionally generic — it's a placeholder,
+// not a finished draft.
 
-const FALLBACK_DRAFTS = [
-  {
-    platform: "instagram", contentType: "Reel",
-    copy: "Warm a few drops between your palms.\nDraw them through damp lengths.\nReturn to it tomorrow — until it becomes yours.\n\n#ayurveda #hairritual #coldpressed",
-    imagePrompt: "Amber glass dropper bottle, saffron threads and dried bhringraj leaves on warm ivory linen, soft morning window light, flat lay, editorial, minimal",
-    suggestedDay: 0, suggestedTime: "08:00",
-  },
-  {
-    platform: "instagram", contentType: "Carousel",
-    copy: "5,000 years of Ayurveda. One bottle. Here's what's actually inside Hair Ritual Oil — and why every ingredient matters.\n\n#ingredients #ayurveda #transparency",
-    imagePrompt: "Flat lay of individual botanicals — saffron, bhringraj, amla — each labelled, warm cream background, editorial overhead shot",
-    suggestedDay: 2, suggestedTime: "09:00",
-  },
-  {
-    platform: "tiktok", contentType: "Video",
-    copy: "POV: you just found the hair ritual your grandmother kept secret 🪷\n\nBhringraj. Saffron. Cold-pressed at source.\nThree drops. That's it.\n\n#haircare #ayurveda #hairoil #hairgrowth",
-    imagePrompt: "Close-up of hands warming amber oil between palms, golden backlight, slow-motion aesthetic",
-    suggestedDay: 1, suggestedTime: "19:00",
-  },
-  {
-    platform: "linkedin", contentType: "Post",
-    copy: "The best-performing products in our portfolio weren't born from trend reports.\n\nThey were born from 5,000 years of Ayurvedic practice — and one question: what did our grandmothers know that we forgot?\n\nAt MVEDA, we cold-press every ingredient at source. Small batches. Nothing added. Here's why that matters for modern skin.",
-    imagePrompt: "Overhead of cold-press extraction process, glass vessels, botanicals, clean editorial photography, natural light",
-    suggestedDay: 1, suggestedTime: "09:00",
-  },
-  {
-    platform: "pinterest", contentType: "Pin",
-    copy: "The Ayurvedic hair ritual that takes 3 minutes and lasts all week. Bhringraj & Saffron Hair Oil, cold-pressed in small batches.\n\nDiscover the MVEDA Hair Ritual ↓",
-    imagePrompt: "Vertical flat lay: amber hair oil bottle, copper comb, dried rose petals and saffron, ivory and warm gold palette, styled for Pinterest",
-    suggestedDay: 5, suggestedTime: "10:00",
-  },
-  {
-    platform: "email", contentType: "Email",
-    copy: "Subject: The ritual starts with three drops.\nPreview: Your hair remembers what your grandmother knew.\n\nWarm three drops of Bhringraj & Saffron Hair Oil between your palms. Draw them slowly through damp lengths. That's it — no 12-step routine, no clinical promises.\n\nJust 5,000 years of Ayurvedic practice, cold-pressed at source, and ready when you are.\n\n→ Shop the Hair Ritual",
-    imagePrompt: null,
-    suggestedDay: 3, suggestedTime: "10:00",
-  },
-  {
-    platform: "x", contentType: "Post",
-    copy: "hair care that doesn't ask you to hustle. just warm it, work it through, and let it do what it's done for centuries.",
-    imagePrompt: "Minimal product shot: amber dropper bottle on white stone surface, single saffron thread, clean background",
-    suggestedDay: 4, suggestedTime: "12:00",
-  },
-];
+function buildFallbackDrafts(brand, count = 7) {
+  const name     = brand?.name     || "our brand";
+  const industry = brand?.industry || "our industry";
+  const handle   = name.replace(/\s+/g, "").toLowerCase();
+
+  const all = [
+    {
+      platform: "instagram", contentType: "Post",
+      copy: `Behind every product is a story worth telling.\n\nHere's ours — and why it matters to us.\n\n#${handle} #brand #story`,
+      imagePrompt: `Clean product flat lay for ${name}, natural light, minimal styling, editorial photography`,
+      suggestedDay: 0, suggestedTime: "09:00",
+    },
+    {
+      platform: "linkedin", contentType: "Post",
+      copy: `What does it mean to build something you truly believe in?\n\nAt ${name}, it starts with one question: what problem are we actually solving?\n\nHere's what we've learned.`,
+      imagePrompt: null,
+      suggestedDay: 1, suggestedTime: "09:00",
+    },
+    {
+      platform: "x", contentType: "Post",
+      copy: `the best version of what we do has always started with listening to the people who use it.`,
+      imagePrompt: null,
+      suggestedDay: 2, suggestedTime: "12:00",
+    },
+    {
+      platform: "instagram", contentType: "Carousel",
+      copy: `3 things we wish more people knew about ${industry}.\n\nSwipe to see what we've learned building ${name}.`,
+      imagePrompt: `Clean carousel slide template for ${name}, consistent brand palette, minimal design`,
+      suggestedDay: 2, suggestedTime: "10:00",
+    },
+    {
+      platform: "tiktok", contentType: "Video",
+      copy: `A behind-the-scenes look at how we make what we make at ${name}. No filter.\n\n#behindthescenes #${handle} #authentic`,
+      imagePrompt: `Behind-the-scenes video thumbnail for ${name}, candid and authentic feel`,
+      suggestedDay: 3, suggestedTime: "18:00",
+    },
+    {
+      platform: "email", contentType: "Email",
+      copy: `Subject: Something we've been working on\nPreview: We think you'll like this.\n\nWe don't send many emails. When we do, it's because there's something worth sharing.\n\nToday: a look at what we've been building at ${name} — and why it matters to you.\n\n→ Read more`,
+      imagePrompt: null,
+      suggestedDay: 3, suggestedTime: "10:00",
+    },
+    {
+      platform: "pinterest", contentType: "Pin",
+      copy: `Discover the story behind ${name} — and why the details matter more than you think.`,
+      imagePrompt: `Vertical editorial pin for ${name}, styled flat lay, clean aesthetic, Pinterest-optimised composition`,
+      suggestedDay: 5, suggestedTime: "10:00",
+    },
+  ];
+  return all.slice(0, count);
+}
 
 // ─── Supabase persistence helpers ─────────────────────────────────────────────
 
@@ -228,7 +239,7 @@ export default async function handler(req) {
   const auth = await requireAuthOrCron(req, bodyTenantId);
   if (auth instanceof Response) return auth;
   const tenantId = auth.tenantId;
-  const { brand: brandFromClient, days = 7, count = 7 } = body;
+  const { days = 7, count = 7 } = body;
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
@@ -242,15 +253,12 @@ export default async function handler(req) {
     return json(200, { ok: true, drafts, source, ...extra });
   };
 
-  // If no API key, return (and persist) fallback drafts immediately
-  if (!apiKey) {
-    return finalize(FALLBACK_DRAFTS.slice(0, count), "fallback");
-  }
+  // Brand profile from Supabase only — never trust client-supplied brand data.
+  const brand = tenantId ? await fetchBrandProfile(tenantId) : null;
 
-  // Prefer Supabase brand profile; fall back to client-provided
-  let brand = brandFromClient;
-  if (tenantId && !brand) {
-    brand = await fetchBrandProfile(tenantId);
+  // If no API key, return brand-aware fallback drafts immediately
+  if (!apiKey) {
+    return finalize(buildFallbackDrafts(brand, count), "fallback");
   }
 
   const prompt = buildPrompt(brand, days, count);
@@ -264,7 +272,7 @@ export default async function handler(req) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model:      "claude-opus-4-5",
+        model:      getModel(),
         max_tokens: 3000,
         messages:   [{ role: "user", content: prompt }],
       }),
@@ -291,7 +299,7 @@ export default async function handler(req) {
       if (!Array.isArray(drafts)) throw new Error("Not an array");
     } catch {
       console.error("[proactive-drafts] JSON parse failed:", rawText.slice(0, 200));
-      return finalize(FALLBACK_DRAFTS.slice(0, count), "fallback", {
+      return finalize(buildFallbackDrafts(brand, count), "fallback", {
         warn: "Claude returned malformed JSON — using fallback drafts",
       });
     }
@@ -300,9 +308,9 @@ export default async function handler(req) {
 
   } catch (e) {
     console.error("[proactive-drafts] error:", e.message);
-    return finalize(FALLBACK_DRAFTS.slice(0, count), "fallback", { warn: e.message });
+    return finalize(buildFallbackDrafts(brand, count), "fallback", { warn: e.message });
   }
 }
 
 // Named exports for unit tests
-export { buildPrompt, FALLBACK_DRAFTS };
+export { buildPrompt, buildFallbackDrafts };

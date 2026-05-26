@@ -2,80 +2,123 @@
 // All workspaces read from `state` and mutate via `actions`.
 const { useReducer: useReducerStore, useCallback: useCallbackStore } = React;
 
-// Platforms that have a working publish path (via PLATFORM_PUBLISHERS in workspaces3.jsx).
-// Keep in sync with that map.
-const PLATFORM_PUBLISHERS = new Set(["linkedin", "facebook", "x", "instagram", "reddit"]);
+// Platforms with a working publish path via Zernio (createPlatformHandler in api/lib/platformPublisher.js).
+// All 15 organic social platforms are covered. Anything not in this set gets
+// noPublishPath: true → queue shows "export or post manually" instead of Schedule.
+const PLATFORM_PUBLISHERS = new Set([
+  "linkedin", "facebook", "x", "instagram", "reddit",
+  "tiktok", "pinterest", "threads", "bluesky", "youtube",
+  "snapchat", "googlebusiness", "gbusiness", "telegram", "whatsapp", "discord",
+]);
 
-function mveda_initialState() {
+// Default channel rules — shipped product config, identical for everyone.
+// Seed brands and real users start with this set; users may adjust per channel
+// in AutonomySettings. Listed connectors must match SEED.connectorCatalog ids.
+const DEFAULT_CHANNEL_RULES = [
+  { name: "Instagram",  publish: "auto",  reply: "human", ai: "review" },
+  { name: "LinkedIn",   publish: "auto",  reply: "human", ai: "review" },
+  { name: "TikTok",     publish: "auto",  reply: "human", ai: "review" },
+  { name: "Facebook",   publish: "human", reply: "human", ai: "review" },
+  { name: "YouTube",    publish: "human", reply: "n/a",   ai: "review" },
+  { name: "Email",      publish: "human", reply: "n/a",   ai: "n/a"    },
+  { name: "Google Ads",    publish: "human", reply: "n/a",   ai: "review" },
+  { name: "Spotify Ads",   publish: "human", reply: "n/a",   ai: "review" },
+  { name: "Meta Ads",      publish: "human", reply: "n/a",   ai: "review" },
+  { name: "TikTok Ads",    publish: "human", reply: "n/a",   ai: "review" },
+  { name: "LinkedIn Ads",  publish: "human", reply: "n/a",   ai: "review" },
+  { name: "Pinterest Ads", publish: "human", reply: "n/a",   ai: "review" },
+  { name: "X Ads",         publish: "human", reply: "n/a",   ai: "review" },
+  { name: "X",             publish: "auto",  reply: "human", ai: "review" },
+  { name: "Pinterest",     publish: "auto",  reply: "n/a",   ai: "review" },
+  { name: "Threads",       publish: "auto",  reply: "human", ai: "review" },
+  { name: "Bluesky",       publish: "auto",  reply: "human", ai: "review" },
+  { name: "WhatsApp",      publish: "human", reply: "human", ai: "review" },
+  { name: "Telegram",      publish: "human", reply: "human", ai: "review" },
+  { name: "Snapchat",      publish: "auto",  reply: "n/a",   ai: "review" },
+  { name: "Discord",       publish: "human", reply: "human", ai: "review" },
+  { name: "Google Business", publish: "human", reply: "human", ai: "review" },
+];
+
+// Initial store state.
+//
+// seedMode:
+//   "mveda" | "erickson"  → demo session via ?seed= URL param. Whiteboard
+//                           filled from SEED so the workspaces feel populated
+//                           without requiring real data. The activeBrandId
+//                           becomes the seed key, which makes SWITCH_BRAND work.
+//   null (real user)      → all demo slices start empty. Brand-derived slices
+//                           (brandValues, approvedClaims, prohibited, brandPreset)
+//                           are overlaid at login by BRAND_HYDRATE from the
+//                           user's Supabase brands row. The activeBrandId is
+//                           the Supabase user id (auth.id) — SWITCH_BRAND
+//                           becomes a no-op outside seed mode (existing guard
+//                           in the reducer covers this since auth.id won't
+//                           match a SEED.brandPresets key).
+//
+// userId: passed in for real users so activeBrandId is uniquely identifies
+//   the tenant. Ignored in seed mode.
+//
+// Config defaults (autonomyMode, channelRules, thresholds, dateRange) are
+// product defaults — identical for all sessions.
+function mveda_initialState({ seedMode = null, userId = null } = {}) {
+  const isSeed = seedMode === "mveda" || seedMode === "erickson";
   return {
-    calendar: SEED.calendar.map(c => ({ ...c })),
-    toneModes: SEED.toneModes.map(m => ({ ...m, approved: [...m.approved], avoided: [...m.avoided] })),
-    approvals: SEED.approvals.map(a => ({ ...a, status: "open" })),
-    inbox: SEED.inbox.map(i => ({ ...i })),
-    assets: SEED.assets.map(a => ({ ...a })),
-    trendBrief: SEED.trendBrief.map(t => ({ ...t })),
-    brandValues: [...SEED.brandValues],
-    approvedClaims: [...SEED.approvedClaims],
-    prohibited: [...SEED.prohibited],
+    // ── Config defaults (same for everyone) ──
     autonomyMode: "assisted",
-    channelRules: [
-      { name: "Instagram",  publish: "auto",  reply: "human", ai: "review" },
-      { name: "LinkedIn",   publish: "auto",  reply: "human", ai: "review" },
-      { name: "TikTok",     publish: "auto",  reply: "human", ai: "review" },
-      { name: "Facebook",   publish: "human", reply: "human", ai: "review" },
-      { name: "YouTube",    publish: "human", reply: "n/a",   ai: "review" },
-      { name: "Email",      publish: "human", reply: "n/a",   ai: "n/a"    },
-      { name: "Google Ads",    publish: "human", reply: "n/a",   ai: "review" },
-      { name: "Spotify Ads",   publish: "human", reply: "n/a",   ai: "review" },
-      { name: "Meta Ads",      publish: "human", reply: "n/a",   ai: "review" },
-      { name: "TikTok Ads",    publish: "human", reply: "n/a",   ai: "review" },
-      { name: "LinkedIn Ads",  publish: "human", reply: "n/a",   ai: "review" },
-      { name: "Pinterest Ads", publish: "human", reply: "n/a",   ai: "review" },
-      { name: "X Ads",         publish: "human", reply: "n/a",   ai: "review" },
-      { name: "X",             publish: "auto",  reply: "human", ai: "review" },
-      { name: "Pinterest",     publish: "auto",  reply: "n/a",   ai: "review" },
-      { name: "Threads",       publish: "auto",  reply: "human", ai: "review" },
-      { name: "Bluesky",       publish: "auto",  reply: "human", ai: "review" },
-      { name: "WhatsApp",      publish: "human", reply: "human", ai: "review" },
-      { name: "Telegram",      publish: "human", reply: "human", ai: "review" },
-      { name: "Snapchat",      publish: "auto",  reply: "n/a",   ai: "review" },
-      { name: "Discord",       publish: "human", reply: "human", ai: "review" },
-      { name: "Google Business", publish: "human", reply: "human", ai: "review" },
-    ],
+    channelRules: DEFAULT_CHANNEL_RULES.map(r => ({ ...r })),
     thresholds: { confidence: 85, dailyCap: 12, sla: 90 },
-    activity: SEED.audit.map(a => ({ ...a, id: "e_" + Math.random().toString(36).slice(2,8) })),
-    notifications: [],
     dateRange: "30d",
-    activeBrandId: "mveda",
-    connectors: { ...SEED.connectorState },
-    brandImported: SEED.brandImported || false,
-    brandPreset: null, // gets set when user imports
+    notifications: [],
 
-    // New feature state
-    smsCampaigns: SEED.smsCampaigns.map(c => ({ ...c })),
-    smsAutomations: SEED.smsAutomations.map(a => ({ ...a })),
-    smsCompliance: { ...SEED.smsCompliance },
-    seoArticles: SEED.seoArticles.map(a => ({ ...a })),
-    seoKeywords: SEED.seoKeywords.map(k => ({ ...k })),
-    seoBacklinks: SEED.seoBacklinks.map(b => ({ ...b })),
-    seoInternalSuggestions: SEED.seoInternalSuggestions.map(s => ({ ...s })),
-    affiliateProgram: { ...SEED.affiliateProgram },
-    affiliatePartners: SEED.affiliatePartners.map(p => ({ ...p })),
-    referralProgram: { ...SEED.referralProgram },
-    retention: JSON.parse(JSON.stringify(SEED.retention)),
-    cxSignals: JSON.parse(JSON.stringify(SEED.cxSignals)),
-    seasonalPlaybooks: SEED.seasonalPlaybooks.map(p => ({ ...p })),
-    capacityPlan: { ...SEED.capacityPlan },
-    abTests: SEED.abTests.map(t => ({ ...t })),
-    abFedBrandRules: SEED.abFedBrandRules.map(r => ({ ...r })),
-    team: SEED.team.map(t => ({ ...t })),
-    guests: SEED.guests.map(g => ({ ...g, scope: [...g.scope] })),
-    discountHistory: SEED.discountHistory.map(d => ({ ...d })),
-    marginFloors: { ...SEED.marginFloors },
-    discountFatigue: { ...SEED.discountFatigue, alerts: [...SEED.discountFatigue.alerts] },
+    // ── Identity ──
+    activeBrandId: isSeed ? seedMode : userId,
+    brandImported: isSeed ? (SEED.brandImported || false) : false,
+    brandPreset:   null, // overlaid at login by BRAND_HYDRATE for real users
+
+    // ── Demo-vs-empty slices ──
+    calendar:   isSeed ? SEED.calendar.map(c => ({ ...c })) : [],
+    toneModes:  isSeed ? SEED.toneModes.map(m => ({ ...m, approved: [...m.approved], avoided: [...m.avoided] })) : [],
+    approvals:  isSeed ? SEED.approvals.map(a => ({ ...a, status: "open" })) : [],
+    inbox:      isSeed ? SEED.inbox.map(i => ({ ...i })) : [],
+    assets:     isSeed ? SEED.assets.map(a => ({ ...a })) : [],
+    trendBrief: isSeed ? SEED.trendBrief.map(t => ({ ...t })) : [],
+    activity:   isSeed ? SEED.audit.map(a => ({ ...a, id: "e_" + crypto.randomUUID() })) : [],
+    connectors: isSeed ? { ...SEED.connectorState } : {},
+
+    // Brand-safety floor — empty for real users, overlaid by BRAND_HYDRATE
+    // from the user's brand row (values/claims/prohibited_topics arrays).
+    brandValues:    isSeed ? [...SEED.brandValues]     : [],
+    approvedClaims: isSeed ? [...SEED.approvedClaims]  : [],
+    prohibited:     isSeed ? [...SEED.prohibited]      : [],
+
+    // Feature-specific demo data
+    smsCampaigns:    isSeed ? SEED.smsCampaigns.map(c => ({ ...c })) : [],
+    smsAutomations:  isSeed ? SEED.smsAutomations.map(a => ({ ...a })) : [],
+    smsCompliance:   isSeed ? { ...SEED.smsCompliance } : {},
+    seoArticles:     isSeed ? SEED.seoArticles.map(a => ({ ...a })) : [],
+    seoKeywords:     isSeed ? SEED.seoKeywords.map(k => ({ ...k })) : [],
+    seoBacklinks:    isSeed ? SEED.seoBacklinks.map(b => ({ ...b })) : [],
+    seoInternalSuggestions: isSeed ? SEED.seoInternalSuggestions.map(s => ({ ...s })) : [],
+    affiliateProgram:   isSeed ? { ...SEED.affiliateProgram } : {},
+    affiliatePartners:  isSeed ? SEED.affiliatePartners.map(p => ({ ...p })) : [],
+    referralProgram:    isSeed ? { ...SEED.referralProgram } : {},
+    retention:          isSeed ? JSON.parse(JSON.stringify(SEED.retention)) : {},
+    cxSignals:          isSeed ? JSON.parse(JSON.stringify(SEED.cxSignals)) : {},
+    seasonalPlaybooks:  isSeed ? SEED.seasonalPlaybooks.map(p => ({ ...p })) : [],
+    capacityPlan:       isSeed ? { ...SEED.capacityPlan } : {},
+    abTests:            isSeed ? SEED.abTests.map(t => ({ ...t })) : [],
+    abFedBrandRules:    isSeed ? SEED.abFedBrandRules.map(r => ({ ...r })) : [],
+    team:               isSeed ? SEED.team.map(t => ({ ...t })) : [],
+    guests:             isSeed ? SEED.guests.map(g => ({ ...g, scope: [...g.scope] })) : [],
+    discountHistory:    isSeed ? SEED.discountHistory.map(d => ({ ...d })) : [],
+    marginFloors:       isSeed ? { ...SEED.marginFloors } : {},
+    discountFatigue:    isSeed
+      ? { ...SEED.discountFatigue, alerts: [...SEED.discountFatigue.alerts] }
+      : { alerts: [] },
 
     // Chat-authored outbound assets pushed to external platforms (Klaviyo, SMS providers, etc).
     // Separate from `calendar` because the lifecycle is platform-driven, not internal.
+    // Always starts empty — populated at runtime by chat-to-create + proactive cron loads.
     outbound: {
       emails: [], // { id, subject, preheader, bodyHtml, bodyText, audienceHint, status, klaviyoTemplateId, klaviyoCampaignId, klaviyoMessageId, klaviyoUrl, audience, error, createdAt }
       sms:    [], // { id, body, audienceHint, status, klaviyoCampaignId, klaviyoMessageId, klaviyoUrl, audience, warnings, error, createdAt }
@@ -102,8 +145,8 @@ function mveda_reducer(s, a) {
     const d = new Date();
     return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
   };
-  const log = (actor, event) => ({ id: "e_"+Math.random().toString(36).slice(2,8), t: now(), actor, event });
-  const notify = (tone, text) => ({ id: "n_"+Math.random().toString(36).slice(2,8), tone, text, at: Date.now() });
+  const log = (actor, event) => ({ id: "e_"+crypto.randomUUID(), t: now(), actor, event });
+  const notify = (tone, text) => ({ id: "n_"+crypto.randomUUID(), tone, text, at: Date.now() });
 
   switch (a.type) {
     case "CAL_ADD": {
@@ -224,6 +267,68 @@ function mveda_reducer(s, a) {
         notifications: [notify("neutral", "Brand reset to default"), ...s.notifications],
       };
     }
+    case "BRAND_HYDRATE": {
+      // Silent overlay from a Supabase `brands` row at login. No notifications,
+      // no activity log — the user didn't take an action, they just signed in.
+      // Snake-case → camel-case at the reducer boundary so consumers of
+      // brandPreset see the same shape as SEED.brandPresets.
+      // Connector state is intentionally NOT seeded here — `recommended_connectors`
+      // is a hint, not ground truth. Real connector state lives in the `channels`
+      // table (separate hydration).
+      const b = a.brand;
+      if (!b) return s;
+      const preset = {
+        name:                  b.name || "My Brand",
+        industry:              b.industry || null,
+        website:               b.website || null,
+        voice:                 b.voice || null,
+        values:                b.values || null,
+        claims:                b.claims || null,
+        prohibitedTopics:      b.prohibited_topics || null,
+        targetAudience:        b.target_audience || null,
+        recommendedConnectors: b.recommended_connectors || null,
+        competitors:           b.competitors || null,
+        brandAnalysis:         b.brand_analysis || null,
+      };
+
+      // Synthesize a single default tone mode from the brand voice. brand-import.js
+      // currently outputs ONE voice (attributes / antiAttributes / bannedPhrases),
+      // not the multi-tone structure SEED.toneModes uses. Until brand-import is
+      // extended to produce multiple tone modes, this gives real users at least
+      // one tone reflecting their actual brand instead of an empty list.
+      // Follow-up: extend api/brand-import.js prompt to output a toneModes array
+      // (name + approved + avoided + when-to-use), then map directly here.
+      const v = b.voice || {};
+      const approved = Array.isArray(v.attributes) ? v.attributes : [];
+      const avoided  = [
+        ...(Array.isArray(v.antiAttributes) ? v.antiAttributes : []),
+        ...(Array.isArray(v.bannedPhrases)  ? v.bannedPhrases  : []),
+      ];
+      const synthesizedTone = (approved.length || avoided.length) ? [{
+        id:           "tm_brand_default",
+        name:         v.tone || "Brand voice",
+        status:       "active",
+        isDefault:    true,
+        register:     v.personality || "",
+        approved,
+        avoided,
+        rhythm:       "",
+        whenToUse:    "",
+        whenNotToUse: "",
+        example:      "",
+        performance:  "—",
+        usage:        0,
+      }] : null;
+
+      return { ...s,
+        brandImported:  true,
+        brandPreset:    preset,
+        brandValues:    Array.isArray(b.values)             ? b.values             : s.brandValues,
+        approvedClaims: Array.isArray(b.claims)             ? b.claims             : s.approvedClaims,
+        prohibited:     Array.isArray(b.prohibited_topics)  ? b.prohibited_topics  : s.prohibited,
+        toneModes:      synthesizedTone || s.toneModes,
+      };
+    }
     case "SWITCH_BRAND": {
       const preset = SEED.brandPresets[a.brandId];
       if (!preset) return s;
@@ -266,14 +371,14 @@ function mveda_reducer(s, a) {
         activity: [log("Brand Guard", `promoted A/B winner to brand rule · ${a.rule}`), ...s.activity],
         notifications: [notify("ok", `Brand rule added from A/B winner`), ...s.notifications] };
     case "AB_CREATE_FROM_DRAFT": {
-      const test = { id: "ab_" + Math.random().toString(36).slice(2,6), subject: a.subject, variantA: a.variantA, variantB: a.variantB, status: "running", confidence: 0, lift: "—", linkedDraftId: a.linkedDraftId };
+      const test = { id: "ab_" + crypto.randomUUID(), subject: a.subject, variantA: a.variantA, variantB: a.variantB, status: "running", confidence: 0, lift: "—", linkedDraftId: a.linkedDraftId };
       return { ...s, abTests: [test, ...s.abTests],
         activity: [log("Drafter", `A/B test created from draft · ${a.subject}`), ...s.activity],
         notifications: [notify("ok", `A/B test launched`), ...s.notifications] };
     }
 
     case "GUEST_INVITE":
-      return { ...s, guests: [{ id: "g_" + Math.random().toString(36).slice(2,6), ...a.guest, last: "just now" }, ...s.guests],
+      return { ...s, guests: [{ id: "g_" + crypto.randomUUID(), ...a.guest, last: "just now" }, ...s.guests],
         activity: [log("Greg", `invited guest · ${a.guest.name}`), ...s.activity],
         notifications: [notify("ok", `Invite sent · ${a.guest.email}`), ...s.notifications] };
     case "GUEST_REMOVE":
@@ -309,7 +414,7 @@ function mveda_reducer(s, a) {
       const newItems = (a.items || [])
         .filter(d => !existingIds.has(d.id))
         .map(d => ({
-          id:          d.id || "p_" + Math.random().toString(36).slice(2,8),
+          id:          d.id || "p_" + crypto.randomUUID(),
           platform:    d.platform,
           kind:        d.contentType,
           title:       (d.copy || "").slice(0, 80),
@@ -333,7 +438,7 @@ function mveda_reducer(s, a) {
     case "QUEUE_ADD_DRAFT": {
       const platformKey = (a.platform || "").toLowerCase();
       const item = {
-        id:            a.id || ("d_" + Math.random().toString(36).slice(2,8)),
+        id:            a.id || ("d_" + crypto.randomUUID()),
         platform:      a.platform,
         kind:          a.contentType,
         title:         (a.copy || "").slice(0, 80),
@@ -359,7 +464,7 @@ function mveda_reducer(s, a) {
     }
     case "OUTBOUND_EMAIL_ADD": {
       const email = {
-        id:                a.id || ("oe_" + Math.random().toString(36).slice(2, 8)),
+        id:                a.id || ("oe_" + crypto.randomUUID()),
         subject:           a.subject || "",
         preheader:         a.preheader || "",
         bodyHtml:          a.bodyHtml || "",
@@ -439,7 +544,7 @@ function mveda_reducer(s, a) {
     }
     case "OUTBOUND_SMS_ADD": {
       const sms = {
-        id:                a.id || ("os_" + Math.random().toString(36).slice(2, 8)),
+        id:                a.id || ("os_" + crypto.randomUUID()),
         body:              a.body || "",
         audienceHint:      a.audienceHint || "",
         status:            a.status || "pushing",
@@ -470,7 +575,7 @@ function mveda_reducer(s, a) {
         ...s,
         activePlan: a.plan ? {
           ...a.plan,
-          id:        a.plan.id || ("br_" + Math.random().toString(36).slice(2, 10)),
+          id:        a.plan.id || ("br_" + crypto.randomUUID()),
           createdAt: a.plan.createdAt || new Date().toISOString(),
         } : null,
         notifications: a.plan
@@ -485,8 +590,15 @@ function mveda_reducer(s, a) {
   }
 }
 
-function useMvedaStore() {
-  const [state, dispatch] = useReducerStore(mveda_reducer, undefined, mveda_initialState);
+// useMvedaStore(seedMode, userId)
+//   seedMode: "mveda" | "erickson" | null — passed by ChatOSAuthed from URL
+//             param state. null = real user session.
+//   userId:   Supabase user id for real users; ignored in seed mode.
+// Both are read by mveda_initialState on first render and not re-read after
+// (useReducer's init arg only runs once). They're stable per-session by
+// construction — ChatOS sets them before ChatOSAuthed mounts.
+function useMvedaStore(seedMode = null, userId = null) {
+  const [state, dispatch] = useReducerStore(mveda_reducer, { seedMode, userId }, mveda_initialState);
   const actions = {
     addCampaign: (items, campaignName) => dispatch({ type: "CAL_ADD", items, campaign: campaignName }),
     updateItem:  (id, patch, opts={}) => dispatch({ type: "CAL_UPDATE", id, patch, logEvent: opts.logEvent, actor: opts.actor, notify: opts.notify }),
@@ -513,6 +625,7 @@ function useMvedaStore() {
     log:             (actor, event) => dispatch({ type: "LOG", actor, event }),
     setConnector:    (id, patch, opts={}) => dispatch({ type: "CONNECTOR_SET", id, patch, logEvent: opts.logEvent, notify: opts.notify }),
     importBrand:     (preset) => dispatch({ type: "BRAND_IMPORTED", preset }),
+    hydrateBrand:    (brand)  => dispatch({ type: "BRAND_HYDRATE", brand }),
     resetBrand:      () => dispatch({ type: "BRAND_RESET" }),
     switchBrand:     (brandId) => dispatch({ type: "SWITCH_BRAND", brandId }),
     applyStrategy:   (payload) => dispatch({ type: "STRATEGY_APPLY", payload }),

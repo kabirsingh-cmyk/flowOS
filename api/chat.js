@@ -13,6 +13,7 @@
 import { COMPOSIO_BASE, composioHeaders, getConnectedAccountSlugs, executeComposioTool as _execTool } from './lib/composio.js';
 import { sbHeaders, fetchBrandProfile } from './lib/supabase.js';
 import { requireAuth } from './lib/auth.js';
+import { getModel, getFastModel } from './lib/anthropic.js';
 
 export const config = { runtime: "edge" };
 
@@ -240,6 +241,7 @@ DELEGATE TO SPECIALISTS when:
 - If the user wants to plan a campaign, build a campaign brief, create a marketing plan, or map out a product launch → delegate to campaign_planner
 - If the user asks for a drip campaign, nurture sequence, onboarding emails, re-engagement series, win-back campaign, email automation, or any multi-email flow → delegate to drafter with intent to call create_email_sequence
 - If the user asks for an SEO audit, keyword research, content gap analysis, technical SEO check, or competitor SEO comparison → delegate to seo_auditor
+- If the user wants to plan their media mix, allocate budget across channels, decide what to spend where, build a paid-channel plan, model CAC, or compare channel ROI for a given budget → delegate to media_planner
 
 Otherwise act directly using available tools.
 
@@ -267,6 +269,17 @@ TOOL CHOICE
 - For everything else: call create_draft.
 - One tool call per piece of content. If the user asks for 3 variants, make 3 calls.
 - Never output draft copy as plain text — always go through a tool.
+
+PUBLISH PATHS
+These platforms publish directly from the queue (user clicks Schedule or Publish Now):
+  LinkedIn, Facebook, X, Instagram, Reddit, TikTok, Pinterest, Threads, Bluesky,
+  YouTube, Snapchat, Google Business, Telegram, WhatsApp, Discord.
+
+These formats go to the queue as copy-only — the user exports and posts manually:
+  Blog posts, podcast scripts, print ads, press releases, and any other non-social format.
+
+When writing for a copy-only format, add one sentence at the end of your response noting
+that the draft will land in the queue ready to copy — no automated publishing.
 
 Formats:
 - Social post: caption + relevant hashtags. Under 300 chars unless the platform supports long-form.
@@ -576,6 +589,68 @@ Field expectations:
 After both tool calls, write one short paragraph (2-3 sentences max) in chat introducing the audit and asking: "Would you like me to draft content briefs for the top keyword opportunities, write optimized title tags and meta descriptions, or build a content calendar from the gap analysis?" The card carries the detail — do not restate the sections in prose.
 
 ${brandVoiceBlock}`,
+
+    media_planner: (() => {
+      // Reuses the analyst's analytics fetch pattern — same shape, same priority.
+      // When real CAC/spend data exists, channel estimates anchor to it instead
+      // of pure industry benchmarks.
+      let analyticsBlock = "";
+      if (analyticsData?.insights || analyticsData?.snapshots?.length > 0) {
+        const parts = [];
+        if (analyticsData.insights?.summary) {
+          parts.push(`LATEST ANALYSIS SUMMARY:\n${analyticsData.insights.summary}`);
+        }
+        if (analyticsData.snapshots?.length > 0) {
+          parts.push("LIVE METRICS DATA:\n" + analyticsData.snapshots.map(s =>
+            `${s.channel.toUpperCase()}:\n${JSON.stringify(s.metrics, null, 2)}`
+          ).join("\n\n"));
+        }
+        analyticsBlock = parts.length > 0
+          ? `\n\nTENANT ANALYTICS (real data — anchor CAC/spend estimates to these numbers when channels overlap)\n${parts.join("\n\n")}`
+          : "";
+      }
+
+      return `You are FlowOS's media planning specialist. You take a goal + budget and produce a structured paid-channel plan: which channels to use, how much to spend on each, what CAC to expect, and what to skip.
+
+${brandBlock}${analyticsBlock}
+
+When activated, first check if the user has provided:
+- Primary goal (required) — lead gen, brand awareness, sales, signups, app installs, etc.
+- Total monthly budget (required) — in USD unless otherwise specified
+- Timeline (optional) — quarter, month range, ongoing
+- Target audience (optional) — who you're trying to reach
+- Current spend or known CAC per channel (optional) — anchors estimates to reality
+
+If goal or budget is missing, ask for both in a single message before producing anything.
+
+Once you have inputs, produce the plan by calling the create_media_plan tool ONCE with the complete structured payload. Do NOT write the plan as markdown in chat — the FlowOS chat renders the tool output as a first-class MediaPlanCard artifact with per-channel allocation, CAC confidence, and excluded-channel rationale.
+
+RULES:
+
+1. Channels — pick 3–7 channels in priority order (priority 1 = highest). Each channel must include: channel name, priority, monthlySpend, pctOfTotal, format / use case, targetCAC, cacConfidence ("measured" | "estimated"), cacSource, expectedConversions, rationale.
+
+2. Budget reconciliation — channel monthlySpend values MUST sum to totalBudgetMonthly. Channel pctOfTotal values MUST sum to 100 (within ±1 for rounding). Don't fudge. If the math doesn't work, adjust before submitting.
+
+3. CAC honesty — use real numbers when you have them:
+   - If TENANT ANALYTICS above contains CAC, spend, or conversion data for a channel, anchor to it. Mark cacConfidence: "measured" and cacSource: "Tenant <period> analytics" (e.g. "Tenant 30d analytics").
+   - If no tenant data exists for a channel, use industry benchmarks from your training data. Mark cacConfidence: "estimated" and cacSource: "<segment> benchmark" (e.g. "DTC skincare benchmark", "B2B SaaS benchmark"). Never fabricate precision — round to clean numbers.
+
+4. dataSource field — set to "tenant_analytics" if every channel CAC is measured, "benchmarks_only" if none, "mixed" if some of each.
+
+5. Excluded channels — list plausible channels you deliberately DID NOT pick with one-sentence rationale each. Use this for genuine alternatives you weighed (e.g. "Pinterest Ads — audience present but conversion intent too low at this stage of brand awareness"). Don't list obviously irrelevant channels.
+
+6. Risks + assumptions — call them out. Examples: seasonal CPM spikes, audience saturation, fulfillment capacity ceilings, attribution caveats, creative production rate. 0–5 items each.
+
+7. Audience and goal fit — every channel rationale must reference the goal and (when known) the audience. "Reach more customers" fails. "Reach in-market DTC skincare buyers age 28–44 on Meta during evening browsing — best matches the awareness → consideration goal" passes.
+
+8. Channel scope — paid media (Meta Ads, Google Ads, LinkedIn Ads, X Ads, TikTok Ads, Pinterest Ads, Spotify Ads, Reddit Ads) is primary. Earned/owned channels with attached costs (SEO content, organic social with creative budget, email/SMS with platform + list costs, affiliate, influencer, PR) are valid line items — flag clearly in the format field which are paid vs other.
+
+9. Brand fit — recommendations must match the brand's industry, audience, and stage. A B2B HVAC company doesn't belong on TikTok Ads; a DTC skincare brand doesn't lead with LinkedIn Ads. Use the brand context above.
+
+After calling create_media_plan, write one short paragraph (2-3 sentences max) in chat that introduces the plan and asks one follow-up like: "Want me to draft creative briefs for the top channel, model what happens if we double the budget, or build a content calendar around this allocation?" The card carries the detail — do not restate the channels in prose.
+
+${brandVoiceBlock}`;
+    })(),
   };
 
   const defaultPrompt = prompts[specialist] || prompts.supervisor;
@@ -598,7 +673,7 @@ const INTERNAL_TOOLS = [
     input_schema: {
       type: "object",
       properties: {
-        specialist: { type: "string", enum: ["drafter", "analyst", "brand_guard", "inbox", "campaign_planner", "seo_auditor"] },
+        specialist: { type: "string", enum: ["drafter", "analyst", "brand_guard", "inbox", "campaign_planner", "seo_auditor", "media_planner"] },
         context:    { type: "string", description: "What to pass to the specialist" },
       },
       required: ["specialist", "context"],
@@ -867,6 +942,67 @@ INTERNAL_TOOLS.push({
 });
 
 INTERNAL_TOOLS.push({
+  name: "create_media_plan",
+  description: "Persist a complete media plan as a first-class artifact and surface it inline in the chat. Call this ONCE at the end of media planning. Allocate the total monthly budget across 3-7 channels with explicit rationale, target CAC per channel, and reach/conversion estimates. Channel monthlySpend values must sum to totalBudgetMonthly; channel pctOfTotal values must sum to 100. Use cacConfidence='measured' only when anchored to TENANT ANALYTICS data; otherwise 'estimated'.",
+  input_schema: {
+    type: "object",
+    properties: {
+      title:              { type: "string", description: "Plan name (e.g. 'Q3 Lead-Gen Media Plan', 'Hair Ritual Launch Media Mix')." },
+      summary:            { type: "string", description: "2-3 sentence executive summary covering the headline allocation and expected outcome." },
+      goal:               { type: "string", description: "Primary objective the plan serves (e.g. 'Drive 500 qualified leads in Q3 at <=$50 CPL')." },
+      audience:           { type: "string", description: "Primary audience description. Empty string if not provided by the user." },
+      timeline:           { type: "string", description: "Plan period (e.g. 'Q3 2026', 'Jul-Sep 2026', 'Ongoing'). Empty string if not specified." },
+      currency:           { type: "string", description: "ISO currency code. Default 'USD'." },
+      totalBudgetMonthly: { type: "number", description: "Total monthly budget across all channels, in the currency above." },
+      dataSource:         { type: "string", enum: ["tenant_analytics", "benchmarks_only", "mixed"], description: "Where the CAC/spend numbers came from. tenant_analytics = every CAC measured from tenant data; benchmarks_only = pure industry benchmarks; mixed = some of each." },
+      channels: {
+        type: "array",
+        description: "3-7 channels in priority order. Channel monthlySpend values must sum to totalBudgetMonthly; pctOfTotal values must sum to 100.",
+        items: {
+          type: "object",
+          properties: {
+            channel:             { type: "string", description: "Channel name (e.g. 'Meta Ads', 'LinkedIn Ads', 'Google Search', 'Email/SMS', 'Affiliate', 'SEO content')." },
+            priority:            { type: "number", description: "1-based priority (1 = highest)." },
+            monthlySpend:        { type: "number", description: "Recommended monthly spend in the plan currency." },
+            pctOfTotal:          { type: "number", description: "Percentage of totalBudgetMonthly (0-100)." },
+            format:              { type: "string", description: "Format / use case (e.g. 'UGC video + carousel, conversion campaigns', 'Branded + non-branded search', 'Welcome + abandoned-cart flows')." },
+            targetCAC:           { type: "number", description: "Estimated CAC at this spend level, in the plan currency." },
+            cacConfidence:       { type: "string", enum: ["measured", "estimated"], description: "'measured' = anchored to tenant analytics; 'estimated' = industry benchmark." },
+            cacSource:           { type: "string", description: "Origin of the CAC number (e.g. 'Tenant 30d analytics', 'DTC skincare benchmark', 'B2B SaaS benchmark')." },
+            expectedConversions: { type: "number", description: "Estimated conversions per month at this spend / CAC." },
+            rationale:           { type: "string", description: "1-2 sentences: why this channel for this goal and audience. Must reference goal and (when known) audience." },
+          },
+          required: ["channel", "priority", "monthlySpend", "pctOfTotal", "format", "targetCAC", "cacConfidence", "rationale"],
+        },
+      },
+      excluded: {
+        type: "array",
+        description: "Channels deliberately NOT in the plan, with reason. Use for plausible alternatives weighed and rejected — not obviously irrelevant channels. Empty array if nothing was actively excluded.",
+        items: {
+          type: "object",
+          properties: {
+            channel: { type: "string" },
+            reason:  { type: "string", description: "One sentence — why this channel was deprioritized for this plan." },
+          },
+          required: ["channel", "reason"],
+        },
+      },
+      risks: {
+        type: "array",
+        items: { type: "string" },
+        description: "Risk callouts (seasonal CPM spikes, audience saturation, fulfillment ceilings, attribution caveats). 0-5 items.",
+      },
+      assumptions: {
+        type: "array",
+        items: { type: "string" },
+        description: "Assumptions baked into the plan (audience size, market conditions, creative production rate). 0-5 items.",
+      },
+    },
+    required: ["title", "summary", "goal", "totalBudgetMonthly", "dataSource", "channels"],
+  },
+});
+
+INTERNAL_TOOLS.push({
   name: "create_campaign_plan",
   description: "Persist the campaign brief to the CampaignPlanner canvas and surface a campaign-plan summary card inline in the chat. Call this ONCE after writing the full nine-section brief. Pass the full markdown brief in the `brief` field — the planner canvas renders it.",
   input_schema: {
@@ -907,6 +1043,9 @@ const SEO_AUDITOR_TOOLS = [
   WEB_SEARCH_TOOL,
 ];
 
+// Tools available to the Media Planner specialist
+const MEDIA_PLANNER_TOOLS = INTERNAL_TOOLS.filter(t => t.name === "create_media_plan" || t.name === "open_workspace");
+
 // ─── Tool execution loop ──────────────────────────────────────────────────────
 
 const INTERNAL_TOOL_NAMES = new Set(INTERNAL_TOOLS.map(t => t.name));
@@ -935,7 +1074,7 @@ async function runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey }) 
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model:      "claude-opus-4-5",
+        model:      getModel(),
         max_tokens: 2048,
         system:     systemPrompt,
         tools:      tools.length > 0 ? tools : undefined,
@@ -1000,7 +1139,7 @@ async function runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey }) 
 // output against a checklist, and reruns the specialist (up to PM_MAX_ATTEMPTS)
 // with correction guidance injected until the output passes or the cap is hit.
 
-const PM_SPECIALISTS = new Set(["supervisor", "drafter", "analyst", "brand_guard", "inbox"]);
+const PM_SPECIALISTS = new Set(["supervisor", "drafter", "analyst", "brand_guard", "inbox", "campaign_planner", "seo_auditor", "media_planner"]);
 const PM_MAX_ATTEMPTS = 3;
 
 function buildPMSystemPrompt(specialist, brand) {
@@ -1086,6 +1225,67 @@ RULES — fail on any that apply:
 Approved → { "approved": true, "violations": [], "corrections": "" }
 Failed → list violations; write correction instructions.`;
 
+    case "campaign_planner":
+      return `You are the Campaign Planner PM. Review campaign briefs for structural and substantive completeness.
+${schema}
+
+RULES — fail on any that apply:
+- The create_campaign_plan tool MUST be called — a prose-only brief without the tool call is invalid
+- All seven sections must be present and labelled: Campaign Overview, Target Audience, Key Messages, Channel Strategy, Content Calendar, Content Assets Needed, Success Metrics
+- Primary objective must be SMART — must include a specific number and a timeframe (e.g. "500 signups by Q3", not "more signups")
+- Target Audience must follow the persona format: "[Role/type] who is struggling with [pain point] and looking for [outcome]. They discover solutions through [channels] and care most about [priorities]." — plus buying stage (awareness / consideration / decision)
+- Key Messages must include: one core message + 3 supporting messages + one proof point per supporting message
+- Channel Strategy must pick 3–5 channels, each with rationale, format, effort level. If budget was provided, % allocation per channel is required.
+- Content Calendar must be a week-by-week breakdown — not a single dump. Each row needs priority (Must-have / Nice-to-have) and dependencies called out where they exist.
+- Success Metrics must include a primary KPI with a target number — vague KPIs like "engagement" without a target fail
+${banned.length ? `- Banned phrases must NOT appear: ${banned.join(", ")}` : ""}
+- No unverified statistics or clinical claims unless from approved list${claims.length ? `: ${claims.join("; ")}` : ""}
+- No AI meta-commentary openers: "Certainly!", "Of course!", "Great question!", "Happy to help!", "Sure!", etc.
+
+Approved → { "approved": true, "violations": [], "corrections": "" }
+Failed → list violations; write correction instructions.`;
+
+    case "media_planner":
+      return `You are the Media Planner PM. Review media plans for structural and substantive completeness.
+${schema}
+
+RULES — fail on any that apply:
+- The create_media_plan tool MUST be called — a prose-only plan without the tool call is invalid
+- channels array must contain between 3 and 7 entries — fewer = thin plan, more = unfocused
+- Each channel must have: channel, priority, monthlySpend, pctOfTotal, format, targetCAC, cacConfidence, rationale (cacSource and expectedConversions strongly recommended)
+- cacConfidence must be "measured" or "estimated" — any other value fails
+- If cacConfidence is "measured", cacSource must reference tenant analytics (e.g. "Tenant 30d analytics") — fabricated measured numbers are a failure
+- Budget reconciliation: channel monthlySpend values must sum to totalBudgetMonthly (within ±1% for rounding). pctOfTotal values must sum to 100 (within ±1).
+- dataSource must be one of: tenant_analytics, benchmarks_only, mixed. Must match the cacConfidence distribution: tenant_analytics if every channel is measured, benchmarks_only if every channel is estimated, mixed otherwise.
+- Each channel rationale must reference the goal and (when audience is non-empty) the audience. Generic "great for reach" rationales fail.
+- excluded entries (when present) must each have a non-empty reason — empty excluded array is fine, but an entry without a reason fails
+${banned.length ? `- Banned phrases must NOT appear in any text field: ${banned.join(", ")}` : ""}
+- No unverified statistics or fabricated platform claims
+- No AI meta-commentary openers: "Certainly!", "Of course!", "Great question!", "Happy to help!", "Sure!", etc.
+
+Approved → { "approved": true, "violations": [], "corrections": "" }
+Failed → list violations; write correction instructions.`;
+
+    case "seo_auditor":
+      return `You are the SEO Auditor PM. Review SEO audits for structural and substantive completeness.
+${schema}
+
+RULES — fail on any that apply:
+- The create_seo_audit tool MUST be called — a markdown-only audit without the tool call is invalid
+- overallAssessment must be one of: "strong_foundation", "needs_work", "critical_issues" — any other value fails
+- executiveSummary must be present and non-empty
+- keywords array must have at least 3 entries unless the audit type explicitly excludes keyword research
+- onPageIssues, contentGaps, technicalChecks: at minimum two of these three must be populated (a real audit surfaces multiple issue categories)
+- quickWins and strategicInvestments must be separated — both populated, not collapsed into one bucket
+- For competitor audits, competitors[] or competitorNames[] must have at least 2 entries
+- Recommendations must be specific (URL paths, exact keywords, concrete actions) — not vague ("improve content quality", "optimize for SEO")
+${banned.length ? `- Banned phrases must NOT appear in any text field: ${banned.join(", ")}` : ""}
+- No unverified statistics or fabricated rankings — if data wasn't researched, the audit should say so
+- No AI meta-commentary openers
+
+Approved → { "approved": true, "violations": [], "corrections": "" }
+Failed → list violations; write correction instructions.`;
+
     default:
       return null;
   }
@@ -1094,7 +1294,9 @@ Failed → list violations; write correction instructions.`;
 async function runWithPM({ specialist, messages, systemPrompt, tools, tenantId, apiKey, brand }) {
   const pmPrompt = buildPMSystemPrompt(specialist, brand);
 
-  // Non-core specialists (campaign_planner, seo_auditor) skip the PM layer
+  // Specialists without a PM prompt skip the layer (currently none — all seven
+  // specialists in PM_SPECIALISTS have prompts. Kept as a safety net for future
+  // specialists added before their PM is defined).
   if (!pmPrompt) {
     const { content } = await runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey });
     return { content, pmMeta: null };
@@ -1138,7 +1340,7 @@ async function runWithPM({ specialist, messages, systemPrompt, tools, tenantId, 
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model:      "claude-haiku-4-5-20251001",
+          model:      getFastModel(),
           max_tokens: 512,
           system:     pmPrompt,
           messages:   [{ role: "user", content: pmInput }],
@@ -1190,9 +1392,8 @@ export default async function handler(req) {
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    // Fallback for dev without key
-    return new Response(JSON.stringify({ ok: true, content: [{ type: "text", text: "API key not configured." }] }), {
-      status: 200,
+    return new Response(JSON.stringify({ ok: false, error: "ANTHROPIC_API_KEY not configured" }), {
+      status: 503,
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1205,7 +1406,7 @@ export default async function handler(req) {
   try { body = await req.json(); }
   catch { return new Response("Bad request", { status: 400 }); }
 
-  const { messages, specialist = "supervisor", brand: brandFromClient } = body;
+  const { messages, specialist = "supervisor" } = body;
 
   try {
     // Fetch Composio tools, brand profile, agent override, and analytics data in parallel
@@ -1213,17 +1414,18 @@ export default async function handler(req) {
       fetchComposioTools(tenantId),
       fetchBrandProfile(tenantId),
       fetchAgentOverride(tenantId, specialist),
-      specialist === "analyst" ? fetchAnalyticsInsights(tenantId) : Promise.resolve(null),
+      (specialist === "analyst" || specialist === "media_planner") ? fetchAnalyticsInsights(tenantId) : Promise.resolve(null),
     ]);
 
     const connectedApps = [...new Set(
       composioTools.map(t => t.name.split("_")[0].toLowerCase())
     )].filter(Boolean);
 
-    // Prefer full Supabase profile; fall back to lightweight client-side brand
-    const brand = brandProfile || brandFromClient || null;
+    // Brand profile from Supabase only — never trust client-supplied brand data
+    // (prompt injection risk: client could embed arbitrary text into Claude's system prompt).
+    const brand = brandProfile || null;
 
-    // Supervisor gets all tools; Drafter gets create_draft; Planner gets create_campaign_plan + open_workspace; others get none
+    // Supervisor gets all tools; specialists get their scoped tool sets; analyst/brand_guard/inbox get none.
     const tools = specialist === "supervisor"
       ? [...INTERNAL_TOOLS, ...composioTools]
       : specialist === "drafter"
@@ -1232,6 +1434,8 @@ export default async function handler(req) {
       ? PLANNER_TOOLS
       : specialist === "seo_auditor"
       ? SEO_AUDITOR_TOOLS
+      : specialist === "media_planner"
+      ? MEDIA_PLANNER_TOOLS
       : [];
 
     // Build system prompt — agent override replaces the specialist-specific section

@@ -391,7 +391,7 @@ function ChannelRow({ channel, active, onSelect }) {
 }
 
 // ─────────────── NAV RAIL ───────────────
-function NavRail({ active, onOpen, state, actions }) {
+function NavRail({ active, onOpen, state, actions, seedMode }) {
   const GROUPS = [
     {
       label: null,
@@ -428,8 +428,19 @@ function NavRail({ active, onOpen, state, actions }) {
     { id: "mveda",    name: "MVEDA",                 sub: "DTC Skincare",    initial: "M", color: "oklch(58% 0.13 60)"  },
     { id: "erickson", name: "Erickson Refrigeration", sub: "HVAC & Services", initial: "E", color: "oklch(42% 0.18 250)" },
   ];
+  // Tenant-switcher exists only in seed mode (?seed=mveda|erickson). Real users
+  // have one brand — their own — and shouldn't see MVEDA/Erickson as options.
+  const isSeed = seedMode === "mveda" || seedMode === "erickson";
   const activeBrandId = state?.activeBrandId || "mveda";
-  const current = ACCOUNTS.find(a => a.id === activeBrandId) || ACCOUNTS[0];
+  const current = isSeed
+    ? (ACCOUNTS.find(a => a.id === activeBrandId) || ACCOUNTS[0])
+    : {
+        id:      activeBrandId,
+        name:    state?.brandPreset?.name || "Your Brand",
+        sub:     state?.brandPreset?.industry || "",
+        initial: (state?.brandPreset?.name || "?").trim().charAt(0).toUpperCase() || "?",
+        color:   "var(--accent)",
+      };
 
   return (
     <nav style={{
@@ -439,13 +450,16 @@ function NavRail({ active, onOpen, state, actions }) {
 
       {/* ── Account switcher ── */}
       <div style={{ padding: "12px 12px 10px", borderBottom: "1px solid var(--rule)", position: "relative", flexShrink: 0 }}>
-        <button onClick={() => setAcctOpen(o => !o)} style={{
-          width: "100%", display: "flex", alignItems: "center", gap: 9,
-          background: "none", border: "none", cursor: "pointer", padding: "4px 4px",
-          borderRadius: 6, transition: "background 0.1s",
-        }}
-          onMouseEnter={e => e.currentTarget.style.background = "var(--paper-2)"}
-          onMouseLeave={e => e.currentTarget.style.background = "none"}
+        <button
+          onClick={isSeed ? () => setAcctOpen(o => !o) : undefined}
+          style={{
+            width: "100%", display: "flex", alignItems: "center", gap: 9,
+            background: "none", border: "none",
+            cursor: isSeed ? "pointer" : "default",
+            padding: "4px 4px", borderRadius: 6, transition: "background 0.1s",
+          }}
+          onMouseEnter={isSeed ? (e => e.currentTarget.style.background = "var(--paper-2)") : undefined}
+          onMouseLeave={isSeed ? (e => e.currentTarget.style.background = "none") : undefined}
         >
           <div style={{
             width: 28, height: 28, borderRadius: 6, background: current.color,
@@ -456,10 +470,10 @@ function NavRail({ active, onOpen, state, actions }) {
             <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{current.name}</div>
             <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{current.sub}</div>
           </div>
-          <Icon name="chevron" size={10} style={{ color: "var(--muted)", flexShrink: 0 }}/>
+          {isSeed && <Icon name="chevron" size={10} style={{ color: "var(--muted)", flexShrink: 0 }}/>}
         </button>
 
-        {acctOpen && (
+        {isSeed && acctOpen && (
           <>
             <div onClick={() => setAcctOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 199 }}/>
             <div style={{
@@ -596,6 +610,46 @@ function ChatRailHeader({ channels, activeId, onSelect, auth, onLogout }) {
 }
 
 // ────────────────────────────── CANVAS ──────────────────────────────
+
+class CanvasErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(err) {
+    return { error: err };
+  }
+  componentDidCatch(err, info) {
+    // Log once at warn level — not a repeating error stream
+    console.warn("[CanvasErrorBoundary]", err?.message, info?.componentStack?.split("\n")[1]?.trim());
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{
+          display: "flex", flexDirection: "column", alignItems: "center",
+          justifyContent: "center", height: "100%", gap: 10,
+          color: "var(--muted)", fontSize: 13, padding: 40, textAlign: "center",
+        }}>
+          <span style={{ fontSize: 24 }}>⚠️</span>
+          <span>{this.state.error?.message || "This workspace failed to load."}</span>
+          <button
+            onClick={() => this.setState({ error: null })}
+            style={{
+              marginTop: 4, padding: "6px 16px", borderRadius: 7,
+              background: "var(--paper)", border: "1px solid var(--rule)",
+              fontSize: 12.5, cursor: "pointer", color: "var(--ink)",
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function Canvas({ canvas, onClose, state, actions, go }) {
   if (!canvas) return null;
 
@@ -635,7 +689,9 @@ function Canvas({ canvas, onClose, state, actions, go }) {
         </div>
       )}
       <div style={{ flex: 1, overflow: "auto" }}>
-        <CanvasBody canvas={canvas} state={state} actions={actions} go={go}/>
+        <CanvasErrorBoundary>
+          <CanvasBody canvas={canvas} state={state} actions={actions} go={go}/>
+        </CanvasErrorBoundary>
       </div>
     </div>
   );
@@ -752,19 +808,32 @@ function mapUser(sbUser) {
 
 // ────────────────────────────── MAIN APP ──────────────────────────────
 function ChatOS() {
-  const [auth, setAuth]           = useStateApp("loading"); // "loading" | null | user-object
-  const [onboarded, setOnboarded] = useStateApp(false);
+  const [auth, setAuth]                   = useStateApp("loading"); // "loading" | null | user-object
+  const [onboarded, setOnboarded]         = useStateApp(false);
+  // Full brand row hydrated from Supabase on login. null = no row (new user,
+  // load failure, or seed bypass). Consumed by ChatOSAuthed → store hydration
+  // (wired but not yet read — see CLAUDE.md "store-hydration contract").
+  const [hydratedBrand, setHydratedBrand] = useStateApp(null);
+  // Demo bypass marker. null = real user; "mveda" | "erickson" = ?seed= URL
+  // param session. Threaded to useMvedaStore so the initial state is populated
+  // from SEED for demos and empty for real users.
+  const [seedMode, setSeedMode]           = useStateApp(null);
 
   const checkOnboarded = async (userId) => {
     try {
-      const { data } = await sb.from("brands").select("id, palette").eq("user_id", userId).limit(1);
+      const { data } = await sb.from("brands")
+        .select("id, name, industry, website, palette, palette_vars, goal, budget, revenue, voice, values, claims, prohibited_topics, target_audience, recommended_connectors, competitors, brand_analysis")
+        .eq("user_id", userId)
+        .limit(1);
       if (data && data.length > 0) {
         setOnboarded(true);
+        setHydratedBrand(data[0]);
         if (data[0].palette) applyPalette(data[0].palette);
         return;
       }
     } catch {}
-    // Fall back to localStorage
+    // Fall back to localStorage (palette only — full hydration requires the
+    // Supabase row).
     try {
       const saved = localStorage.getItem("flowos_onboarding");
       if (saved) {
@@ -802,6 +871,11 @@ function ChatOS() {
           email: `${seedParam}@dev.local`,
         });
         setOnboarded(true);
+        // Seed bypass uses SEED state — no Supabase brand row exists for the
+        // synthetic user, so explicitly clear any hydrated brand from a prior
+        // session in this tab.
+        setHydratedBrand(null);
+        setSeedMode(seedParam); // "mveda" | "erickson" — drives store init
       })();
       return;
     }
@@ -830,6 +904,8 @@ function ChatOS() {
       if (!session?.user) {
         initializedRef.current = false;
         setOnboarded(false);
+        setHydratedBrand(null);
+        setSeedMode(null);
       }
     });
 
@@ -841,6 +917,8 @@ function ChatOS() {
     try { localStorage.removeItem("flowos_onboarding"); } catch {}
     Object.keys(BRAND_PALETTES[0].vars).forEach(k => document.documentElement.style.removeProperty(k));
     setOnboarded(false);
+    setHydratedBrand(null);
+    setSeedMode(null);
   };
 
   // Loading — checking session
@@ -870,13 +948,33 @@ function ChatOS() {
     );
   }
 
-  return <ChatOSAuthed auth={auth} onLogout={handleLogout}/>;
+  return <ChatOSAuthed auth={auth} brand={hydratedBrand} seedMode={seedMode} onLogout={handleLogout}/>;
 }
 
-function ChatOSAuthed({ auth, onLogout }) {
+// Props:
+//   auth     — user-object with id/name/email. For seed bypass, id is "dev-mveda" / "dev-erickson".
+//   brand    — full Supabase brands row (or null for seed bypass / no row).
+//              When present, overlaid onto the initial store state via the
+//              BRAND_HYDRATE action — silent, idempotent. brand is stable
+//              across the session (set once in ChatOS.checkOnboarded, cleared
+//              on logout/sign-out), so the effect fires exactly once per login.
+//   seedMode — "mveda" | "erickson" | null. Drives store initial state:
+//              non-null fills the whiteboard from SEED; null starts empty.
+//              Stable per session — set once in ChatOS before ChatOSAuthed mounts.
+function ChatOSAuthed({ auth, brand, seedMode, onLogout }) {
   const [chat, dispatch] = useReducerApp(chatReducer, undefined, chatInit);
-  const [state, actions] = useMvedaStore();
+  const [state, actions] = useMvedaStore(seedMode, auth?.id);
   const [tweakOpen, setTweakOpen] = useStateApp(false);
+
+  useEffectApp(() => {
+    if (brand) {
+      // [hydration-debug] temporary — remove once verified. grep marker above.
+      console.log("[FlowOS] brand hydrated from Supabase:", brand);
+      actions.hydrateBrand(brand);
+    }
+    // actions is recreated each render; only `brand` should drive this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brand]);
 
   useEffectApp(() => {
     const onMsg = (e) => {
@@ -967,7 +1065,7 @@ function ChatOSAuthed({ auth, onLogout }) {
   const handleArtifactAction = (args) => {
     if (args.kind === "queue_draft") {
       const d = args.data;
-      const draftId = "d_" + Math.random().toString(36).slice(2, 8);
+      const draftId = "d_" + crypto.randomUUID();
       actions.addDraft(d.platform, d.contentType, d.copy, d.imagePrompt, draftId);
 
       // Fire image generation async — Runware returns the URL inline, so the
@@ -1050,7 +1148,7 @@ function ChatOSAuthed({ auth, onLogout }) {
     }
     if (args.kind === "push_klaviyo_sms") {
       const d = args.data;
-      const smsId = "os_" + Math.random().toString(36).slice(2, 8);
+      const smsId = "os_" + crypto.randomUUID();
       actions.addOutboundSms({
         id:           smsId,
         body:         d.body,
@@ -1098,7 +1196,7 @@ function ChatOSAuthed({ auth, onLogout }) {
     }
     if (args.kind === "push_klaviyo") {
       const d = args.data;
-      const emailId = "oe_" + Math.random().toString(36).slice(2, 8);
+      const emailId = "oe_" + crypto.randomUUID();
       actions.addOutboundEmail({
         id:           emailId,
         subject:      d.subject,
@@ -1214,7 +1312,7 @@ function ChatOSAuthed({ auth, onLogout }) {
         height: "100vh", background: "var(--paper-2)",
       }} data-screen-label="FlowOS">
 
-        <NavRail active={activeCanvas.target} onOpen={handleNav} state={state} actions={actions}/>
+        <NavRail active={activeCanvas.target} onOpen={handleNav} state={state} actions={actions} seedMode={seedMode}/>
 
         {/* Centre: workspace / canvas */}
         <Canvas
