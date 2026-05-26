@@ -10,8 +10,10 @@ import { fileURLToPath } from 'url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel) => readFileSync(resolve(ROOT, rel), 'utf8');
 
-const issues = [];
-const fail = (msg) => issues.push(msg);
+const issues   = [];
+const warnings = [];
+const fail  = (msg) => issues.push(msg);
+const warn  = (msg) => warnings.push(msg);
 
 // ─── Check 1: All scripts listed in index.html exist on disk ─────────────────
 const html = read('index.html');
@@ -113,9 +115,48 @@ for (const f of apiFiles) {
   }
 }
 
+// ─── Check 7: Vercel cron schedules compatible with plan ─────────────────────
+// Hobby plan minimum interval: 1 hour. Sub-hourly crons (minute field = "*"
+// or "*/N" where N < 60) are silently rejected at deploy on Hobby — the job
+// never fires without any error message.
+// Pro plan supports per-minute schedules.
+//
+// This check WARNS (does not fail) so a Pro-plan project isn't blocked.
+// A WARN prefix distinguishes it from a hard structural failure.
+const vercelJsonPath = resolve(ROOT, 'vercel.json');
+if (existsSync(vercelJsonPath)) {
+  let vj;
+  try { vj = JSON.parse(read('vercel.json')); } catch { /* malformed — skip */ }
+  if (vj?.crons) {
+    for (const { path: cronPath, schedule } of vj.crons) {
+      if (!schedule) continue;
+      const minuteField = schedule.trim().split(/\s+/)[0];
+      // Sub-hourly: minute field is "*" (every minute) or "*/N" with N < 60
+      const isSubHourly =
+        minuteField === '*' ||
+        (/^\*\/(\d+)$/.test(minuteField) && parseInt(minuteField.slice(2), 10) < 60);
+      if (isSubHourly) {
+        warn(
+          `cron "${cronPath}" schedule "${schedule}" is sub-hourly — requires Vercel Pro. ` +
+          `On Hobby it will never fire (silently rejected at deploy). ` +
+          `Use "0 * * * *" for Hobby, or confirm you're on Pro.`
+        );
+      }
+    }
+  }
+}
+
 // ─── Report ───────────────────────────────────────────────────────────────────
+if (warnings.length > 0) {
+  process.stderr.write(
+    `\n⚠️  FlowOS health check: ${warnings.length} warning${warnings.length === 1 ? '' : 's'}\n\n` +
+    warnings.map((msg, i) => `  ${i + 1}. ${msg}`).join('\n\n') +
+    '\n'
+  );
+}
+
 if (issues.length === 0) {
-  process.exit(0); // silent pass
+  process.exit(0); // silent pass (warnings printed above but don't block)
 }
 
 const plural = issues.length === 1 ? 'issue' : 'issues';

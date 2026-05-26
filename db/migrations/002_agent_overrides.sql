@@ -22,13 +22,7 @@ create index if not exists agent_overrides_tenant_idx
   on agent_overrides (tenant_id);
 
 -- ─── Updated-at trigger ────────────────────────────────────────────────────
-create or replace function set_updated_at()
-returns trigger language plpgsql as $$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$$;
+-- set_updated_at() defined in 000_helpers.sql
 
 create or replace trigger agent_overrides_updated_at
   before update on agent_overrides

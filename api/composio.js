@@ -194,6 +194,61 @@ async function getOrCreateCustomAuthConfigId(toolkitSlug) {
   return created.auth_config?.id || created.id;
 }
 
+// ─── API-key validators ───────────────────────────────────────────────────────
+//
+// Each entry makes a lightweight ping to the provider's REST API to confirm
+// the key is valid before we hand it to Composio. Throw a descriptive Error
+// to surface the reason in the Connect modal.
+//
+// Composio uses `apiKey` as the default field name for all API-KEY-scheme
+// connectors. `credentials` (raw object) is used for multi-field cases.
+//
+// Rules:
+//   - Only cover connectors in APP_MAP that use API keys (not OAuth)
+//   - Use the smallest / cheapest endpoint available (account info, not a write)
+//   - A missing validator is fine — we skip validation and let Composio deal
+
+const VALIDATORS = {
+  klaviyo: async (apiKey) => {
+    const res = await fetch("https://a.klaviyo.com/api/accounts/", {
+      headers: { Authorization: `Klaviyo-API-Key ${apiKey}`, revision: "2024-02-15" },
+    });
+    if (res.status === 401 || res.status === 403)
+      throw new Error("Invalid Klaviyo API key — check your Private API Key in Klaviyo → Settings → API Keys.");
+    if (!res.ok) throw new Error(`Klaviyo validation failed (HTTP ${res.status})`);
+  },
+
+  ahrefs: async (apiKey) => {
+    const res = await fetch("https://api.ahrefs.com/v3/subscription-info", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (res.status === 401 || res.status === 403)
+      throw new Error("Invalid Ahrefs API key — generate one at ahrefs.com → Settings → API.");
+    if (!res.ok) throw new Error(`Ahrefs validation failed (HTTP ${res.status})`);
+  },
+
+  heygen: async (apiKey) => {
+    const res = await fetch("https://api.heygen.com/v1/user/remaining_quota", {
+      headers: { "X-Api-Key": apiKey },
+    });
+    if (res.status === 401 || res.status === 403)
+      throw new Error("Invalid HeyGen API key — generate one at app.heygen.com → Settings → API.");
+    if (!res.ok) throw new Error(`HeyGen validation failed (HTTP ${res.status})`);
+  },
+
+  elevenlabs: async (apiKey) => {
+    const res = await fetch("https://api.elevenlabs.io/v1/user", {
+      headers: { "xi-api-key": apiKey },
+    });
+    if (res.status === 401 || res.status === 403)
+      throw new Error("Invalid ElevenLabs API key — find it at elevenlabs.io → Profile → API Key.");
+    if (!res.ok) throw new Error(`ElevenLabs validation failed (HTTP ${res.status})`);
+  },
+};
+
+// klaviyo_sms uses the same Klaviyo toolkit and same key format
+VALIDATORS["klaviyo_sms"] = VALIDATORS["klaviyo"];
+
 // ─── Action handlers ──────────────────────────────────────────────────────────
 
 /**
@@ -224,6 +279,16 @@ async function handleInitiateConnection({ tenantId, app, redirectUri, apiKey, cr
   // `apiKey` (camelCase). Toolkit-specific overrides can be passed via the
   // `credentials` body field, which replaces the default { apiKey } payload.
   if (apiKey || credentials) {
+    // Validate the key against the live provider before storing it.
+    const validator = VALIDATORS[app?.toLowerCase()] || VALIDATORS[toolkitSlug];
+    if (validator && apiKey) {
+      try {
+        await validator(apiKey);
+      } catch (e) {
+        return err(`Key validation failed: ${e.message}`, 400);
+      }
+    }
+
     const authConfigId = await getOrCreateCustomAuthConfigId(toolkitSlug);
     const data = await composioFetch("/connected_accounts", {
       method: "POST",

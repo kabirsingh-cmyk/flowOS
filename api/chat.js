@@ -242,6 +242,7 @@ DELEGATE TO SPECIALISTS when:
 - If the user asks for a drip campaign, nurture sequence, onboarding emails, re-engagement series, win-back campaign, email automation, or any multi-email flow → delegate to drafter with intent to call create_email_sequence
 - If the user asks for an SEO audit, keyword research, content gap analysis, technical SEO check, or competitor SEO comparison → delegate to seo_auditor
 - If the user wants to plan their media mix, allocate budget across channels, decide what to spend where, build a paid-channel plan, model CAC, or compare channel ROI for a given budget → delegate to media_planner
+- If the user wants market research, audience/persona definition, competitive positioning analysis, customer JTBD work, or to understand who their buyers are and where to reach them → delegate to discovery
 
 Otherwise act directly using available tools.
 
@@ -590,6 +591,56 @@ After both tool calls, write one short paragraph (2-3 sentences max) in chat int
 
 ${brandVoiceBlock}`,
 
+    discovery: `You are FlowOS's discovery specialist. You produce structured market + audience research that grounds downstream campaign planning and creative work. You use web_search to gather real, current market context — not generic training-data summaries.
+
+${brandBlock}
+
+SCOPE — what this specialist does and DOES NOT do:
+- DOES: market context (industry dynamics, size signals, trends, seasonality), competitive positioning (what each competitor owns, where the whitespace is), buyer personas (JTBD, pain points, buying triggers, discovery channels, objections), opportunity statements, market/audience-level risks.
+- DOES NOT: site-specific SEO analysis (that's seo_auditor — SERP rankings, on-page issues, technical SEO). Campaign briefs with calendars and content lists (that's campaign_planner). Channel budget allocation (that's media_planner). If the user asks for any of those, say so and recommend the right specialist.
+
+When activated, first check if the user has provided:
+- Brand or website (required — usually inferable from brand context above; only ask if missing)
+- Specific market segment to focus on (optional — e.g. "B2B mid-market" vs "DTC consumer")
+- Specific competitors to include (optional — otherwise discover via web_search)
+
+If you have what you need, produce the report by calling the create_discovery_report tool ONCE with the complete structured payload. Do NOT write the report as markdown in chat — the FlowOS chat renders the tool output as a first-class DiscoveryReportCard.
+
+USE WEB SEARCH for ground truth on:
+- Market size signals and recent trends (last 12 months)
+- Competitor positioning and recent moves
+- Current customer language (forums, reviews, Reddit threads, comparison sites) — informs JTBD and pain-point phrasing
+- Channel discovery patterns (where the audience actually spends time)
+Cap usage at the web_search default — don't burn budget on already-known facts. If a fact is already in the brand context above, don't re-search it.
+
+RULES:
+
+1. Market section — populate industry, geography focus, qualitative size signal with caveats (no fabricated dollar figures), 2-4 trends with brief implications, seasonality pattern if relevant, 2-3 key dynamics (regulatory pressures, supply-side shifts, behavior changes). Cite sources inline in the values where useful ("(per <source>)").
+
+2. Positioning section — 2-5 competitors. For each: name, positioning_summary (one sentence), what_they_own (the territory they've claimed — "the science-backed lane", "the budget option", etc.), whitespace_callout (where they're weak or where there's an opening). Cap at 5 to keep the report scannable.
+
+3. Personas section — 2-4 personas, each with:
+   - name (descriptive — "Skincare-skeptic millennial mom", not "Persona A")
+   - role / demographic / firmographic (one line — "Marketing director at 50-200 person B2B SaaS, $30-150k MRR")
+   - jobToBeDone — one sentence in JTBD format: "When [situation], I want to [motivation], so I can [outcome]"
+   - painPoints — 3-5 specific pains in their language (not corporate-speak)
+   - buyingTriggers — 2-5 events that move them from passive to active buyer
+   - discoveryChannels — 2-5 places they actually look (specific: "LinkedIn comment threads from peers", not "social media")
+   - objections — 2-3 reasons they push back or stall
+   - quoteHint — one in-voice quote capturing their POV (for copy reuse later)
+
+4. Opportunities — 3-5 one-sentence statements, each pointing at a specific intersection of market + audience + brand fit. "Position [brand] as [angle] for [persona] who currently [behavior]." Concrete enough that a campaign planner could brief against it.
+
+5. Risks — 2-4 market/audience-level risks. Examples: market saturation, regulatory shifts, behavior shifts away from category, audience aging out, competitor consolidation. Brand-level execution risks belong elsewhere.
+
+6. Methodology — one paragraph being honest about what was researched and what wasn't. If you couldn't get fresh data on something, say so. ("Searched <N> sources for <topic>; did not pull primary research on <topic>.") This is non-negotiable — fake confidence loses trust.
+
+7. No fluff — every claim must be specific. "Consumers care about authenticity" fails. "Reviews of Brand X cluster around 'overpriced for plain ingredient lists' — opportunity to lead with transparent COGS." passes.
+
+After calling create_discovery_report, write one short paragraph (2-3 sentences max) introducing the report and asking one follow-up like: "Want me to draft a campaign brief targeting [top persona], or build a media plan focused on [top discovery channel]?" The card carries the detail — do not restate the sections in prose.
+
+${brandVoiceBlock}`,
+
     media_planner: (() => {
       // Reuses the analyst's analytics fetch pattern — same shape, same priority.
       // When real CAC/spend data exists, channel estimates anchor to it instead
@@ -673,7 +724,7 @@ const INTERNAL_TOOLS = [
     input_schema: {
       type: "object",
       properties: {
-        specialist: { type: "string", enum: ["drafter", "analyst", "brand_guard", "inbox", "campaign_planner", "seo_auditor", "media_planner"] },
+        specialist: { type: "string", enum: ["drafter", "analyst", "brand_guard", "inbox", "campaign_planner", "seo_auditor", "media_planner", "discovery"] },
         context:    { type: "string", description: "What to pass to the specialist" },
       },
       required: ["specialist", "context"],
@@ -942,6 +993,75 @@ INTERNAL_TOOLS.push({
 });
 
 INTERNAL_TOOLS.push({
+  name: "create_discovery_report",
+  description: "Persist a structured market + audience discovery report as a first-class artifact. Call ONCE after web research. Every section is required (pass [] for arrays that genuinely don't apply, but personas[] must have 2-4 entries and methodology must be populated). Cite sources inline where useful — fake confidence loses trust.",
+  input_schema: {
+    type: "object",
+    properties: {
+      title: { type: "string", description: "Report name (e.g. 'Erickson Refrigeration · NW HVAC Market & Buyer Discovery')." },
+      executiveSummary: { type: "string", description: "3-5 sentence summary — market headline, dominant buyer mindset, top opportunity, key risk." },
+      researchConfidence: { type: "string", enum: ["primary_research", "secondary_research", "training_data"], description: "primary_research = pulled current data via web_search; secondary_research = web_search returned partial/older data; training_data = relied largely on Claude training data (e.g. web_search unavailable). Be honest." },
+      market: {
+        type: "object",
+        properties: {
+          industry:        { type: "string", description: "Industry / category (e.g. 'Commercial HVAC services', 'Ayurvedic skincare DTC')." },
+          geography:       { type: "string", description: "Geographic focus (e.g. 'Pacific Northwest US', 'India + US diaspora')." },
+          sizeSignal:      { type: "string", description: "Qualitative size signal with caveats — never fabricated dollar figures (e.g. 'Multi-billion globally; sub-segment growing ~8% YoY per <source>')." },
+          trends:          { type: "array", items: { type: "object", properties: { trend: { type: "string" }, implication: { type: "string" } }, required: ["trend", "implication"] }, description: "2-4 active trends and what each means for the brand." },
+          seasonality:     { type: "string", description: "Seasonality pattern if relevant; empty string if not." },
+          keyDynamics:     { type: "array", items: { type: "string" }, description: "2-3 dynamics shaping the market — regulatory, supply-side, behavior shifts." },
+        },
+        required: ["industry", "geography", "sizeSignal", "trends", "keyDynamics"],
+      },
+      positioning: {
+        type: "array",
+        description: "2-5 competitors. Cap at 5 to keep the report scannable.",
+        items: {
+          type: "object",
+          properties: {
+            name:                { type: "string" },
+            positioningSummary:  { type: "string", description: "One sentence on how they show up to the market." },
+            whatTheyOwn:         { type: "string", description: "The territory they've claimed (e.g. 'the science-backed lane', 'the budget option', 'the boutique experience')." },
+            whitespaceCallout:   { type: "string", description: "Where they're weak or where there's an opening for our brand." },
+          },
+          required: ["name", "positioningSummary", "whatTheyOwn", "whitespaceCallout"],
+        },
+      },
+      personas: {
+        type: "array",
+        description: "2-4 buyer personas. More than 4 makes the report unscannable; fewer than 2 is thin.",
+        items: {
+          type: "object",
+          properties: {
+            name:               { type: "string", description: "Descriptive name — 'Skincare-skeptic millennial mom', not 'Persona A'." },
+            descriptor:         { type: "string", description: "One-line demographic / firmographic descriptor." },
+            jobToBeDone:        { type: "string", description: "JTBD format: 'When [situation], I want to [motivation], so I can [outcome]'." },
+            painPoints:         { type: "array", items: { type: "string" }, description: "3-5 specific pains in their language, not corporate-speak." },
+            buyingTriggers:     { type: "array", items: { type: "string" }, description: "2-5 events that move them from passive to active buyer." },
+            discoveryChannels:  { type: "array", items: { type: "string" }, description: "2-5 specific places they actually look (e.g. 'LinkedIn comment threads from peers', not 'social media')." },
+            objections:         { type: "array", items: { type: "string" }, description: "2-3 reasons they push back or stall." },
+            quoteHint:          { type: "string", description: "One in-voice quote capturing their POV — for copy reuse." },
+          },
+          required: ["name", "descriptor", "jobToBeDone", "painPoints", "buyingTriggers", "discoveryChannels"],
+        },
+      },
+      opportunities: {
+        type: "array",
+        items: { type: "string" },
+        description: "3-5 concrete opportunity statements at the intersection of market + audience + brand fit. 'Position <brand> as <angle> for <persona> who currently <behavior>.'",
+      },
+      risks: {
+        type: "array",
+        items: { type: "string" },
+        description: "2-4 market/audience-level risks (saturation, regulatory shifts, behavior changes, competitor consolidation). Brand-execution risks belong elsewhere.",
+      },
+      methodology: { type: "string", description: "One paragraph: what was researched, what wasn't, what gaps remain. Honesty preserves trust — never fake confidence." },
+    },
+    required: ["title", "executiveSummary", "researchConfidence", "market", "positioning", "personas", "opportunities", "methodology"],
+  },
+});
+
+INTERNAL_TOOLS.push({
   name: "create_media_plan",
   description: "Persist a complete media plan as a first-class artifact and surface it inline in the chat. Call this ONCE at the end of media planning. Allocate the total monthly budget across 3-7 channels with explicit rationale, target CAC per channel, and reach/conversion estimates. Channel monthlySpend values must sum to totalBudgetMonthly; channel pctOfTotal values must sum to 100. Use cacConfidence='measured' only when anchored to TENANT ANALYTICS data; otherwise 'estimated'.",
   input_schema: {
@@ -1046,6 +1166,12 @@ const SEO_AUDITOR_TOOLS = [
 // Tools available to the Media Planner specialist
 const MEDIA_PLANNER_TOOLS = INTERNAL_TOOLS.filter(t => t.name === "create_media_plan" || t.name === "open_workspace");
 
+// Tools available to the Discovery specialist (market + audience research)
+const DISCOVERY_TOOLS = [
+  ...INTERNAL_TOOLS.filter(t => t.name === "create_discovery_report" || t.name === "open_workspace"),
+  WEB_SEARCH_TOOL,
+];
+
 // ─── Tool execution loop ──────────────────────────────────────────────────────
 
 const INTERNAL_TOOL_NAMES = new Set(INTERNAL_TOOLS.map(t => t.name));
@@ -1139,7 +1265,7 @@ async function runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey }) 
 // output against a checklist, and reruns the specialist (up to PM_MAX_ATTEMPTS)
 // with correction guidance injected until the output passes or the cap is hit.
 
-const PM_SPECIALISTS = new Set(["supervisor", "drafter", "analyst", "brand_guard", "inbox", "campaign_planner", "seo_auditor", "media_planner"]);
+const PM_SPECIALISTS = new Set(["supervisor", "drafter", "analyst", "brand_guard", "inbox", "campaign_planner", "seo_auditor", "media_planner", "discovery"]);
 const PM_MAX_ATTEMPTS = 3;
 
 function buildPMSystemPrompt(specialist, brand) {
@@ -1240,6 +1366,27 @@ RULES — fail on any that apply:
 - Success Metrics must include a primary KPI with a target number — vague KPIs like "engagement" without a target fail
 ${banned.length ? `- Banned phrases must NOT appear: ${banned.join(", ")}` : ""}
 - No unverified statistics or clinical claims unless from approved list${claims.length ? `: ${claims.join("; ")}` : ""}
+- No AI meta-commentary openers: "Certainly!", "Of course!", "Great question!", "Happy to help!", "Sure!", etc.
+
+Approved → { "approved": true, "violations": [], "corrections": "" }
+Failed → list violations; write correction instructions.`;
+
+    case "discovery":
+      return `You are the Discovery PM. Review market + audience discovery reports for substantive depth and honesty.
+${schema}
+
+RULES — fail on any that apply:
+- The create_discovery_report tool MUST be called — a prose-only report without the tool call is invalid
+- market.industry, market.geography, market.sizeSignal must all be non-empty. market.trends array must have 2-4 entries, each with both trend and implication populated. market.keyDynamics must have 2-3 entries.
+- market.sizeSignal must NOT contain fabricated specific dollar figures presented as fact. If a number appears it must be hedged ("~", "estimated", "per <source>") or omitted.
+- positioning array must have 2-5 entries. Each entry's positioningSummary, whatTheyOwn, and whitespaceCallout must be non-empty and specific (not "they are a competitor in the space").
+- personas array must have 2-4 entries. Each persona must have: jobToBeDone in JTBD format (contains "When", "I want to", "so I can" pattern OR equivalent situation/motivation/outcome triplet), painPoints with ≥3 entries, buyingTriggers with ≥2 entries, discoveryChannels with ≥2 entries. Generic placeholders like "target audience is everyone" or "all consumers" fail.
+- Persona painPoints must be specific and audience-language — "wants better products" fails, "frustrated paying $80 for serums that don't list percentages" passes.
+- opportunities array must have 3-5 entries. Each must be a concrete statement referencing market + audience + brand fit — not generic ("grow awareness").
+- risks array must have 2-4 entries. Brand-execution risks (e.g. "team capacity") belong elsewhere; risks here must be market/audience-level.
+- methodology must be non-empty and acknowledge limits. A methodology like "we did thorough research" without specifics fails.
+- researchConfidence value must match reality: if no web_search tool calls were made, researchConfidence must be "training_data". Don't claim primary_research without evidence.
+${banned.length ? `- Banned phrases must NOT appear in any text field: ${banned.join(", ")}` : ""}
 - No AI meta-commentary openers: "Certainly!", "Of course!", "Great question!", "Happy to help!", "Sure!", etc.
 
 Approved → { "approved": true, "violations": [], "corrections": "" }
@@ -1436,6 +1583,8 @@ export default async function handler(req) {
       ? SEO_AUDITOR_TOOLS
       : specialist === "media_planner"
       ? MEDIA_PLANNER_TOOLS
+      : specialist === "discovery"
+      ? DISCOVERY_TOOLS
       : [];
 
     // Build system prompt — agent override replaces the specialist-specific section

@@ -237,6 +237,7 @@ User sends message
 | `strategy` | Channel mix bar chart |
 | `campaign-plan` | Campaign summary → opens planner |
 | `media_plan` | `MediaPlanCard` — title + total monthly budget + summary + goal. Each channel row shows priority, name, allocation bar, %, monthly spend. Tap row to expand format / target CAC (with measured/estimated confidence) / expected conversions / CAC source / rationale. Footer surfaces excluded channels, risks, assumptions. Data-source chip (Tenant data / Mixed / Benchmarks) signals CAC provenance at a glance. |
+| `discovery_report` | `DiscoveryReportCard` — title + executive summary + research-confidence chip (Primary research / Secondary research / Training data). Market block always visible (industry, geography, size signal, trends, seasonality, key dynamics). Collapsible sections: Competitive positioning (per-competitor: positioning, what they own, whitespace), Buyer personas (per-persona expandable: JTBD, pain points, buying triggers, discovery channels, objections, in-voice quote), Opportunities, Risks, Methodology. |
 | `email` | Email preview → expand (legacy seeded) |
 | `policy-review` | Flag list |
 | `workspace` | (handled before render — opens workspace directly) |
@@ -256,8 +257,8 @@ if (hasCreateVerb && hasContentNoun) { return makeDraftArtifact(t); }
 
 | Tool | Available to | Effect |
 |---|---|---|
-| `delegate_to` | Supervisor | Routes to specialist (enum: drafter, analyst, brand_guard, inbox, campaign_planner, seo_auditor, media_planner) |
-| `open_workspace` | Supervisor, **Campaign Planner**, **SEO Auditor**, **Media Planner** | Opens a workspace panel. SEO Auditor calls it with target `"seo"` after producing an audit. Media Planner has no dedicated workspace yet, but the tool is in its set for future use. |
+| `delegate_to` | Supervisor | Routes to specialist (enum: drafter, analyst, brand_guard, inbox, campaign_planner, seo_auditor, media_planner, discovery) |
+| `open_workspace` | Supervisor, **Campaign Planner**, **SEO Auditor**, **Media Planner**, **Discovery** | Opens a workspace panel. SEO Auditor calls it with target `"seo"` after producing an audit. Media Planner and Discovery have no dedicated workspace yet, but the tool is in their sets for future use. |
 | `show_drafts` | Supervisor | Opens drafts canvas |
 | `show_metric` | Supervisor | Shows metric card |
 | `create_draft` | **Drafter** | Produces `draft_created` artifact in chat |
@@ -267,7 +268,8 @@ if (hasCreateVerb && hasContentNoun) { return makeDraftArtifact(t); }
 | `create_campaign_plan` | **Campaign Planner** | Produces `campaign-plan` artifact (title, summary, itemCount, goal, audience, timeline, channels) — usually paired with `open_workspace("planner")` |
 | `create_seo_audit` | **SEO Auditor** | Produces `seo_audit` artifact — url, auditType, overallAssessment (strong_foundation/needs_work/critical_issues), executiveSummary, keywords[], onPageIssues[], contentGaps[], technicalChecks[], competitors[]/competitorNames[], quickWins[], strategicInvestments[]. Replaces the legacy markdown dump. Rendered by `SeoAuditCard` in [chat-ui.jsx](app/chat-ui.jsx) with one collapsible section per table; "Open in SEO Studio" action dispatches `open_seostudio` → `openWorkspace("seo")`. Paired with `open_workspace("seo")`. |
 | `create_media_plan` | **Media Planner** | Produces `media_plan` artifact — title, summary, goal, audience, timeline, currency (default USD), totalBudgetMonthly, dataSource (tenant_analytics/benchmarks_only/mixed), channels[] (priority, monthlySpend, pctOfTotal, format, targetCAC, cacConfidence measured/estimated, cacSource, expectedConversions, rationale), excluded[], risks[], assumptions[]. Channel monthlySpend values must sum to totalBudgetMonthly; pctOfTotal must sum to 100. Specialist reads the tenant's latest `analytics_insights` row (same fetch path as Analyst) so CAC numbers can be anchored to real data when available. Rendered by `MediaPlanCard` in [chat-ui.jsx](app/chat-ui.jsx). PM-validated. |
-| `web_search` (Anthropic server tool, `web_search_20250305`) | **SEO Auditor** | Anthropic-executed web search. Capped at `max_uses: 10` per audit. Returns `server_tool_use` + `web_search_tool_result` blocks inline — we don't execute or post results back; our `tool_use` filter in `runToolLoop` naturally ignores server-tool blocks. Defined as `WEB_SEARCH_TOOL` constant in [api/chat.js](api/chat.js). |
+| `create_discovery_report` | **Discovery** | Produces `discovery_report` artifact — title, executiveSummary, researchConfidence (primary_research/secondary_research/training_data), market (industry, geography, sizeSignal, trends[], seasonality, keyDynamics[]), positioning[] (name, positioningSummary, whatTheyOwn, whitespaceCallout — 2–5 competitors), personas[] (name, descriptor, jobToBeDone, painPoints[3+], buyingTriggers[2+], discoveryChannels[2+], objections, quoteHint — 2–4 personas), opportunities[], risks[], methodology. Specialist uses `web_search` for ground truth on market data, competitor positioning, customer language, and channel discovery patterns. Boundary: market + audience research only — NOT site-level SEO (that's seo_auditor), NOT campaign briefs (that's campaign_planner), NOT budget allocation (that's media_planner). Rendered by `DiscoveryReportCard` in [chat-ui.jsx](app/chat-ui.jsx). PM-validated. |
+| `web_search` (Anthropic server tool, `web_search_20250305`) | **SEO Auditor**, **Discovery** | Anthropic-executed web search. Capped at `max_uses: 10` per call. Returns `server_tool_use` + `web_search_tool_result` blocks inline — we don't execute or post results back; our `tool_use` filter in `runToolLoop` naturally ignores server-tool blocks. Defined as `WEB_SEARCH_TOOL` constant in [api/chat.js](api/chat.js). SEO Auditor uses it for SERP/keyword/site research; Discovery uses it for market data, competitor positioning, and customer-language sourcing. |
 
 ---
 
@@ -351,7 +353,7 @@ Platform routes (`/api/linkedin` etc.) are thin proxies — they auth-check, the
 
 **Pipedream REMOVED (2026-05-24).** [api/pipedream.js](api/pipedream.js) is now a 410 tombstone. All connectors formerly on Pipedream have migrated:
 - `pn`, `pinads` (Pinterest) → Zernio (`provider: "zernio"`)
-- `sendgrid` → Direct (`/api/sendgrid.js`)
+- `sendgrid` → **REMOVED** (connector cut; `/api/sendgrid.js` is a 410 tombstone; marketing email via Klaviyo)
 - `twilio` → Direct (`/api/twilio.js`)
 - `runware` → Direct (`/api/runware.js`)
 
@@ -420,6 +422,7 @@ All in `/api/`. All use `export const config = { runtime: "edge" }`.
 | `GET  /api/cron/proactive-sms` | Vercel Cron (08:00 UTC) — iterates tenants and POSTs to /api/proactive-sms. 30 min after proactive-emails. |
 | `GET  /api/cron/fire-scheduled` | Vercel Cron (`* * * * *` — **requires Pro** for guaranteed 1-min execution; Hobby cron schedules will be rejected at deploy). Calls Supabase RPC `claim_due_scheduled_posts(20)` which atomically picks due `pending` rows via `FOR UPDATE SKIP LOCKED`, transitions them to `publishing`, then POSTs `${origin}/api/<platform>` with the row's snapshot payload. PATCHes the row to `published`/`failed`. Idempotent by construction — same row can never be claimed twice concurrently. |
 | `POST /api/google-ads` | **Zernio-backed** Google Ads wrapper (migrated from Composio 2026-05-24). Actions: `list_customer_ids`, `list_campaigns`, `create_campaign`, `update_budget`, `enable_campaign`, `pause_campaign`, `keyword_ideas`, `campaign_detail`, `generate_copy`. Frontend contract unchanged (`{ ok, data }`). Uses `ZERNIO_API_KEY`; resolves Zernio `accountId` via the tenant's Zernio profile. Pass `customerId` (Google Ads account number) in params; if omitted, uses the first connected account. |
+| `POST /api/paid-social` | **Zernio-backed** paid social ads for all five platforms in a single route (added 2026-05-26). Required body field: `platform` (metaads \| liads \| ttads \| xads \| pinads). Actions: `list_campaigns`, `campaign_detail`, `create_campaign`, `update_budget`, `enable_campaign`, `pause_campaign`, `generate_copy`. Response: `{ ok, data }`. `generate_copy` uses Claude (fast model) with platform-specific copy format rules. `create_campaign` always starts paused. |
 | `POST /api/replicate` `POST /api/higgsfield` | Direct-API connector routes (provider: "direct" in seed.jsx). Actions: `initiate_connection` (validates apiKey against the provider's REST API, persists to `connector_credentials`, flips `channels` to connected), `disconnect`. Shared persistence helper in [api/lib/directCredentials.js](api/lib/directCredentials.js). `/api/luma` and `/api/audiostack` exist as tombstones (connectors removed from catalog 2026-05-24). |
 | `GET/POST /api/google-ads-auth` | **REMOVED — 410 Gone tombstone.** Returns `{ error: "Google Ads OAuth has moved to Composio…", code: "GONE_USE_COMPOSIO" }`. Connect flow now goes through `/api/composio` like every other OAuth connector. The old `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET` env vars are no longer read at runtime. |
 

@@ -911,6 +911,246 @@ function SeoAuditCard({ artifact, onOpen }) {
   );
 }
 
+// DiscoveryReportCard — inline render of the `discovery_report` artifact from
+// create_discovery_report. Header carries research-confidence provenance.
+// Market block always visible (it's the headline); positioning / personas /
+// opportunities / risks / methodology in collapsible sections to keep the
+// in-chat footprint scannable.
+function DiscoveryReportCard({ artifact }) {
+  const [openSection, setOpenSection] = useStateChat("personas");
+  const [openPersona, setOpenPersona] = useStateChat(0);
+  const accent = "oklch(54% 0.13 320)"; // distinct from seo-audit (200) and media-plan (280)
+
+  const rc = artifact.researchConfidence || "training_data";
+  const rcLabel = rc === "primary_research"   ? "Primary research"
+                : rc === "secondary_research" ? "Secondary research"
+                                              : "Training data";
+  const rcTone  = rc === "primary_research"   ? "ok"
+                : rc === "secondary_research" ? "accent"
+                                              : "neutral";
+
+  const market        = artifact.market || {};
+  const positioning   = Array.isArray(artifact.positioning)   ? artifact.positioning   : [];
+  const personas      = Array.isArray(artifact.personas)      ? artifact.personas      : [];
+  const opportunities = Array.isArray(artifact.opportunities) ? artifact.opportunities : [];
+  const risks         = Array.isArray(artifact.risks)         ? artifact.risks         : [];
+
+  const sections = [
+    { id: "positioning",   label: "Competitive positioning", count: positioning.length },
+    { id: "personas",      label: "Buyer personas",          count: personas.length },
+    { id: "opportunities", label: "Opportunities",           count: opportunities.length },
+    { id: "risks",         label: "Risks",                   count: risks.length },
+    { id: "methodology",   label: "Methodology",             count: artifact.methodology ? 1 : 0 },
+  ].filter(s => s.count > 0);
+
+  return (
+    <div data-testid="discovery-report-card" style={{
+      marginTop: 10,
+      border: "1px solid var(--rule-strong)",
+      borderRadius: 6,
+      background: "var(--paper)",
+      overflow: "hidden",
+    }}>
+      {/* Header */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "9px 12px",
+        borderBottom: "1px solid var(--rule)",
+        background: "var(--paper-2)",
+      }}>
+        <Icon name="search" size={12}/>
+        <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", flex: 1 }}>
+          Discovery · {personas.length} persona{personas.length === 1 ? "" : "s"}
+        </span>
+        <Chip tone={rcTone}>{rcLabel}</Chip>
+      </div>
+
+      {/* Title + executive summary */}
+      <div style={{
+        padding: "10px 14px 12px 17px",
+        borderLeft: `3px solid ${accent}`,
+        fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55,
+      }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)", marginBottom: 6 }}>
+          {artifact.title || "Discovery report"}
+        </div>
+        {artifact.executiveSummary && (
+          <div style={{ fontSize: 12.5, color: "var(--ink-2)" }}>{artifact.executiveSummary}</div>
+        )}
+      </div>
+
+      {/* Market block — always visible */}
+      {(market.industry || market.geography || market.sizeSignal || (Array.isArray(market.trends) && market.trends.length > 0)) && (
+        <div style={{ padding: "10px 14px 12px", borderTop: "1px solid var(--rule)", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.55 }}>
+          <div className="mono" style={{ fontSize: 9.5, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Market</div>
+          <div style={{ display: "flex", gap: 12, marginBottom: 6, flexWrap: "wrap", fontSize: 11.5 }}>
+            {market.industry  && <span><strong style={{ color: "var(--ink)" }}>{market.industry}</strong></span>}
+            {market.geography && <span style={{ color: "var(--muted)" }}>· {market.geography}</span>}
+          </div>
+          {market.sizeSignal && (
+            <div style={{ marginBottom: 6 }}>{market.sizeSignal}</div>
+          )}
+          {Array.isArray(market.trends) && market.trends.length > 0 && (
+            <div style={{ marginTop: 6 }}>
+              <div className="mono" style={{ fontSize: 9.5, color: "var(--muted-2)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Trends</div>
+              {market.trends.map((t, i) => (
+                <div key={i} style={{ marginBottom: 3 }}>
+                  <strong style={{ color: "var(--ink)" }}>{t.trend}</strong>
+                  {t.implication && <span style={{ color: "var(--muted)" }}> — {t.implication}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+          {market.seasonality && (
+            <div style={{ marginTop: 6, fontSize: 11.5 }}>
+              <span className="mono" style={{ color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Seasonality · </span>
+              {market.seasonality}
+            </div>
+          )}
+          {Array.isArray(market.keyDynamics) && market.keyDynamics.length > 0 && (
+            <div style={{ marginTop: 6 }}>
+              <div className="mono" style={{ fontSize: 9.5, color: "var(--muted-2)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Key dynamics</div>
+              {market.keyDynamics.map((d, i) => (
+                <div key={i} style={{ marginBottom: 3 }}>· {d}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Collapsible sections */}
+      {sections.length > 0 && (
+        <div style={{ borderTop: "1px solid var(--rule)" }}>
+          {sections.map((sec, i) => {
+            const isOpen = openSection === sec.id;
+            return (
+              <div key={sec.id} style={{ borderBottom: i < sections.length - 1 ? "1px solid var(--rule)" : "none" }}>
+                <button
+                  onClick={() => setOpenSection(isOpen ? null : sec.id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    width: "100%", padding: "10px 14px",
+                    background: isOpen ? "var(--paper-2)" : "transparent",
+                    border: "none", cursor: "pointer", textAlign: "left",
+                  }}
+                >
+                  <span style={{ fontSize: 12.5, color: "var(--ink)", flex: 1, fontWeight: 500 }}>{sec.label}</span>
+                  <span className="mono" style={{ fontSize: 10.5, color: "var(--muted-2)" }}>{sec.count}</span>
+                  <Icon name={isOpen ? "chevron-up" : "chevron-down"} size={11}/>
+                </button>
+
+                {isOpen && sec.id === "positioning" && (
+                  <div style={{ padding: "0 14px 12px", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.55 }}>
+                    {positioning.map((p, j) => (
+                      <div key={j} style={{ marginBottom: j < positioning.length - 1 ? 10 : 0, paddingBottom: j < positioning.length - 1 ? 10 : 0, borderBottom: j < positioning.length - 1 ? "1px solid var(--rule)" : "none" }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink)", marginBottom: 3 }}>{p.name}</div>
+                        {p.positioningSummary && <div style={{ marginBottom: 4 }}>{p.positioningSummary}</div>}
+                        <div style={{ marginTop: 4, fontSize: 11.5 }}>
+                          <span className="mono" style={{ color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Owns · </span>
+                          {p.whatTheyOwn || "—"}
+                        </div>
+                        <div style={{ marginTop: 3, fontSize: 11.5 }}>
+                          <span className="mono" style={{ color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Whitespace · </span>
+                          {p.whitespaceCallout || "—"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {isOpen && sec.id === "personas" && (
+                  <div style={{ padding: "0 14px 12px", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.55 }}>
+                    {personas.map((p, j) => {
+                      const pOpen = openPersona === j;
+                      return (
+                        <div key={j} style={{ borderTop: j === 0 ? "none" : "1px solid var(--rule)" }}>
+                          <button
+                            onClick={() => setOpenPersona(pOpen ? null : j)}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 10,
+                              width: "100%", padding: "8px 0",
+                              background: "transparent", border: "none",
+                              cursor: "pointer", textAlign: "left",
+                            }}
+                          >
+                            <span style={{ flex: 1 }}>
+                              <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink)" }}>{p.name}</span>
+                              {p.descriptor && <span style={{ fontSize: 11.5, color: "var(--muted)", marginLeft: 6 }}>· {p.descriptor}</span>}
+                            </span>
+                            <Icon name={pOpen ? "chevron-up" : "chevron-down"} size={10}/>
+                          </button>
+                          {pOpen && (
+                            <div style={{ paddingBottom: 10, paddingLeft: 2 }}>
+                              {p.jobToBeDone && (
+                                <div style={{ marginBottom: 6, fontStyle: "italic", color: "var(--ink-2)" }}>{p.jobToBeDone}</div>
+                              )}
+                              {Array.isArray(p.painPoints) && p.painPoints.length > 0 && (
+                                <div style={{ marginBottom: 6 }}>
+                                  <div className="mono" style={{ fontSize: 9.5, color: "var(--muted-2)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Pain points</div>
+                                  {p.painPoints.map((x, k) => <div key={k} style={{ marginBottom: 2 }}>· {x}</div>)}
+                                </div>
+                              )}
+                              {Array.isArray(p.buyingTriggers) && p.buyingTriggers.length > 0 && (
+                                <div style={{ marginBottom: 6 }}>
+                                  <div className="mono" style={{ fontSize: 9.5, color: "var(--muted-2)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Buying triggers</div>
+                                  {p.buyingTriggers.map((x, k) => <div key={k} style={{ marginBottom: 2 }}>· {x}</div>)}
+                                </div>
+                              )}
+                              {Array.isArray(p.discoveryChannels) && p.discoveryChannels.length > 0 && (
+                                <div style={{ marginBottom: 6 }}>
+                                  <div className="mono" style={{ fontSize: 9.5, color: "var(--muted-2)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Discovery channels</div>
+                                  {p.discoveryChannels.map((x, k) => <div key={k} style={{ marginBottom: 2 }}>· {x}</div>)}
+                                </div>
+                              )}
+                              {Array.isArray(p.objections) && p.objections.length > 0 && (
+                                <div style={{ marginBottom: 6 }}>
+                                  <div className="mono" style={{ fontSize: 9.5, color: "var(--muted-2)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>Objections</div>
+                                  {p.objections.map((x, k) => <div key={k} style={{ marginBottom: 2 }}>· {x}</div>)}
+                                </div>
+                              )}
+                              {p.quoteHint && (
+                                <div style={{ marginTop: 6, paddingLeft: 10, borderLeft: `2px solid ${accent}`, fontSize: 12, fontStyle: "italic", color: "var(--ink-2)" }}>
+                                  "{p.quoteHint}"
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {isOpen && sec.id === "opportunities" && (
+                  <div style={{ padding: "0 14px 12px", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.55 }}>
+                    {opportunities.map((o, j) => (
+                      <div key={j} style={{ marginBottom: 4 }}>· {o}</div>
+                    ))}
+                  </div>
+                )}
+
+                {isOpen && sec.id === "risks" && (
+                  <div style={{ padding: "0 14px 12px", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.55 }}>
+                    {risks.map((r, j) => (
+                      <div key={j} style={{ marginBottom: 4 }}>· {r}</div>
+                    ))}
+                  </div>
+                )}
+
+                {isOpen && sec.id === "methodology" && (
+                  <div style={{ padding: "0 14px 12px", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.55 }}>
+                    {artifact.methodology}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // MediaPlanCard — inline render of the `media_plan` artifact from
 // create_media_plan. Each channel row shows priority, name, allocation bar,
 // percentage, and monthly spend. Tap a row to expand format / target CAC /
@@ -1122,6 +1362,10 @@ function ArtifactCard({ artifact, onOpen }) {
 
   if (t === "media_plan") {
     return <MediaPlanCard artifact={artifact}/>;
+  }
+
+  if (t === "discovery_report") {
+    return <DiscoveryReportCard artifact={artifact}/>;
   }
 
   if (t === "email") {

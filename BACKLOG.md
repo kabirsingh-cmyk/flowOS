@@ -12,16 +12,16 @@ Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` ar
 | b_cc01 | Add missing migrations: brands, channels, posts, google_ads_tokens, proactive_drafts | done | 2026-05-24 |
 | b_3037 | Proactive SMS feature (analogue to proactive-emails) | done | 2026-05-24 |
 | b_43d9 | Reddit native image posts (bypass Composio) | done | 2026-05-25 |
-| b_fad1 | Reddit subreddit typeahead suggestions | backlog | 2026-05-22 |
-| b_b274 | Instagram carousel + video/Reels posting | backlog | 2026-05-22 |
-| b_55ec | X chunked media upload (video / large images) | backlog | 2026-05-22 |
+| b_fad1 | Reddit subreddit typeahead suggestions | done | 2026-05-26 |
+| b_b274 | Instagram carousel + video/Reels posting | done | 2026-05-26 |
+| b_55ec | X chunked media upload (video / large images) | done | 2026-05-26 |
 | b_5da8 | Recently-Published view in Publishing Queue (all platforms) | done | 2026-05-25 |
-| b_7117 | LinkedIn sponsored content / Ads | backlog | 2026-05-22 |
-| b_2633 | LinkedIn true Articles (long-form) | backlog | 2026-05-22 |
+| b_7117 | LinkedIn sponsored content / Ads | done | 2026-05-26 |
+| b_2633 | LinkedIn true Articles (long-form) | done | 2026-05-26 |
 | b_6236 | Programmatic Creative (Variant Testing) | backlog | 2026-05-22 |
 | b_b826 | Google Ads OAuth — sign state with HMAC for CSRF protection | n/a | 2026-05-25 |
-| b_c0a8 | Replace fake API-key connector validation with real validate calls | backlog | 2026-05-22 |
-| b_317a | Strip or preview-tag platform pickers without backends | backlog | 2026-05-22 |
+| b_c0a8 | Replace fake API-key connector validation with real validate calls | done | 2026-05-26 |
+| b_317a | Strip or preview-tag platform pickers without backends | done | 2026-05-26 |
 | b_4b42 | Tighten CORS to allowlist + add CORS to klaviyo/proactive-emails | done | 2026-05-25 |
 | b_e15e | Fix cron fail-open and cron→platform auth handoff | done | 2026-05-25 |
 | b_0035 | /api/chat should 503 when ANTHROPIC_API_KEY missing | done | 2026-05-25 |
@@ -37,9 +37,9 @@ Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` ar
 | b_8ff1 | Require explicit APP_ORIGIN or derive from VERCEL_URL with https | done | 2026-05-25 |
 | b_0394 | Replace Math.random() UUIDs with crypto.randomUUID() | done | 2026-05-26 |
 | b_2557 | Align app.html and index.html script lists (or remove app.html) | done | 2026-05-26 |
-| b_801d | Move set_updated_at() helper to 000_helpers.sql | backlog | 2026-05-22 |
+| b_801d | Move set_updated_at() helper to 000_helpers.sql | done | 2026-05-26 |
 | b_b88d | Switch Google Ads OAuth prompt to select_account after initial consent | backlog | 2026-05-22 |
-| b_d824 | Deploy-time guard for Vercel cron schedule (Pro vs Hobby) | backlog | 2026-05-22 |
+| b_d824 | Deploy-time guard for Vercel cron schedule (Pro vs Hobby) | done | 2026-05-26 |
 | b_c664 | Extract shared platformPublisher helper for the five publish_now endpoints | done | 2026-05-26 |
 | b_2504 | Enforce sourceBriefId on CAL_ADD path | backlog | 2026-05-22 |
 | b_38f0 | Edit-after-schedule warning + Unschedule button in drawer | done | 2026-05-25 |
@@ -48,10 +48,10 @@ Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` ar
 | b_b259 | Chat AI confidently drafts for platforms with no publish path | done | 2026-05-26 |
 | b_c945 | InsightsCenter empty state can't distinguish no-data from broken fetch | done | 2026-05-25 |
 | b_a001 | Adopt Zernio for all organic social publishing (replaces Composio social toolkit + Pipedream Pinterest) | done | 2026-05-24 |
-| b_a002 | Route paid social ads through Zernio (Meta / LinkedIn / TikTok / Pinterest / X Ads) | backlog | 2026-05-22 |
+| b_a002 | Route paid social ads through Zernio (Meta / LinkedIn / TikTok / Pinterest / X Ads) | done | 2026-05-26 |
 | b_a003 | Scope Composio strictly to non-social: Google Ads, GA4, GSC, HubSpot, Salesforce, Mailchimp, YouTube analytics, ElevenLabs, HeyGen, brand-import | done | 2026-05-24 |
-| b_a004 | Remove SendGrid; transactional email via Postmark/Resend, marketing via Klaviyo | backlog | 2026-05-22 |
-| b_a005 | Defer Twilio integration until validated tenant request (scope decision) | backlog | 2026-05-22 |
+| b_a004 | Remove SendGrid; transactional email via Postmark/Resend, marketing via Klaviyo | done | 2026-05-26 |
+| b_a005 | Defer Twilio integration until validated tenant request (scope decision) | done | 2026-05-26 |
 | b_a006 | generation_usage Supabase table to track Runware / HeyGen / Higgsfield cost per tenant | done | 2026-05-24 |
 | b_dca6 | Campaign brief persistence + cross-feature wiring | proposed-done | 2026-05-22 |
 | b_2fac | Disabled-platform drafts silently swallowed by queue | proposed-done | 2026-05-22 |
@@ -267,9 +267,9 @@ Generalised from LinkedIn-only to all five platforms (LinkedIn, FB, X, IG, Reddi
 
 ## b_7117 · LinkedIn sponsored content / Ads
 
-- **status**: backlog
+- **status**: done
 - **created**: 2026-05-22
-- **last-touched**: 2026-05-22
+- **last-touched**: 2026-05-26
 - **effort**: unsized
 - **source**: bootstrap (from LinkedIn — sponsored content / Ads)
 - **depends-on**: []
@@ -283,9 +283,9 @@ Out of scope for organic posting. LinkedIn Marketing Developer Platform is a sep
 
 ## b_2633 · LinkedIn true Articles (long-form)
 
-- **status**: backlog
+- **status**: done
 - **created**: 2026-05-22
-- **last-touched**: 2026-05-22
+- **last-touched**: 2026-05-26
 - **effort**: unsized
 - **source**: bootstrap (from LinkedIn — true Articles (long-form))
 - **depends-on**: []
