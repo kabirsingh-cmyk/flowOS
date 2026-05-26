@@ -151,16 +151,28 @@ async function sendAIMessage({
       brand,
     });
 
-    // Detect create_draft / create_email_draft / create_sms_draft / create_email_sequence / create_campaign_plan / create_seo_audit / create_media_plan tool calls — attach as inline artifact.
+    // Detect create_draft / create_email_draft / create_sms_draft / create_email_sequence / create_campaign_plan / create_seo_audit / create_media_plan / create_discovery_report tool calls — attach as inline artifact.
     // Channel-specific tools win over the generic create_draft when both are present.
-    const sequenceTool = spec.tools.find(t => t.name === "create_email_sequence");
-    const emailTool   = spec.tools.find(t => t.name === "create_email_draft");
-    const smsTool     = spec.tools.find(t => t.name === "create_sms_draft");
-    const draftTool   = spec.tools.find(t => t.name === "create_draft");
-    const planTool    = spec.tools.find(t => t.name === "create_campaign_plan");
-    const auditTool   = spec.tools.find(t => t.name === "create_seo_audit");
-    const mediaTool   = spec.tools.find(t => t.name === "create_media_plan");
-    const draftArtifact = mediaTool ? {
+    const sequenceTool  = spec.tools.find(t => t.name === "create_email_sequence");
+    const emailTool     = spec.tools.find(t => t.name === "create_email_draft");
+    const smsTool       = spec.tools.find(t => t.name === "create_sms_draft");
+    const draftTool     = spec.tools.find(t => t.name === "create_draft");
+    const planTool      = spec.tools.find(t => t.name === "create_campaign_plan");
+    const auditTool     = spec.tools.find(t => t.name === "create_seo_audit");
+    const mediaTool     = spec.tools.find(t => t.name === "create_media_plan");
+    const discoveryTool = spec.tools.find(t => t.name === "create_discovery_report");
+    const draftArtifact = discoveryTool ? {
+      type:               "discovery_report",
+      title:              discoveryTool.input.title || "Discovery report",
+      executiveSummary:   discoveryTool.input.executiveSummary || "",
+      researchConfidence: discoveryTool.input.researchConfidence || "training_data",
+      market:             discoveryTool.input.market || {},
+      positioning:        Array.isArray(discoveryTool.input.positioning)   ? discoveryTool.input.positioning   : [],
+      personas:           Array.isArray(discoveryTool.input.personas)      ? discoveryTool.input.personas      : [],
+      opportunities:      Array.isArray(discoveryTool.input.opportunities) ? discoveryTool.input.opportunities : [],
+      risks:              Array.isArray(discoveryTool.input.risks)         ? discoveryTool.input.risks         : [],
+      methodology:        discoveryTool.input.methodology || "",
+    } : mediaTool ? {
       type:               "media_plan",
       title:              mediaTool.input.title || "Media plan",
       summary:            mediaTool.input.summary || "",

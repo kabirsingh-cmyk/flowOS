@@ -67,15 +67,7 @@ create policy "tenant_isolation_modify" on public.inbox_events
   for all using (tenant_id = auth.uid()::text)
         with check (tenant_id = auth.uid()::text);
 
--- Updated-at trigger (idempotent — safe to rerun).
-create or replace function set_updated_at()
-returns trigger language plpgsql as $$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$$;
-
+-- Updated-at trigger (set_updated_at defined in 000_helpers.sql).
 create or replace trigger inbox_events_updated_at
   before update on inbox_events
   for each row execute procedure set_updated_at();

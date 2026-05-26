@@ -945,19 +945,19 @@ function MobileShell({ state, actions }) {
 
 // ─────────────────────────── 11 · Organic Social Studio ──────────────────
 const PLATFORM_META = {
-  instagram: { label: "Instagram", color: "oklch(62% 0.18 340)", dot: "IG" },
-  tiktok:    { label: "TikTok",    color: "oklch(18% 0.02 260)", dot: "TK" },
-  pinterest: { label: "Pinterest", color: "oklch(52% 0.20 28)",  dot: "PN" },
-  youtube:   { label: "YouTube",   color: "oklch(54% 0.22 27)",  dot: "YT" },
-  facebook:  { label: "Facebook",  color: "oklch(48% 0.18 260)", dot: "FB" },
-  linkedin:  { label: "LinkedIn",  color: "oklch(48% 0.14 235)", dot: "LI" },
-  x:         { label: "X",         color: "oklch(22% 0.02 260)", dot: "𝕏"  },
-  threads:   { label: "Threads",   color: "oklch(22% 0.02 260)", dot: "Th" },
-  reddit:    { label: "Reddit",    color: "oklch(58% 0.22 28)",  dot: "Rd" },
-  snapchat:  { label: "Snapchat",  color: "oklch(88% 0.16 100)", dot: "Sn" },
-  bluesky:   { label: "Bluesky",   color: "oklch(55% 0.18 240)", dot: "Bk" },
-  mastodon:  { label: "Mastodon",  color: "oklch(50% 0.15 285)", dot: "Mt" },
-  telegram:  { label: "Telegram",  color: "oklch(60% 0.16 225)", dot: "Tg" },
+  instagram:   { label: "Instagram",       color: "oklch(62% 0.18 340)", dot: "IG" },
+  tiktok:      { label: "TikTok",          color: "oklch(18% 0.02 260)", dot: "TK" },
+  pinterest:   { label: "Pinterest",       color: "oklch(52% 0.20 28)",  dot: "PN" },
+  youtube:     { label: "YouTube",         color: "oklch(54% 0.22 27)",  dot: "YT" },
+  facebook:    { label: "Facebook",        color: "oklch(48% 0.18 260)", dot: "FB" },
+  linkedin:    { label: "LinkedIn",        color: "oklch(48% 0.14 235)", dot: "LI" },
+  x:           { label: "X",              color: "oklch(22% 0.02 260)", dot: "𝕏"  },
+  threads:     { label: "Threads",         color: "oklch(22% 0.02 260)", dot: "Th" },
+  reddit:      { label: "Reddit",          color: "oklch(58% 0.22 28)",  dot: "Rd" },
+  snapchat:    { label: "Snapchat",        color: "oklch(88% 0.16 100)", dot: "Sn" },
+  telegram:    { label: "Telegram",        color: "oklch(60% 0.16 225)", dot: "Tg" },
+  whatsapp:    { label: "WhatsApp",        color: "oklch(58% 0.18 155)", dot: "WA" },
+  gbusiness:   { label: "Google Business", color: "oklch(52% 0.20 145)", dot: "GB" },
 };
 
 const STATUS_META = {
@@ -974,9 +974,12 @@ function OrganicSocialStudio({ state, actions }) {
 
   const [tab, setTab]           = useStateF("all");
   const [composing, setComposing] = useStateF(false);
-  const [draft, setDraft]       = useStateF({ platform: defaultPlatform, type: defaultType, caption: "", scheduledAt: "" });
+  const [draft, setDraft]       = useStateF({ platform: defaultPlatform, type: defaultType, caption: "", scheduledAt: "", subreddit: "", redditTitle: "", articleTitle: "" });
   const [genLoading, setGenLoading] = useStateF(false);
   const [genDone, setGenDone]   = useStateF(null);
+  const [subredditSuggestions, setSubredditSuggestions] = useStateF([]);
+  const [subredditLoading, setSubredditLoading] = useStateF(false);
+  const subredditDebounce = useRefF(null);
 
   // ── Real data from Supabase ────────────────────────────────────────────────
   const [posts, setPosts]       = useStateF([]);
@@ -1039,6 +1042,27 @@ function OrganicSocialStudio({ state, actions }) {
     }
   };
 
+  // ── Subreddit typeahead ────────────────────────────────────────────────────
+  const searchSubreddits = (q) => {
+    setDraft(d => ({ ...d, subreddit: q }));
+    setSubredditSuggestions([]);
+    if (subredditDebounce.current) clearTimeout(subredditDebounce.current);
+    if (!q.trim()) return;
+    subredditDebounce.current = setTimeout(async () => {
+      setSubredditLoading(true);
+      try {
+        const res = await apiFetch("/api/reddit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "search_subreddits", query: q }),
+        });
+        const data = await res.json().catch(() => ({}));
+        setSubredditSuggestions(data.subreddits || []);
+      } catch { /* silent */ }
+      setSubredditLoading(false);
+    }, 300);
+  };
+
   // ── Save post to Supabase ──────────────────────────────────────────────────
   const savePost = async (status = "draft") => {
     const { data: { session } } = await sb.auth.getSession();
@@ -1056,6 +1080,13 @@ function OrganicSocialStudio({ state, actions }) {
       status,
       scheduled_at: draft.scheduledAt ? new Date(draft.scheduledAt).toISOString() : null,
       updated_at:   new Date().toISOString(),
+      ...(draft.platform === "reddit" && {
+        subreddit:    draft.subreddit || null,
+        reddit_title: draft.redditTitle || null,
+      }),
+      ...(draft.platform === "linkedin" && draft.type === "Article" && draft.articleTitle && {
+        title: draft.articleTitle,
+      }),
     }).select().single();
 
     if (!error && data) {
@@ -1067,7 +1098,8 @@ function OrganicSocialStudio({ state, actions }) {
     setSaving(false);
     setComposing(false);
     setGenDone(null);
-    setDraft({ platform: "instagram", type: "Reel", caption: "", scheduledAt: "" });
+    setDraft({ platform: "instagram", type: "Reel", caption: "", scheduledAt: "", subreddit: "", redditTitle: "", articleTitle: "" });
+    setSubredditSuggestions([]);
   };
 
   // ── Publish post now (via connected platform) ────────────────────────────
@@ -1094,7 +1126,7 @@ function OrganicSocialStudio({ state, actions }) {
   };
 
   // Only show platform tabs for connected channels (+ "all")
-  const ALL_PLATFORMS = ["instagram", "tiktok", "pinterest", "youtube", "facebook", "linkedin", "x", "reddit"];
+  const ALL_PLATFORMS = ["instagram", "tiktok", "pinterest", "youtube", "facebook", "linkedin", "x", "threads", "reddit", "snapchat", "telegram", "whatsapp", "gbusiness"];
   const TABS = ["all", ...ALL_PLATFORMS.filter(p => channels[p])];
   const filtered = tab === "all" ? posts : posts.filter(p => p.platform === tab);
   const scheduled = posts.filter(p => p.status === "scheduled").length;
@@ -1242,7 +1274,7 @@ function OrganicSocialStudio({ state, actions }) {
           <div style={{ background: "var(--paper)", borderRadius: 10, width: 560, maxHeight: "90vh", overflow: "auto", padding: 28, display: "flex", flexDirection: "column", gap: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 className="serif" style={{ margin: 0, fontSize: 22 }}>Compose post</h3>
-              <Btn size="sm" variant="ghost" onClick={() => { setComposing(false); setGenDone(null); }}><Icon name="x" size={11}/> Close</Btn>
+              <Btn size="sm" variant="ghost" onClick={() => { setComposing(false); setGenDone(null); setSubredditSuggestions([]); }}><Icon name="x" size={11}/> Close</Btn>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -1272,12 +1304,65 @@ function OrganicSocialStudio({ state, actions }) {
                   {draft.platform === "facebook"   && <><option>Post</option><option>Story</option><option>Reel</option></>}
                   {draft.platform === "linkedin"   && <><option>Post</option><option>Article</option><option>Poll</option></>}
                   {draft.platform === "x"          && <><option>Post</option><option>Thread</option></>}
+                  {draft.platform === "threads"    && <><option>Post</option><option>Thread</option></>}
                   {draft.platform === "reddit"     && <><option>Text post</option><option>Image post</option><option>Link post</option></>}
-                  {/* Fallback for any unmapped platform */}
-                  {!["instagram","tiktok","pinterest","youtube","facebook","linkedin","x","reddit"].includes(draft.platform) && <option>Post</option>}
+                  {draft.platform === "snapchat"   && <><option>Snap</option><option>Story</option></>}
+                  {draft.platform === "telegram"   && <><option>Message</option><option>Channel post</option></>}
+                  {draft.platform === "whatsapp"   && <><option>Message</option><option>Status</option></>}
+                  {draft.platform === "gbusiness"  && <><option>Update</option><option>Event</option><option>Offer</option></>}
                 </select>
               </label>
             </div>
+
+            {draft.platform === "linkedin" && draft.type === "Article" && (
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Article title <span style={{ color: "var(--muted)", fontFamily: "var(--font-sans)", textTransform: "none", letterSpacing: 0, fontSize: 11 }}>· posts as long-form</span></span>
+                <input value={draft.articleTitle} onChange={e => setDraft(d => ({ ...d, articleTitle: e.target.value }))}
+                  placeholder="Title of your article"
+                  style={{ padding: "8px 10px", border: "1px solid var(--rule-strong)", borderRadius: 5, fontSize: 13, fontFamily: "var(--font-sans)", background: "var(--paper)" }}/>
+              </label>
+            )}
+
+            {draft.platform === "reddit" && (
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Post title <span style={{ color: "var(--warn)", fontFamily: "var(--font-sans)", textTransform: "none", letterSpacing: 0 }}>required</span></span>
+                <input value={draft.redditTitle} onChange={e => setDraft(d => ({ ...d, redditTitle: e.target.value }))}
+                  placeholder="Post title"
+                  style={{ padding: "8px 10px", border: "1px solid var(--rule-strong)", borderRadius: 5, fontSize: 13, fontFamily: "var(--font-sans)", background: "var(--paper)" }}/>
+              </label>
+            )}
+
+            {draft.platform === "reddit" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, position: "relative" }}>
+                <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Subreddit <span style={{ color: "var(--warn)", fontFamily: "var(--font-sans)", textTransform: "none", letterSpacing: 0 }}>required</span></span>
+                <div style={{ position: "relative" }}>
+                  <input value={draft.subreddit}
+                    onChange={e => searchSubreddits(e.target.value)}
+                    onBlur={() => setTimeout(() => setSubredditSuggestions([]), 150)}
+                    placeholder="e.g. entrepreneur"
+                    style={{ padding: "8px 10px", border: "1px solid var(--rule-strong)", borderRadius: 5, fontSize: 13, fontFamily: "var(--font-sans)", background: "var(--paper)", width: "100%", boxSizing: "border-box" }}/>
+                  {draft.subreddit && <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: "var(--muted)", pointerEvents: "none" }}>{draft.subreddit.startsWith("r/") ? "" : "r/"}</span>}
+                  {subredditLoading && <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: "var(--muted)" }}>…</span>}
+                </div>
+                {subredditSuggestions.length > 0 && (
+                  <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "var(--paper)", border: "1px solid var(--rule-strong)", borderRadius: 6, zIndex: 20, overflow: "hidden", boxShadow: "0 4px 12px rgba(0,0,0,.12)" }}>
+                    {subredditSuggestions.map(s => (
+                      <div key={s.name}
+                        onMouseDown={() => { setDraft(d => ({ ...d, subreddit: s.name })); setSubredditSuggestions([]); }}
+                        style={{ padding: "8px 12px", cursor: "pointer", borderBottom: "1px solid var(--rule)", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                        onMouseEnter={e => e.currentTarget.style.background = "var(--paper-2)"}
+                        onMouseLeave={e => e.currentTarget.style.background = ""}>
+                        <div>
+                          <span style={{ fontSize: 13, fontWeight: 500 }}>r/{s.name}</span>
+                          <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 6 }}>{s.title}</span>
+                        </div>
+                        <span style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>{s.subscribers ? s.subscribers.toLocaleString() + " members" : ""}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
@@ -1319,7 +1404,7 @@ function OrganicSocialStudio({ state, actions }) {
             )}
 
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 4 }}>
-              <Btn variant="ghost" onClick={() => { setComposing(false); setGenDone(null); }}>Cancel</Btn>
+              <Btn variant="ghost" onClick={() => { setComposing(false); setGenDone(null); setSubredditSuggestions([]); }}>Cancel</Btn>
               <Btn onClick={() => savePost("draft")} disabled={saving}>Save draft</Btn>
               <Btn variant="primary" onClick={() => savePost(draft.scheduledAt ? "scheduled" : "draft")} disabled={saving}>
                 <Icon name="send" size={11}/> {saving ? "Saving…" : draft.scheduledAt ? "Schedule" : "Save"}

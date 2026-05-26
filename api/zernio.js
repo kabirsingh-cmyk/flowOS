@@ -231,6 +231,31 @@ async function getZernioAccountId(tenantId, platform) {
   return rows?.[0]?.composio_connection_id || null;
 }
 
+// ─── Media helper ─────────────────────────────────────────────────────────────
+
+/**
+ * buildMediaArray — normalises the three possible media inputs into a Zernio
+ * `media` array.
+ *
+ * Priority:
+ *   1. mediaUrls (string[]) — carousel or multi-image post (≥ 2 items → carousel)
+ *   2. videoUrl (string)    — single video / Reel / Short
+ *   3. imageUrl (string)    — single image / Post
+ *
+ * Each Zernio media item shape: { url: string, type: "image" | "video" }
+ * For carousels Zernio expects all items in one `media` array; the platform
+ * param ("instagram") tells Zernio it's a carousel when multiple image items
+ * are present.
+ */
+function buildMediaArray({ imageUrl, videoUrl, mediaUrls }) {
+  if (Array.isArray(mediaUrls) && mediaUrls.length > 0) {
+    return mediaUrls.map(url => ({ url, type: "image" }));
+  }
+  if (videoUrl) return [{ url: videoUrl, type: "video" }];
+  if (imageUrl) return [{ url: imageUrl, type: "image" }];
+  return [];
+}
+
 // ─── Action handlers ──────────────────────────────────────────────────────────
 
 /**
@@ -333,20 +358,20 @@ async function handleDisconnect({ app, accountId }) {
  * Loads accountId from channels table if not in body.
  */
 async function handlePublishNow(body) {
-  const { tenantId, platform, text, imageUrl, videoUrl, title, subreddit } = body;
+  const { tenantId, platform, text, imageUrl, videoUrl, mediaUrls, title, subreddit } = body;
   if (!platform) return errResponse("platform required");
-  if (!text && !imageUrl && !videoUrl) return errResponse("text, imageUrl, or videoUrl required");
+  if (!text && !imageUrl && !videoUrl && !(mediaUrls?.length)) return errResponse("text, imageUrl, videoUrl, or mediaUrls required");
 
   const resolvedPlatform = resolvePlatform(platform.toLowerCase());
   const accountId = body.accountId || await getZernioAccountId(tenantId, platform);
   if (!accountId) return errResponse(`No connected account found for ${platform}. Reconnect and try again.`);
 
+  const media = buildMediaArray({ imageUrl, videoUrl, mediaUrls });
   const payload = {
     content:    text || null,
     publishNow: true,
     platforms:  [{ platform: resolvedPlatform, accountId }],
-    ...(imageUrl  ? { media: [{ url: imageUrl, type: "image" }] } : {}),
-    ...(videoUrl  ? { media: [{ url: videoUrl, type: "video" }] } : {}),
+    ...(media.length ? { media } : {}),
     ...(title     ? { title }     : {}),
     ...(subreddit ? { subreddit } : {}),
   };
@@ -367,7 +392,7 @@ async function handlePublishNow(body) {
  * POST /v1/posts with { content, scheduledFor, timezone, platforms: [{platform, accountId}] }
  */
 async function handleSchedulePost(body) {
-  const { tenantId, platform, text, imageUrl, videoUrl, title, subreddit, scheduledAt } = body;
+  const { tenantId, platform, text, imageUrl, videoUrl, mediaUrls, title, subreddit, scheduledAt } = body;
   if (!platform)    return errResponse("platform required");
   if (!scheduledAt) return errResponse("scheduledAt (ISO 8601 UTC) required");
 
@@ -375,13 +400,13 @@ async function handleSchedulePost(body) {
   const accountId = body.accountId || await getZernioAccountId(tenantId, platform);
   if (!accountId) return errResponse(`No connected account found for ${platform}. Reconnect and try again.`);
 
+  const media = buildMediaArray({ imageUrl, videoUrl, mediaUrls });
   const payload = {
     content:      text    || null,
     scheduledFor: scheduledAt,
     timezone:     "UTC",
     platforms:    [{ platform: resolvedPlatform, accountId }],
-    ...(imageUrl  ? { media: [{ url: imageUrl, type: "image" }] } : {}),
-    ...(videoUrl  ? { media: [{ url: videoUrl, type: "video" }] } : {}),
+    ...(media.length ? { media } : {}),
     ...(title     ? { title }     : {}),
     ...(subreddit ? { subreddit } : {}),
   };

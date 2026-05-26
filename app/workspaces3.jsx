@@ -175,9 +175,14 @@ function PublishingQueue({ state, actions }) {
       connectorId:  "li",
       apiPath:      "/api/linkedin",
       resolveAction:"resolve_author",
-      buildPayload: ({ tenantId, authorUrn, text, imageUrl }) => ({
-        action: "publish_now", tenantId, authorUrn, text, imageUrl,
-      }),
+      buildPayload: ({ tenantId, authorUrn, text, imageUrl, kind, title }) => {
+        // For Articles: prepend the title as the opening line so LinkedIn readers
+        // see the headline even though this posts as long-form text (Zernio does
+        // not yet expose the LinkedIn Articles API separately).
+        const isArticle = /article/i.test(kind || "");
+        const body = isArticle && title ? `${title}\n\n${text}` : text;
+        return { action: "publish_now", tenantId, authorUrn, text: body, imageUrl };
+      },
       resultFields: (res, authorUrn) => ({
         linkedinPostId:    res.postId || null,
         linkedinUrl:       res.postUrl || null,
@@ -205,9 +210,21 @@ function PublishingQueue({ state, actions }) {
     x: {
       needsAuthor:  false,
       apiPath:      "/api/x",
-      buildPayload: ({ tenantId, text, imageUrl }) => ({
-        action: "publish_now", tenantId, text, imageUrl,
-      }),
+      // X supports: text-only, single image, up to 4 images (mediaUrls), or 1 video.
+      buildPayload: ({ tenantId, text, imageUrl, videoUrl, mediaUrls, kind }) => {
+        const k = (kind || "").toLowerCase();
+        const isVideo = /video|gif/.test(k);
+        // X allows up to 4 images in one post via mediaUrls[]
+        const hasMulti = Array.isArray(mediaUrls) && mediaUrls.length > 1;
+        return {
+          action: "publish_now",
+          tenantId,
+          text,
+          ...(isVideo    && videoUrl       ? { videoUrl }  :
+              hasMulti                     ? { mediaUrls } :
+              imageUrl                     ? { imageUrl }  : {}),
+        };
+      },
       resultFields: (res) => ({
         xPostId: res.postId || null,
         xUrl:    res.postUrl || null,
@@ -221,10 +238,26 @@ function PublishingQueue({ state, actions }) {
       connectorId:  "ig",
       apiPath:      "/api/instagram",
       resolveAction:"resolve_accounts",
-      needsImage:   true,
-      buildPayload: ({ tenantId, authorUrn, text, imageUrl }) => ({
-        action: "publish_now", tenantId, igUserId: authorUrn, caption: text, imageUrl,
-      }),
+      // Reels and Shorts use video; carousels use multiple images; posts use a single image.
+      // needsImage is true only for non-video, non-carousel kinds.
+      needsImage: (kind) => {
+        const k = (kind || "").toLowerCase();
+        return !/reel|short|video/.test(k);
+      },
+      buildPayload: ({ tenantId, authorUrn, text, imageUrl, videoUrl, mediaUrls, kind }) => {
+        const k = (kind || "").toLowerCase();
+        const isReel      = /reel|short|video/.test(k);
+        const isCarousel  = /carousel/.test(k);
+        return {
+          action:    "publish_now",
+          tenantId,
+          igUserId:  authorUrn,
+          caption:   text,
+          ...(isCarousel && mediaUrls?.length ? { mediaUrls } :
+              isReel     && videoUrl          ? { videoUrl }  :
+              imageUrl                        ? { imageUrl }  : {}),
+        };
+      },
       resultFields: (res, authorUrn) => ({
         instagramPostId:       res.postId || null,
         instagramUrl:          res.postUrl || null,
@@ -837,8 +870,13 @@ function PublishingQueue({ state, actions }) {
             actions.notify("warn", "Reddit posts require a title");
             return;
           }
-          const hasImage = editItem.imageStatus === "completed" && editItem.imageUrl;
-          if (pub.needsImage && !hasImage) {
+          const schedKind  = editItem.kind || "";
+          const hasImage   = editItem.imageStatus === "completed" && editItem.imageUrl;
+          const hasVideo   = !!editItem.videoUrl;
+          const schedNeedsImage = typeof pub.needsImage === "function"
+            ? pub.needsImage(schedKind)
+            : pub.needsImage;
+          if (schedNeedsImage && !hasImage) {
             actions.notify("warn", "Instagram requires an image — generate one or pick another platform");
             return;
           }
@@ -851,6 +889,9 @@ function PublishingQueue({ state, actions }) {
             authorUrn: author,
             text:      editDraft.body,
             imageUrl:  hasImage ? editItem.imageUrl : null,
+            videoUrl:  hasVideo ? editItem.videoUrl : null,
+            mediaUrls: editItem.mediaUrls || null,
+            kind:      schedKind,
             title:     pub.needsTitle ? redditTitle.trim() : undefined,
           });
           // tenantId travels on the scheduled_posts row itself, not inside
@@ -962,8 +1003,13 @@ function PublishingQueue({ state, actions }) {
               actions.notify("warn", "Reddit posts require a title");
               return;
             }
-            const hasImage = editItem.imageStatus === "completed" && editItem.imageUrl;
-            if (pub.needsImage && !hasImage) {
+            const itemKind  = editItem.kind || "";
+            const hasImage  = editItem.imageStatus === "completed" && editItem.imageUrl;
+            const hasVideo  = !!editItem.videoUrl;
+            const needsImageCheck = typeof pub.needsImage === "function"
+              ? pub.needsImage(itemKind)
+              : pub.needsImage;
+            if (needsImageCheck && !hasImage) {
               actions.notify("warn", "Instagram requires an image — generate one or pick another platform");
               return;
             }
@@ -972,11 +1018,14 @@ function PublishingQueue({ state, actions }) {
             actions.updateItem(editItem.id, { publishStatus: "publishing", publishError: null });
             try {
               const payload = pub.buildPayload({
-                tenantId:  state.auth?.id,
-                authorUrn: author,
-                text:      editDraft.body,
-                imageUrl:  hasImage ? editItem.imageUrl : null,
-                title:     pub.needsTitle ? redditTitle.trim() : undefined,
+                tenantId:   state.auth?.id,
+                authorUrn:  author,
+                text:       editDraft.body,
+                imageUrl:   hasImage ? editItem.imageUrl : null,
+                videoUrl:   hasVideo ? editItem.videoUrl : null,
+                mediaUrls:  editItem.mediaUrls || null,
+                kind:       itemKind,
+                title:      pub.needsTitle ? redditTitle.trim() : (editItem.title || undefined),
               });
               const res = await apiFetch(pub.apiPath, {
                 method:  "POST",
