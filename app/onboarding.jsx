@@ -368,6 +368,7 @@ function Step2({ data, onChange, onFinish, onBack }) {
   const [connecting, setConnecting] = useStateOB(null); // option id mid-flight
   const [connected, setConnected]   = useStateOB(null); // option id that finished
   const [error, setError]           = useStateOB("");
+  const [finishing, setFinishing]   = useStateOB(false); // awaiting brand-import
   const pollerRef = useRefOB(null);
 
   useEffectOB(() => () => { if (pollerRef.current) clearInterval(pollerRef.current); }, []);
@@ -522,14 +523,23 @@ function Step2({ data, onChange, onFinish, onBack }) {
       </p>
 
       <div style={{ display: "flex", gap: 10 }}>
-        <button onClick={onBack} style={{ padding: "11px 18px", borderRadius: 6, background: "transparent", border: "1px solid var(--rule-strong)", color: "var(--ink-2)", fontFamily: "var(--font-sans)", fontSize: 13.5, cursor: "pointer" }}>← Back</button>
-        <button onClick={() => {
+        <button onClick={onBack} disabled={finishing} style={{ padding: "11px 18px", borderRadius: 6, background: "transparent", border: "1px solid var(--rule-strong)", color: "var(--ink-2)", fontFamily: "var(--font-sans)", fontSize: 13.5, cursor: finishing ? "not-allowed" : "pointer", opacity: finishing ? 0.5 : 1 }}>← Back</button>
+        <button onClick={async () => {
+          if (finishing) return;
+          setFinishing(true);
           const opt = GOOGLE_CONNECTOR_OPTIONS.find(o => o.id === connected);
-          onFinish({ connectedChannels: opt ? [opt.composioApp] : [] });
-        }} style={{
-          padding: "11px 24px", borderRadius: 6, background: "var(--accent)", color: "var(--paper)",
-          border: "none", fontWeight: 500, fontSize: 14, fontFamily: "var(--font-sans)", cursor: "pointer",
-        }}>{connected ? "Enter workspace →" : "Skip — enter workspace →"}</button>
+          try {
+            await onFinish({ connectedChannels: opt ? [opt.composioApp] : [] });
+          } finally {
+            setFinishing(false);
+          }
+        }} disabled={finishing} style={{
+          padding: "11px 24px", borderRadius: 6,
+          background: finishing ? "var(--rule)" : "var(--accent)",
+          color: finishing ? "var(--muted)" : "var(--paper)",
+          border: "none", fontWeight: 500, fontSize: 14, fontFamily: "var(--font-sans)",
+          cursor: finishing ? "not-allowed" : "pointer",
+        }}>{finishing ? "Analyzing your brand…" : (connected ? "Enter workspace →" : "Skip — enter workspace →")}</button>
       </div>
     </div>
   );
@@ -547,22 +557,58 @@ function OnboardingWizard({ auth, onComplete }) {
 
   const merge = (updates) => setForm(prev => ({ ...prev, ...updates }));
 
-  const finish = (extra) => {
+  const finish = async (extra) => {
     const result = { ...form, ...extra, completedAt: Date.now() };
     try { localStorage.setItem("flowos_onboarding", JSON.stringify(result)); } catch {}
-    sb.auth.getSession().then(({ data: { session } }) => {
-      if (!session?.user) return;
-      sb.from("brands").upsert({
+
+    // 1) Persist the user-entered fields first so the row exists with the
+    //    name/industry/revenue the user typed (Claude analysis may overwrite
+    //    name/industry with its own extraction; user values shouldn't lose).
+    const { data: { session } } = await sb.auth.getSession();
+    if (session?.user) {
+      const { error } = await sb.from("brands").upsert({
         user_id:    session.user.id,
         name:       result.storeName || "My Brand",
         industry:   result.industry  || null,
         website:    result.website   || null,
         revenue:    result.revenue   || null,
         updated_at: new Date().toISOString(),
-      }, { onConflict: "user_id" })
-      .then(({ error }) => { if (error) console.error("[FlowOS] brand save:", error); });
-    });
-    onComplete(result);
+      }, { onConflict: "user_id" });
+      if (error) console.error("[FlowOS] brand save:", error);
+    }
+
+    // 2) Run Claude brand analysis if we have a website. /api/brand-import
+    //    scrapes the site, extracts voice/values/claims/messaging/terminology
+    //    /palette via Claude, and (fire-and-forget) upserts to Supabase.
+    //    We pass the returned brand straight to onComplete so the store
+    //    hydrates immediately without waiting on Supabase round-trip.
+    let importedBrand = null;
+    if (result.website) {
+      try {
+        const r = await apiFetch("/api/brand-import", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ url: result.website }),
+        });
+        const j = await r.json();
+        if (j?.ok && j.brand) importedBrand = j.brand;
+        else console.warn("[FlowOS] brand-import:", j?.error || r.status);
+      } catch (e) {
+        console.warn("[FlowOS] brand-import failed:", e.message);
+      }
+    }
+
+    // 3) Re-apply user-entered name/industry/revenue so they win over Claude
+    //    extraction (only if user actually typed them).
+    if (session?.user && importedBrand && (result.storeName || result.industry || result.revenue)) {
+      const overrides = { user_id: session.user.id, updated_at: new Date().toISOString() };
+      if (result.storeName) overrides.name     = result.storeName;
+      if (result.industry)  overrides.industry = result.industry;
+      if (result.revenue)   overrides.revenue  = result.revenue;
+      await sb.from("brands").upsert(overrides, { onConflict: "user_id" });
+    }
+
+    onComplete(result, importedBrand);
   };
 
   const STEPS = [
