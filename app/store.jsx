@@ -48,7 +48,7 @@ const DEFAULT_CHANNEL_RULES = [
 //                           becomes the seed key, which makes SWITCH_BRAND work.
 //   null (real user)      → all demo slices start empty. Brand-derived slices
 //                           (brandValues, approvedClaims, prohibited, brandPreset)
-//                           are overlaid at login by BRAND_HYDRATE from the
+//                           are overlaid at login by SET_BRAND from the
 //                           user's Supabase brands row. The activeBrandId is
 //                           the Supabase user id (auth.id) — SWITCH_BRAND
 //                           becomes a no-op outside seed mode (existing guard
@@ -73,7 +73,7 @@ function mveda_initialState({ seedMode = null, userId = null } = {}) {
     // ── Identity ──
     activeBrandId: isSeed ? seedMode : userId,
     brandImported: isSeed ? (SEED.brandImported || false) : false,
-    brandPreset:   null, // overlaid at login by BRAND_HYDRATE for real users
+    brandPreset:   null, // overlaid at login by SET_BRAND for real users
 
     // ── Demo-vs-empty slices ──
     calendar:   isSeed ? SEED.calendar.map(c => ({ ...c })) : [],
@@ -85,7 +85,7 @@ function mveda_initialState({ seedMode = null, userId = null } = {}) {
     activity:   isSeed ? SEED.audit.map(a => ({ ...a, id: "e_" + crypto.randomUUID() })) : [],
     connectors: isSeed ? { ...SEED.connectorState } : {},
 
-    // Brand-safety floor — empty for real users, overlaid by BRAND_HYDRATE
+    // Brand-safety floor — empty for real users, overlaid by SET_BRAND
     // from the user's brand row (values/claims/prohibited_topics arrays).
     brandValues:    isSeed ? [...SEED.brandValues]     : [],
     approvedClaims: isSeed ? [...SEED.approvedClaims]  : [],
@@ -267,7 +267,7 @@ function mveda_reducer(s, a) {
         notifications: [notify("neutral", "Brand reset to default"), ...s.notifications],
       };
     }
-    case "BRAND_HYDRATE": {
+    case "SET_BRAND": {
       // Silent overlay from a Supabase `brands` row at login. No notifications,
       // no activity log — the user didn't take an action, they just signed in.
       // Snake-case → camel-case at the reducer boundary so consumers of
@@ -288,6 +288,8 @@ function mveda_reducer(s, a) {
         targetAudience:        b.target_audience || null,
         recommendedConnectors: b.recommended_connectors || null,
         competitors:           b.competitors || null,
+        messaging:             b.messaging || null,
+        terminology:           b.terminology || null,
         brandAnalysis:         b.brand_analysis || null,
       };
 
@@ -625,7 +627,7 @@ function useMvedaStore(seedMode = null, userId = null) {
     log:             (actor, event) => dispatch({ type: "LOG", actor, event }),
     setConnector:    (id, patch, opts={}) => dispatch({ type: "CONNECTOR_SET", id, patch, logEvent: opts.logEvent, notify: opts.notify }),
     importBrand:     (preset) => dispatch({ type: "BRAND_IMPORTED", preset }),
-    hydrateBrand:    (brand)  => dispatch({ type: "BRAND_HYDRATE", brand }),
+    setBrand:        (brand)  => dispatch({ type: "SET_BRAND", brand }),
     resetBrand:      () => dispatch({ type: "BRAND_RESET" }),
     switchBrand:     (brandId) => dispatch({ type: "SWITCH_BRAND", brandId }),
     applyStrategy:   (payload) => dispatch({ type: "STRATEGY_APPLY", payload }),

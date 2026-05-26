@@ -822,7 +822,7 @@ function ChatOS() {
   const checkOnboarded = async (userId) => {
     try {
       const { data } = await sb.from("brands")
-        .select("id, name, industry, website, palette, palette_vars, goal, budget, revenue, voice, values, claims, prohibited_topics, target_audience, recommended_connectors, competitors, brand_analysis")
+        .select("id, name, industry, website, palette, palette_vars, goal, budget, revenue, voice, values, claims, prohibited_topics, target_audience, recommended_connectors, competitors, messaging, terminology, brand_analysis")
         .eq("user_id", userId)
         .limit(1);
       if (data && data.length > 0) {
@@ -943,7 +943,32 @@ function ChatOS() {
     return (
       <>
         <style>{ANIM_STYLE}</style>
-        <OnboardingWizard auth={auth} onComplete={() => setOnboarded(true)}/>
+        <OnboardingWizard auth={auth} onComplete={(_result, importedBrand) => {
+          // /api/brand-import returns camelCase brand JSON. Normalize to the
+          // snake_case shape SET_BRAND reads from Supabase rows.
+          if (importedBrand) {
+            setHydratedBrand({
+              id:                     null,
+              name:                   importedBrand.name,
+              industry:               importedBrand.industry,
+              website:                importedBrand.url,
+              palette:                importedBrand.palette,
+              palette_vars:           importedBrand.palette?.vars,
+              voice:                  importedBrand.voice,
+              values:                 importedBrand.values,
+              claims:                 importedBrand.claims,
+              prohibited_topics:      importedBrand.prohibitedTopics,
+              target_audience:        importedBrand.targetAudience,
+              recommended_connectors: importedBrand.recommendedConnectors,
+              competitors:            importedBrand.competitors,
+              messaging:              importedBrand.messaging,
+              terminology:            importedBrand.terminology,
+              brand_analysis:         importedBrand,
+            });
+            if (importedBrand.palette) applyPalette(importedBrand.palette);
+          }
+          setOnboarded(true);
+        }}/>
       </>
     );
   }
@@ -955,7 +980,7 @@ function ChatOS() {
 //   auth     — user-object with id/name/email. For seed bypass, id is "dev-mveda" / "dev-erickson".
 //   brand    — full Supabase brands row (or null for seed bypass / no row).
 //              When present, overlaid onto the initial store state via the
-//              BRAND_HYDRATE action — silent, idempotent. brand is stable
+//              SET_BRAND action — silent, idempotent. brand is stable
 //              across the session (set once in ChatOS.checkOnboarded, cleared
 //              on logout/sign-out), so the effect fires exactly once per login.
 //   seedMode — "mveda" | "erickson" | null. Drives store initial state:
@@ -968,9 +993,7 @@ function ChatOSAuthed({ auth, brand, seedMode, onLogout }) {
 
   useEffectApp(() => {
     if (brand) {
-      // [hydration-debug] temporary — remove once verified. grep marker above.
-      console.log("[FlowOS] brand hydrated from Supabase:", brand);
-      actions.hydrateBrand(brand);
+      actions.setBrand(brand);
     }
     // actions is recreated each render; only `brand` should drive this effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
