@@ -151,7 +151,7 @@ async function sendAIMessage({
       brand,
     });
 
-    // Detect create_draft / create_email_draft / create_sms_draft / create_email_sequence / create_campaign_plan / create_seo_audit tool calls — attach as inline artifact.
+    // Detect create_draft / create_email_draft / create_sms_draft / create_email_sequence / create_campaign_plan / create_seo_audit / create_media_plan tool calls — attach as inline artifact.
     // Channel-specific tools win over the generic create_draft when both are present.
     const sequenceTool = spec.tools.find(t => t.name === "create_email_sequence");
     const emailTool   = spec.tools.find(t => t.name === "create_email_draft");
@@ -159,7 +159,22 @@ async function sendAIMessage({
     const draftTool   = spec.tools.find(t => t.name === "create_draft");
     const planTool    = spec.tools.find(t => t.name === "create_campaign_plan");
     const auditTool   = spec.tools.find(t => t.name === "create_seo_audit");
-    const draftArtifact = auditTool ? {
+    const mediaTool   = spec.tools.find(t => t.name === "create_media_plan");
+    const draftArtifact = mediaTool ? {
+      type:               "media_plan",
+      title:              mediaTool.input.title || "Media plan",
+      summary:            mediaTool.input.summary || "",
+      goal:               mediaTool.input.goal || "",
+      audience:           mediaTool.input.audience || "",
+      timeline:           mediaTool.input.timeline || "",
+      currency:           mediaTool.input.currency || "USD",
+      totalBudgetMonthly: Number(mediaTool.input.totalBudgetMonthly) || 0,
+      dataSource:         mediaTool.input.dataSource || "benchmarks_only",
+      channels:           Array.isArray(mediaTool.input.channels)    ? mediaTool.input.channels    : [],
+      excluded:           Array.isArray(mediaTool.input.excluded)    ? mediaTool.input.excluded    : [],
+      risks:              Array.isArray(mediaTool.input.risks)       ? mediaTool.input.risks       : [],
+      assumptions:        Array.isArray(mediaTool.input.assumptions) ? mediaTool.input.assumptions : [],
+    } : auditTool ? {
       type:                 "seo_audit",
       url:                  auditTool.input.url || "",
       auditType:            auditTool.input.auditType || "full_audit",
