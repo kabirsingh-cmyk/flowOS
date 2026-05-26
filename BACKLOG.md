@@ -40,7 +40,7 @@ Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` ar
 | b_801d | Move set_updated_at() helper to 000_helpers.sql | backlog | 2026-05-22 |
 | b_b88d | Switch Google Ads OAuth prompt to select_account after initial consent | backlog | 2026-05-22 |
 | b_d824 | Deploy-time guard for Vercel cron schedule (Pro vs Hobby) | backlog | 2026-05-22 |
-| b_c664 | Extract shared platformPublisher helper for the five publish_now endpoints | backlog | 2026-05-22 |
+| b_c664 | Extract shared platformPublisher helper for the five publish_now endpoints | done | 2026-05-26 |
 | b_2504 | Enforce sourceBriefId on CAL_ADD path | backlog | 2026-05-22 |
 | b_38f0 | Edit-after-schedule warning + Unschedule button in drawer | done | 2026-05-25 |
 | b_60f8 | Composio code 306 (no managed auth) — Connect modal hangs forever | done | 2026-05-24 |
