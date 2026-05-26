@@ -391,7 +391,7 @@ function ChannelRow({ channel, active, onSelect }) {
 }
 
 // ─────────────── NAV RAIL ───────────────
-function NavRail({ active, onOpen, state, actions }) {
+function NavRail({ active, onOpen, state, actions, seedMode }) {
   const GROUPS = [
     {
       label: null,
@@ -428,8 +428,19 @@ function NavRail({ active, onOpen, state, actions }) {
     { id: "mveda",    name: "MVEDA",                 sub: "DTC Skincare",    initial: "M", color: "oklch(58% 0.13 60)"  },
     { id: "erickson", name: "Erickson Refrigeration", sub: "HVAC & Services", initial: "E", color: "oklch(42% 0.18 250)" },
   ];
+  // Tenant-switcher exists only in seed mode (?seed=mveda|erickson). Real users
+  // have one brand — their own — and shouldn't see MVEDA/Erickson as options.
+  const isSeed = seedMode === "mveda" || seedMode === "erickson";
   const activeBrandId = state?.activeBrandId || "mveda";
-  const current = ACCOUNTS.find(a => a.id === activeBrandId) || ACCOUNTS[0];
+  const current = isSeed
+    ? (ACCOUNTS.find(a => a.id === activeBrandId) || ACCOUNTS[0])
+    : {
+        id:      activeBrandId,
+        name:    state?.brandPreset?.name || "Your Brand",
+        sub:     state?.brandPreset?.industry || "",
+        initial: (state?.brandPreset?.name || "?").trim().charAt(0).toUpperCase() || "?",
+        color:   "var(--accent)",
+      };
 
   return (
     <nav style={{
@@ -439,13 +450,16 @@ function NavRail({ active, onOpen, state, actions }) {
 
       {/* ── Account switcher ── */}
       <div style={{ padding: "12px 12px 10px", borderBottom: "1px solid var(--rule)", position: "relative", flexShrink: 0 }}>
-        <button onClick={() => setAcctOpen(o => !o)} style={{
-          width: "100%", display: "flex", alignItems: "center", gap: 9,
-          background: "none", border: "none", cursor: "pointer", padding: "4px 4px",
-          borderRadius: 6, transition: "background 0.1s",
-        }}
-          onMouseEnter={e => e.currentTarget.style.background = "var(--paper-2)"}
-          onMouseLeave={e => e.currentTarget.style.background = "none"}
+        <button
+          onClick={isSeed ? () => setAcctOpen(o => !o) : undefined}
+          style={{
+            width: "100%", display: "flex", alignItems: "center", gap: 9,
+            background: "none", border: "none",
+            cursor: isSeed ? "pointer" : "default",
+            padding: "4px 4px", borderRadius: 6, transition: "background 0.1s",
+          }}
+          onMouseEnter={isSeed ? (e => e.currentTarget.style.background = "var(--paper-2)") : undefined}
+          onMouseLeave={isSeed ? (e => e.currentTarget.style.background = "none") : undefined}
         >
           <div style={{
             width: 28, height: 28, borderRadius: 6, background: current.color,
@@ -456,10 +470,10 @@ function NavRail({ active, onOpen, state, actions }) {
             <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{current.name}</div>
             <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{current.sub}</div>
           </div>
-          <Icon name="chevron" size={10} style={{ color: "var(--muted)", flexShrink: 0 }}/>
+          {isSeed && <Icon name="chevron" size={10} style={{ color: "var(--muted)", flexShrink: 0 }}/>}
         </button>
 
-        {acctOpen && (
+        {isSeed && acctOpen && (
           <>
             <div onClick={() => setAcctOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 199 }}/>
             <div style={{
@@ -800,6 +814,10 @@ function ChatOS() {
   // load failure, or seed bypass). Consumed by ChatOSAuthed → store hydration
   // (wired but not yet read — see CLAUDE.md "store-hydration contract").
   const [hydratedBrand, setHydratedBrand] = useStateApp(null);
+  // Demo bypass marker. null = real user; "mveda" | "erickson" = ?seed= URL
+  // param session. Threaded to useMvedaStore so the initial state is populated
+  // from SEED for demos and empty for real users.
+  const [seedMode, setSeedMode]           = useStateApp(null);
 
   const checkOnboarded = async (userId) => {
     try {
@@ -857,6 +875,7 @@ function ChatOS() {
         // synthetic user, so explicitly clear any hydrated brand from a prior
         // session in this tab.
         setHydratedBrand(null);
+        setSeedMode(seedParam); // "mveda" | "erickson" — drives store init
       })();
       return;
     }
@@ -886,6 +905,7 @@ function ChatOS() {
         initializedRef.current = false;
         setOnboarded(false);
         setHydratedBrand(null);
+        setSeedMode(null);
       }
     });
 
@@ -898,6 +918,7 @@ function ChatOS() {
     Object.keys(BRAND_PALETTES[0].vars).forEach(k => document.documentElement.style.removeProperty(k));
     setOnboarded(false);
     setHydratedBrand(null);
+    setSeedMode(null);
   };
 
   // Loading — checking session
@@ -927,17 +948,22 @@ function ChatOS() {
     );
   }
 
-  return <ChatOSAuthed auth={auth} brand={hydratedBrand} onLogout={handleLogout}/>;
+  return <ChatOSAuthed auth={auth} brand={hydratedBrand} seedMode={seedMode} onLogout={handleLogout}/>;
 }
 
-// `brand` is the full Supabase brands row (or null for seed bypass / no row).
-// When present, it's overlaid onto the SEED-derived initial store state via
-// the BRAND_HYDRATE action — silent, idempotent. brand is stable across the
-// session (set once in ChatOS.checkOnboarded, cleared on logout/sign-out),
-// so the effect fires exactly once per login.
-function ChatOSAuthed({ auth, brand, onLogout }) {
+// Props:
+//   auth     — user-object with id/name/email. For seed bypass, id is "dev-mveda" / "dev-erickson".
+//   brand    — full Supabase brands row (or null for seed bypass / no row).
+//              When present, overlaid onto the initial store state via the
+//              BRAND_HYDRATE action — silent, idempotent. brand is stable
+//              across the session (set once in ChatOS.checkOnboarded, cleared
+//              on logout/sign-out), so the effect fires exactly once per login.
+//   seedMode — "mveda" | "erickson" | null. Drives store initial state:
+//              non-null fills the whiteboard from SEED; null starts empty.
+//              Stable per session — set once in ChatOS before ChatOSAuthed mounts.
+function ChatOSAuthed({ auth, brand, seedMode, onLogout }) {
   const [chat, dispatch] = useReducerApp(chatReducer, undefined, chatInit);
-  const [state, actions] = useMvedaStore();
+  const [state, actions] = useMvedaStore(seedMode, auth?.id);
   const [tweakOpen, setTweakOpen] = useStateApp(false);
 
   useEffectApp(() => {
@@ -1286,7 +1312,7 @@ function ChatOSAuthed({ auth, brand, onLogout }) {
         height: "100vh", background: "var(--paper-2)",
       }} data-screen-label="FlowOS">
 
-        <NavRail active={activeCanvas.target} onOpen={handleNav} state={state} actions={actions}/>
+        <NavRail active={activeCanvas.target} onOpen={handleNav} state={state} actions={actions} seedMode={seedMode}/>
 
         {/* Centre: workspace / canvas */}
         <Canvas
