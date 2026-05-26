@@ -127,14 +127,6 @@ const BRAND_PALETTES = [
   },
 ];
 
-// Pick palette deterministically from URL so the same brand always gets same theme
-function paletteFromUrl(url) {
-  const domain = url.replace(/https?:\/\//,"").split("/")[0].replace(/^www\./,"");
-  let hash = 0;
-  for (let i = 0; i < domain.length; i++) hash = (hash * 31 + domain.charCodeAt(i)) & 0xffff;
-  return BRAND_PALETTES[hash % BRAND_PALETTES.length];
-}
-
 // ─── Font pairings by industry type ──────────────────────────────────────────
 const FONT_PAIRINGS = [
   {
@@ -189,24 +181,6 @@ function applyPalette(palette) {
   Object.entries(palette.vars).forEach(([k, v]) => root.style.setProperty(k, v));
   if (palette.brandData?.industry) applyFont(palette.brandData.industry);
 }
-
-// Revert to token defaults
-function revertPalette() {
-  const root = document.documentElement;
-  Object.keys(BRAND_PALETTES[0].vars).forEach(k => root.style.removeProperty(k));
-}
-
-// ─── Scan steps (mimics the BrandImportModal) ──────────────────────────────
-const SCAN_STEPS = [
-  { label: "Fetching homepage…",                  delay: 350 },
-  { label: "Reading meta + Open Graph tags",       delay: 320 },
-  { label: "Extracting colour palette from CSS",   delay: 480 },
-  { label: "Detecting display + body fonts",       delay: 420 },
-  { label: "Sampling hero & product copy",         delay: 520 },
-  { label: "Inferring brand voice from headlines", delay: 440 },
-  { label: "Checking logo + icon library",         delay: 380 },
-  { label: "Compiling brand memory candidate",     delay: 340 },
-];
 
 // ─── Industries ────────────────────────────────────────────────────────────
 const INDUSTRY_GROUPS = [
@@ -284,37 +258,6 @@ const INDUSTRY_GROUPS = [
   },
 ];
 
-const GOALS = [
-  { id: "acquire",   icon: "target",   label: "Acquire new customers",   sub: "Grow reach, paid acquisition, awareness campaigns" },
-  { id: "retain",    icon: "spark",    label: "Retain & grow",            sub: "Lifecycle, replenishment, VIP programmes" },
-  { id: "launch",    icon: "flash",    label: "Launch a product",         sub: "Pre-launch buzz, email capture, creator seeding" },
-  { id: "creative",  icon: "edit",     label: "Improve creative quality", sub: "Drafts, approvals, brand voice enforcement" },
-  { id: "scale",     icon: "chart",    label: "Scale paid spend",         sub: "Pmax, Advantage+, Meta Ads, keyword expansion" },
-];
-
-// IDs match the recommendedConnectors values from brand analysis
-const ALL_CHANNELS = [
-  { id: "ig",         label: "Instagram",             sub: "Organic social — feed, reels, stories",  color: "#e1306c" },
-  { id: "tt",         label: "TikTok",                sub: "Organic social — short video",           color: "#010101" },
-  { id: "fb",         label: "Facebook",              sub: "Organic social — pages & groups",        color: "#1877f2" },
-  { id: "pn",         label: "Pinterest",             sub: "Organic social — pins & boards",         color: "#e60023" },
-  { id: "yt",         label: "YouTube",               sub: "Organic video — shorts & long-form",     color: "#ff0000" },
-  { id: "li",         label: "LinkedIn",              sub: "Professional network & B2B social",      color: "#0077b5" },
-  { id: "x",          label: "X",                     sub: "Organic social",                         color: "#000000" },
-  { id: "reddit",     label: "Reddit",                sub: "Community posting",                      color: "#ff4500" },
-  { id: "metaads",    label: "Meta Ads",              sub: "Paid social — Advantage+",               color: "#0866ff" },
-  { id: "ttads",      label: "TikTok Ads",            sub: "Paid social — spark ads",                color: "#69c9d0" },
-  { id: "googleads",  label: "Google Ads",            sub: "Search, Shopping & Pmax",                color: "#4285f4" },
-  { id: "liads",      label: "LinkedIn Ads",          sub: "Paid B2B — lead gen & awareness",        color: "#0077b5" },
-  { id: "klaviyo",    label: "Klaviyo",               sub: "Email & SMS",                            color: "#3366cc" },
-  { id: "mailchimp",  label: "Mailchimp",             sub: "Email marketing",                        color: "#ffe01b" },
-  { id: "shopify",    label: "Shopify",               sub: "Commerce & data",                        color: "#96bf48" },
-  { id: "ga4",        label: "Google Analytics",      sub: "Web analytics",                          color: "#e37400" },
-  { id: "gsc",        label: "Google Search Console", sub: "SEO & search performance",               color: "#4285f4" },
-  { id: "ahrefs",     label: "Ahrefs",                sub: "SEO & backlink analysis",                color: "#ff6200" },
-  { id: "moz",        label: "Moz",                   sub: "Domain authority & rank tracking",       color: "#005ea2" },
-];
-
 // ─── Progress dots ─────────────────────────────────────────────────────────
 function StepDots({ current, total }) {
   return (
@@ -357,11 +300,11 @@ function PaletteCard({ palette, selected, onClick }) {
 
 // ─── Step 1 — Brand basics ─────────────────────────────────────────────────
 function Step1({ data, onChange, onNext }) {
-  const ready = data.storeName.trim().length > 0 && data.industry;
+  const ready = data.storeName.trim().length > 0 && data.industry && data.website.includes(".");
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div>
-        <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 6 }}>Step 1 of 4</div>
+        <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 6 }}>Step 1 of 2</div>
         <h2 className="serif" style={{ margin: 0, fontSize: 32, fontWeight: 500, letterSpacing: "-0.02em", lineHeight: 1.1 }}>
           Tell us about<br/><em>your brand.</em>
         </h2>
@@ -399,6 +342,17 @@ function Step1({ data, onChange, onNext }) {
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Website URL</span>
+          <input
+            type="url"
+            value={data.website}
+            onChange={e => onChange({ website: e.target.value })}
+            placeholder="https://yourbrand.com"
+            style={{ padding: "10px 12px", border: "1px solid var(--rule-strong)", borderRadius: 6, fontSize: 14, fontFamily: "var(--font-sans)", background: "var(--paper)", color: "var(--ink)", outline: "none" }}
+          />
+        </label>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
           <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Monthly revenue <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none" }}>(optional)</span></span>
           <select
             value={data.revenue}
@@ -426,260 +380,20 @@ function Step1({ data, onChange, onNext }) {
   );
 }
 
-// ─── Step 2 — Brand identity scan ─────────────────────────────────────────
-function Step2({ data, onChange, onNext, onBack }) {
-  const [scanState, setScanState] = useStateOB("idle"); // idle | scanning | done
-  const [scanLog, setScanLog] = useStateOB([]);
-  const [palette, setPalette] = useStateOB(null);
-  const [chosen, setChosen] = useStateOB(null);
-  const timerRef = useRefOB(null);
+// ─── Step 2 — Add your first connector (Google) ───────────────────────────
+const GOOGLE_CONNECTOR_OPTIONS = [
+  { id: "google-personal",  label: "Google · Personal",  sub: "Gmail · personal Google account" },
+  { id: "google-workspace", label: "Google · Workspace", sub: "Workspace · GA4, Search Console, Google Ads" },
+];
 
-  const startScan = async () => {
-    if (!data.website.trim()) return;
-    setScanState("scanning");
-    setScanLog([]);
-
-    // ── Animation: play through steps, resolve when done ──
-    const animPromise = new Promise(resolve => {
-      let i = 0;
-      const tick = () => {
-        if (i >= SCAN_STEPS.length) { resolve(); return; }
-        setScanLog(prev => [...prev, { ...SCAN_STEPS[i], status: "ok" }]);
-        i++;
-        timerRef.current = setTimeout(tick, SCAN_STEPS[i - 1].delay);
-      };
-      timerRef.current = setTimeout(tick, 200);
-    });
-
-    // ── Real API call: Claude brand analysis ──
-    const apiPromise = apiFetch("/api/brand-import", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: data.website }),
-    }).then(r => r.json()).catch(() => null);
-
-    // Wait for both — show preview only when both complete
-    const [, apiResult] = await Promise.all([animPromise, apiPromise]);
-
-    let detected;
-    if (apiResult?.ok && apiResult.brand?.palette?.vars) {
-      const vars = apiResult.brand.palette.vars;
-      detected = {
-        id: "custom",
-        name: apiResult.brand.name || "Brand",
-        desc: apiResult.brand.industry || "Custom palette",
-        swatches: [
-          vars["--paper"],
-          vars["--accent"],
-          vars["--ink"],
-          vars["--accent-wash"],
-        ],
-        vars,
-        brandData: apiResult.brand, // carry full brand analysis forward
-      };
-    } else {
-      // Fallback to hash-based preset if API fails
-      detected = paletteFromUrl(data.website);
-    }
-
-    setPalette(detected);
-    setChosen(detected);
-    applyPalette(detected);
-    setScanState("done");
-  };
-
-  useEffectOB(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
-
-  const handleChoose = (p) => {
-    setChosen(p);
-    applyPalette(p);
-  };
-
-  const ready = scanState === "done" && chosen;
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div>
-        <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 6 }}>Step 2 of 4</div>
-        <h2 className="serif" style={{ margin: 0, fontSize: 32, fontWeight: 500, letterSpacing: "-0.02em", lineHeight: 1.1 }}>
-          Make FlowOS<br/><em>feel like you.</em>
-        </h2>
-        <p style={{ margin: "10px 0 0", fontSize: 13.5, color: "var(--muted)", lineHeight: 1.6 }}>
-          We'll scan your website and extract your colour palette, fonts, and brand voice — then apply them to your workspace.
-        </p>
-      </div>
-
-      {scanState === "idle" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Your website URL</span>
-            <input
-              autoFocus
-              type="url"
-              value={data.website}
-              onChange={e => onChange({ website: e.target.value })}
-              placeholder="https://yourbrand.com"
-              onKeyDown={e => e.key === "Enter" && data.website.includes(".") && startScan()}
-              style={{ padding: "10px 12px", border: "1px solid var(--rule-strong)", borderRadius: 6, fontSize: 14, fontFamily: "var(--font-sans)", background: "var(--paper)", color: "var(--ink)" }}
-            />
-          </label>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button disabled={!data.website.includes(".")} onClick={startScan} style={{
-              padding: "11px 20px", borderRadius: 6, background: data.website.includes(".") ? "var(--accent)" : "var(--rule)",
-              color: data.website.includes(".") ? "var(--accent-ink)" : "var(--muted)",
-              border: "none", fontWeight: 500, fontSize: 13.5, fontFamily: "var(--font-sans)", cursor: data.website.includes(".") ? "pointer" : "not-allowed",
-            }}>Scan website</button>
-            <button onClick={() => { onChange({ website: "" }); setScanState("done"); setChosen(BRAND_PALETTES[0]); applyPalette(BRAND_PALETTES[0]); }}
-              style={{ padding: "11px 20px", borderRadius: 6, background: "transparent", border: "1px solid var(--rule-strong)", color: "var(--muted)", fontFamily: "var(--font-sans)", fontSize: 13.5, cursor: "pointer" }}>
-              Skip — pick a theme
-            </button>
-          </div>
-        </div>
-      )}
-
-      {scanState === "scanning" && (
-        <div style={{ background: "var(--paper-3)", borderRadius: 8, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 8 }}>
-          <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>
-            Scanning {data.website}
-          </div>
-          {scanLog.map((s, i) => (
-            <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12.5 }}>
-              <span style={{ color: "var(--success)", fontSize: 11 }}>✓</span>
-              <span style={{ color: "var(--ink-2)" }}>{s.label}</span>
-            </div>
-          ))}
-          {scanLog.length < SCAN_STEPS.length && (
-            <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12.5, color: "var(--muted)" }}>
-              <span className="dot-pulse" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", display: "inline-block" }}/>
-              <span>{SCAN_STEPS[scanLog.length]?.label}</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {scanState === "done" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {palette && (
-            <div style={{ background: "var(--accent-wash)", border: "1px solid var(--accent)", borderRadius: 8, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-              <div className="mono" style={{ fontSize: 10.5, color: "var(--accent-ink)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Detected from {data.website || "your selection"}</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ display: "flex", gap: 5 }}>
-                  {palette.swatches.map((c, i) => (
-                    <div key={i} style={{ width: 22, height: 22, borderRadius: 5, background: c, border: "1px solid rgba(0,0,0,.08)" }}/>
-                  ))}
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>{palette.name}</div>
-                  <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{palette.desc}</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div>
-            <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>Choose a different theme</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-              {BRAND_PALETTES.map(p => (
-                <PaletteCard key={p.id} palette={p} selected={chosen?.id === p.id} onClick={() => handleChoose(p)}/>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div style={{ display: "flex", gap: 10 }}>
-        <button onClick={onBack} style={{ padding: "11px 18px", borderRadius: 6, background: "transparent", border: "1px solid var(--rule-strong)", color: "var(--ink-2)", fontFamily: "var(--font-sans)", fontSize: 13.5, cursor: "pointer" }}>← Back</button>
-        {ready && (
-          <button onClick={() => onNext({ chosenPalette: chosen })} style={{
-            padding: "11px 24px", borderRadius: 6, background: "var(--accent)", color: "var(--paper)",
-            border: "none", fontWeight: 500, fontSize: 14, fontFamily: "var(--font-sans)", cursor: "pointer",
-          }}>Apply theme & continue →</button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Step 3 — Goals ────────────────────────────────────────────────────────
-function Step3({ data, onChange, onNext, onBack }) {
-  const ready = !!data.goal;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div>
-        <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 6 }}>Step 3 of 4</div>
-        <h2 className="serif" style={{ margin: 0, fontSize: 32, fontWeight: 500, letterSpacing: "-0.02em", lineHeight: 1.1 }}>
-          What's your<br/><em>focus right now?</em>
-        </h2>
-        <p style={{ margin: "10px 0 0", fontSize: 13.5, color: "var(--muted)", lineHeight: 1.6 }}>
-          FlowOS routes work to the right specialists based on your priority.
-        </p>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {GOALS.map(g => (
-          <button key={g.id} onClick={() => onChange({ goal: g.id })} style={{
-            textAlign: "left", padding: "13px 16px", borderRadius: 7,
-            border: `1.5px solid ${data.goal === g.id ? "var(--accent)" : "var(--rule)"}`,
-            background: data.goal === g.id ? "var(--accent-wash)" : "var(--paper)",
-            cursor: "pointer", display: "flex", alignItems: "center", gap: 14, transition: "border-color .15s",
-          }}>
-            <div style={{ width: 32, height: 32, borderRadius: 6, background: data.goal === g.id ? "var(--accent)" : "var(--paper-2)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-              <Icon name={g.icon} size={14} style={{ color: data.goal === g.id ? "var(--paper)" : "var(--muted)" }}/>
-            </div>
-            <div>
-              <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--ink)" }}>{g.label}</div>
-              <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>{g.sub}</div>
-            </div>
-          </button>
-        ))}
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <span className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Monthly marketing budget</span>
-        <select value={data.budget} onChange={e => onChange({ budget: e.target.value })}
-          style={{ padding: "10px 12px", border: "1px solid var(--rule-strong)", borderRadius: 6, fontSize: 14, fontFamily: "var(--font-sans)", background: "var(--paper)", color: data.budget ? "var(--ink)" : "var(--muted)", appearance: "none", cursor: "pointer" }}>
-          <option value="">Optional</option>
-          <option value="under-1k">Under £1k</option>
-          <option value="1-5k">£1k – £5k</option>
-          <option value="5-20k">£5k – £20k</option>
-          <option value="20-50k">£20k – £50k</option>
-          <option value="50k+">£50k+</option>
-        </select>
-      </div>
-
-      <div style={{ display: "flex", gap: 10 }}>
-        <button onClick={onBack} style={{ padding: "11px 18px", borderRadius: 6, background: "transparent", border: "1px solid var(--rule-strong)", color: "var(--ink-2)", fontFamily: "var(--font-sans)", fontSize: 13.5, cursor: "pointer" }}>← Back</button>
-        <button disabled={!ready} onClick={onNext} style={{
-          padding: "11px 24px", borderRadius: 6,
-          background: ready ? "var(--accent)" : "var(--rule)", color: ready ? "var(--paper)" : "var(--muted)",
-          border: "none", fontWeight: 500, fontSize: 14, fontFamily: "var(--font-sans)", cursor: ready ? "pointer" : "not-allowed",
-        }}>Continue →</button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Step 4 — Brand summary + channel connect ─────────────────────────────
-function Step4({ data, onChange, onFinish, onBack }) {
-  const [phase, setPhase]       = useStateOB("summary"); // "summary" | "channels"
+function Step2({ data, onChange, onFinish, onBack }) {
   const [connecting, setConnecting] = useStateOB(null);
-  const [connected, setConnected]   = useStateOB([]);
-
-  const brandData   = data.chosenPalette?.brandData || null;
-  const summary     = brandData?.summary || null;
-  const recommended = brandData?.recommendedConnectors || [];
-
-  // Channels filtered to what the brand analysis recommended
-  const recommendedChannels = ALL_CHANNELS.filter(ch => recommended.includes(ch.id));
-  // Fall back to a sensible default set if no brand data
-  const channelList = recommendedChannels.length > 0
-    ? recommendedChannels
-    : ALL_CHANNELS.filter(ch => ["ig", "fb", "klaviyo", "googleads"].includes(ch.id));
+  const [connected, setConnected]   = useStateOB(null);
 
   const connect = (id) => {
     setConnecting(id);
     setTimeout(() => {
-      setConnected(prev => [...prev, id]);
+      setConnected(id);
       setConnecting(null);
     }, 900);
   };
@@ -687,108 +401,64 @@ function Step4({ data, onChange, onFinish, onBack }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <div>
-        <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 6 }}>Step 4 of 4</div>
+        <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 6 }}>Step 2 of 2</div>
         <h2 className="serif" style={{ margin: 0, fontSize: 32, fontWeight: 500, letterSpacing: "-0.02em", lineHeight: 1.1 }}>
-          {summary ? <>Here's what<br/><em>we found.</em></> : <>Connect your<br/><em>first channel.</em></>}
+          Add your<br/><em>first connector.</em>
         </h2>
+        <p style={{ margin: "10px 0 0", fontSize: 13.5, color: "var(--muted)", lineHeight: 1.6 }}>
+          Connect a Google account so FlowOS can pull analytics and act on your behalf. You can add more connectors later in Connections.
+        </p>
       </div>
 
-      {/* ── Brand summary ──────────────────────────────────────────────── */}
-      {summary && (
-        <div style={{
-          background: "var(--paper-2)", borderRadius: 8, padding: "16px 18px",
-          borderLeft: "3px solid var(--accent)",
-        }}>
-          {summary.split("\n\n").map((para, i) => (
-            <p key={i} style={{ margin: i === 0 ? 0 : "10px 0 0", fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.65 }}>
-              {para}
-            </p>
-          ))}
-        </div>
-      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {GOOGLE_CONNECTOR_OPTIONS.map(opt => {
+          const isConnected  = connected === opt.id;
+          const isConnecting = connecting === opt.id;
+          return (
+            <div key={opt.id} style={{
+              display: "flex", alignItems: "center", gap: 14, padding: "13px 16px",
+              border: `1.5px solid ${isConnected ? "var(--accent)" : "var(--rule)"}`,
+              borderRadius: 7,
+              background: isConnected ? "var(--accent-wash)" : "var(--paper)",
+              transition: "all .2s",
+            }}>
+              <svg width="22" height="22" viewBox="0 0 18 18" style={{ flexShrink: 0 }}>
+                <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/>
+                <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+                <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+                <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+              </svg>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 500 }}>{opt.label}</div>
+                <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{opt.sub}</div>
+              </div>
+              {isConnected ? (
+                <span className="mono" style={{ fontSize: 10.5, color: "var(--accent-ink)", letterSpacing: "0.06em" }}>Connected</span>
+              ) : (
+                <button onClick={() => connect(opt.id)} disabled={!!connecting} style={{
+                  padding: "7px 16px", borderRadius: 5,
+                  background: isConnecting ? "var(--rule)" : "var(--accent)",
+                  color: isConnecting ? "var(--muted)" : "var(--accent-ink)",
+                  border: "none", fontSize: 12, fontFamily: "var(--font-sans)",
+                  cursor: connecting ? "not-allowed" : "pointer",
+                }}>{isConnecting ? "Connecting…" : "Connect"}</button>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
-      {/* ── Phase: summary — ask connect now or later ──────────────────── */}
-      {phase === "summary" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <p style={{ margin: 0, fontSize: 13.5, color: "var(--muted)", lineHeight: 1.6 }}>
-            {recommendedChannels.length > 0
-              ? `We've pre-selected ${recommendedChannels.length} channels that fit this brand. Want to connect one now?`
-              : "Want to connect a channel now, or set them up later?"}
-          </p>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={() => setPhase("channels")} style={{
-              padding: "11px 20px", borderRadius: 6, background: "var(--accent)", color: "var(--accent-ink)",
-              border: "none", fontWeight: 500, fontSize: 13.5, fontFamily: "var(--font-sans)", cursor: "pointer",
-            }}>Connect a channel →</button>
-            <button onClick={() => onFinish({ connectedChannels: [] })} style={{
-              padding: "11px 20px", borderRadius: 6, background: "transparent",
-              border: "1px solid var(--rule-strong)", color: "var(--muted)",
-              fontFamily: "var(--font-sans)", fontSize: 13.5, cursor: "pointer",
-            }}>Skip — I'll do this in Connections</button>
-          </div>
-        </div>
-      )}
+      <p className="mono" style={{ margin: 0, fontSize: 10.5, color: "var(--muted)", lineHeight: 1.6 }}>
+        More connectors (Meta, TikTok, Klaviyo, Shopify…) live in Settings → Connections.
+      </p>
 
-      {/* ── Phase: channels — pick one to connect ──────────────────────── */}
-      {phase === "channels" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            {channelList.map(ch => {
-              const isConnected  = connected.includes(ch.id);
-              const isConnecting = connecting === ch.id;
-              return (
-                <div key={ch.id} style={{
-                  display: "flex", alignItems: "center", gap: 14, padding: "11px 14px",
-                  border: `1.5px solid ${isConnected ? "var(--accent)" : "var(--rule)"}`,
-                  borderRadius: 7,
-                  background: isConnected ? "var(--accent-wash)" : "var(--paper)",
-                  transition: "all .2s",
-                }}>
-                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: ch.color, flexShrink: 0 }}/>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 500 }}>{ch.label}</div>
-                    <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{ch.sub}</div>
-                  </div>
-                  {isConnected ? (
-                    <span className="mono" style={{ fontSize: 10.5, color: "var(--accent-ink)", letterSpacing: "0.06em" }}>Connected</span>
-                  ) : (
-                    <button onClick={() => connect(ch.id)} disabled={!!connecting} style={{
-                      padding: "6px 14px", borderRadius: 5,
-                      background: isConnecting ? "var(--rule)" : "var(--accent)",
-                      color: isConnecting ? "var(--muted)" : "var(--accent-ink)", border: "none", fontSize: 12,
-                      fontFamily: "var(--font-sans)", cursor: connecting ? "not-allowed" : "pointer",
-                    }}>{isConnecting ? "…" : "Connect"}</button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <p className="mono" style={{ margin: 0, fontSize: 10.5, color: "var(--muted)", lineHeight: 1.6 }}>
-            Additional setup and API keys live in Settings under Connections and can be set up anytime.
-          </p>
-
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => setPhase("summary")} style={{
-              padding: "11px 18px", borderRadius: 6, background: "transparent",
-              border: "1px solid var(--rule-strong)", color: "var(--ink-2)",
-              fontFamily: "var(--font-sans)", fontSize: 13.5, cursor: "pointer",
-            }}>← Back</button>
-            <button onClick={() => onFinish({ connectedChannels: connected })} style={{
-              padding: "11px 24px", borderRadius: 6, background: "var(--accent)", color: "var(--paper)",
-              border: "none", fontWeight: 500, fontSize: 14, fontFamily: "var(--font-sans)", cursor: "pointer",
-            }}>{connected.length > 0 ? "Enter workspace →" : "Skip — enter workspace →"}</button>
-          </div>
-        </div>
-      )}
-
-      {phase === "summary" && (
-        <button onClick={onBack} style={{
-          alignSelf: "flex-start", padding: "11px 18px", borderRadius: 6,
-          background: "transparent", border: "1px solid var(--rule-strong)",
-          color: "var(--ink-2)", fontFamily: "var(--font-sans)", fontSize: 13.5, cursor: "pointer",
-        }}>← Back</button>
-      )}
+      <div style={{ display: "flex", gap: 10 }}>
+        <button onClick={onBack} style={{ padding: "11px 18px", borderRadius: 6, background: "transparent", border: "1px solid var(--rule-strong)", color: "var(--ink-2)", fontFamily: "var(--font-sans)", fontSize: 13.5, cursor: "pointer" }}>← Back</button>
+        <button onClick={() => onFinish({ connectedChannels: connected ? [connected] : [] })} style={{
+          padding: "11px 24px", borderRadius: 6, background: "var(--accent)", color: "var(--paper)",
+          border: "none", fontWeight: 500, fontSize: 14, fontFamily: "var(--font-sans)", cursor: "pointer",
+        }}>{connected ? "Enter workspace →" : "Skip — enter workspace →"}</button>
+      </div>
     </div>
   );
 }
@@ -801,57 +471,43 @@ function OnboardingWizard({ auth, onComplete }) {
     industry: "",
     revenue: "",
     website: "",
-    goal: "",
-    budget: "",
   });
 
   const merge = (updates) => setForm(prev => ({ ...prev, ...updates }));
 
   const finish = (extra) => {
     const result = { ...form, ...extra, completedAt: Date.now() };
-    // Save locally for fast palette rehydration on next load
     try { localStorage.setItem("flowos_onboarding", JSON.stringify(result)); } catch {}
-    // Save brand to Supabase (fire-and-forget — don't block the UI)
     sb.auth.getSession().then(({ data: { session } }) => {
       if (!session?.user) return;
-      const bd = result.chosenPalette?.brandData || null;
       sb.from("brands").upsert({
-        user_id:                session.user.id,
-        name:                   bd?.name       || result.storeName || "My Brand",
-        industry:               bd?.industry   || result.industry  || null,
-        website:                result.website || null,
-        palette:                result.chosenPalette || null,
-        palette_vars:           result.chosenPalette?.vars || null,
-        goal:                   result.goal    || null,
-        budget:                 result.budget  || null,
-        revenue:                result.revenue || null,
-        voice:                  bd?.voice      || null,
-        values:                 bd?.values     || null,
-        claims:                 bd?.claims     || null,
-        prohibited_topics:      bd?.prohibitedTopics || null,
-        target_audience:        bd?.targetAudience   || null,
-        recommended_connectors: bd?.recommendedConnectors || null,
-        competitors:            bd?.competitors || null,
-        brand_analysis:         bd             || null,
-        updated_at:             new Date().toISOString(),
+        user_id:    session.user.id,
+        name:       result.storeName || "My Brand",
+        industry:   result.industry  || null,
+        website:    result.website   || null,
+        revenue:    result.revenue   || null,
+        updated_at: new Date().toISOString(),
       }, { onConflict: "user_id" })
       .then(({ error }) => { if (error) console.error("[FlowOS] brand save:", error); });
     });
     onComplete(result);
   };
 
+  const STEPS = [
+    { label: "Your brand",     sub: "Name, industry, website" },
+    { label: "First connector", sub: "Connect Google" },
+  ];
+
   return (
     <div style={{
       minHeight: "100vh", height: "100vh", background: "var(--paper-2)",
       display: "grid", gridTemplateColumns: "1.1fr 1fr", overflow: "hidden",
     }}>
-      {/* Left — brand panel */}
       <div style={{
         background: "var(--paper-3)", color: "var(--ink)",
         padding: "60px 56px", display: "flex", flexDirection: "column", justifyContent: "space-between",
         position: "relative", overflow: "hidden",
       }}>
-        {/* Logo */}
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 36, height: 36, borderRadius: 6, background: "var(--accent)", color: "var(--accent-ink)", display: "grid", placeItems: "center", fontFamily: "var(--font-sans)", fontWeight: 700, fontSize: 16, letterSpacing: "-0.02em" }}>F</div>
           <div>
@@ -860,15 +516,9 @@ function OnboardingWizard({ auth, onComplete }) {
           </div>
         </div>
 
-        {/* Steps sidebar */}
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <div className="mono" style={{ fontSize: 10.5, opacity: 0.55, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 20 }}>Getting started</div>
-          {[
-            { label: "Your brand",      sub: "Name, industry, scale" },
-            { label: "Brand identity",  sub: "Website scan + theme" },
-            { label: "Focus",           sub: "Goals + budget" },
-            { label: "First channel",   sub: "One-click connect" },
-          ].map((s, i) => (
+          {STEPS.map((s, i) => (
             <div key={i} style={{
               display: "flex", gap: 12, alignItems: "flex-start",
               padding: "12px 16px", borderRadius: 8,
@@ -896,21 +546,17 @@ function OnboardingWizard({ auth, onComplete }) {
           Signed in as {auth?.name || "you"} · {auth?.email || ""}
         </div>
 
-        {/* Decorative glyph */}
         <div aria-hidden="true" style={{ position: "absolute", right: -60, bottom: -100, fontFamily: "var(--font-sans)", fontWeight: 700, fontSize: 480, lineHeight: 1, color: "var(--ink)", opacity: 0.04, pointerEvents: "none", userSelect: "none" }}>F</div>
       </div>
 
-      {/* Right — form pane */}
       <div style={{ padding: "60px 56px", display: "flex", flexDirection: "column", justifyContent: "center", overflowY: "auto" }}>
         <div style={{ maxWidth: 420, width: "100%", margin: "0 auto" }}>
           <div style={{ marginBottom: 28 }}>
-            <StepDots current={step} total={4}/>
+            <StepDots current={step} total={STEPS.length}/>
           </div>
 
           {step === 0 && <Step1 data={form} onChange={merge} onNext={() => setStep(1)}/>}
-          {step === 1 && <Step2 data={form} onChange={merge} onNext={(extra) => { merge(extra); setStep(2); }} onBack={() => setStep(0)}/>}
-          {step === 2 && <Step3 data={form} onChange={merge} onNext={() => setStep(3)} onBack={() => setStep(1)}/>}
-          {step === 3 && <Step4 data={form} onChange={merge} onFinish={finish} onBack={() => setStep(2)}/>}
+          {step === 1 && <Step2 data={form} onChange={merge} onFinish={finish} onBack={() => setStep(0)}/>}
         </div>
       </div>
     </div>

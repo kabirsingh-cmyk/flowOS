@@ -224,6 +224,37 @@ function mveda_reducer(s, a) {
         notifications: [notify("neutral", "Brand reset to default"), ...s.notifications],
       };
     }
+    case "BRAND_HYDRATE": {
+      // Silent overlay from a Supabase `brands` row at login. No notifications,
+      // no activity log — the user didn't take an action, they just signed in.
+      // Snake-case → camel-case at the reducer boundary so consumers of
+      // brandPreset see the same shape as SEED.brandPresets.
+      // Connector state is intentionally NOT seeded here — `recommended_connectors`
+      // is a hint, not ground truth. Real connector state lives in the `channels`
+      // table (separate hydration).
+      const b = a.brand;
+      if (!b) return s;
+      const preset = {
+        name:                  b.name || "My Brand",
+        industry:              b.industry || null,
+        website:               b.website || null,
+        voice:                 b.voice || null,
+        values:                b.values || null,
+        claims:                b.claims || null,
+        prohibitedTopics:      b.prohibited_topics || null,
+        targetAudience:        b.target_audience || null,
+        recommendedConnectors: b.recommended_connectors || null,
+        competitors:           b.competitors || null,
+        brandAnalysis:         b.brand_analysis || null,
+      };
+      return { ...s,
+        brandImported:  true,
+        brandPreset:    preset,
+        brandValues:    Array.isArray(b.values)             ? b.values             : s.brandValues,
+        approvedClaims: Array.isArray(b.claims)             ? b.claims             : s.approvedClaims,
+        prohibited:     Array.isArray(b.prohibited_topics)  ? b.prohibited_topics  : s.prohibited,
+      };
+    }
     case "SWITCH_BRAND": {
       const preset = SEED.brandPresets[a.brandId];
       if (!preset) return s;
@@ -513,6 +544,7 @@ function useMvedaStore() {
     log:             (actor, event) => dispatch({ type: "LOG", actor, event }),
     setConnector:    (id, patch, opts={}) => dispatch({ type: "CONNECTOR_SET", id, patch, logEvent: opts.logEvent, notify: opts.notify }),
     importBrand:     (preset) => dispatch({ type: "BRAND_IMPORTED", preset }),
+    hydrateBrand:    (brand)  => dispatch({ type: "BRAND_HYDRATE", brand }),
     resetBrand:      () => dispatch({ type: "BRAND_RESET" }),
     switchBrand:     (brandId) => dispatch({ type: "SWITCH_BRAND", brandId }),
     applyStrategy:   (payload) => dispatch({ type: "STRATEGY_APPLY", payload }),
