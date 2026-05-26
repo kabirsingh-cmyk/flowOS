@@ -45,7 +45,7 @@ Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` ar
 | b_38f0 | Edit-after-schedule warning + Unschedule button in drawer | done | 2026-05-25 |
 | b_60f8 | Composio code 306 (no managed auth) — Connect modal hangs forever | done | 2026-05-24 |
 | b_ea4e | Text-only Instagram post fails at publish (imageUrl required) | done | 2026-05-24 |
-| b_b259 | Chat AI confidently drafts for platforms with no publish path | backlog | 2026-05-22 |
+| b_b259 | Chat AI confidently drafts for platforms with no publish path | done | 2026-05-26 |
 | b_c945 | InsightsCenter empty state can't distinguish no-data from broken fetch | done | 2026-05-25 |
 | b_a001 | Adopt Zernio for all organic social publishing (replaces Composio social toolkit + Pipedream Pinterest) | done | 2026-05-24 |
 | b_a002 | Route paid social ads through Zernio (Meta / LinkedIn / TikTok / Pinterest / X Ads) | backlog | 2026-05-22 |

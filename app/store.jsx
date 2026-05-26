@@ -2,9 +2,14 @@
 // All workspaces read from `state` and mutate via `actions`.
 const { useReducer: useReducerStore, useCallback: useCallbackStore } = React;
 
-// Platforms that have a working publish path (via PLATFORM_PUBLISHERS in workspaces3.jsx).
-// Keep in sync with that map.
-const PLATFORM_PUBLISHERS = new Set(["linkedin", "facebook", "x", "instagram", "reddit"]);
+// Platforms with a working publish path via Zernio (createPlatformHandler in api/lib/platformPublisher.js).
+// All 15 organic social platforms are covered. Anything not in this set gets
+// noPublishPath: true → queue shows "export or post manually" instead of Schedule.
+const PLATFORM_PUBLISHERS = new Set([
+  "linkedin", "facebook", "x", "instagram", "reddit",
+  "tiktok", "pinterest", "threads", "bluesky", "youtube",
+  "snapchat", "googlebusiness", "gbusiness", "telegram", "whatsapp", "discord",
+]);
 
 function mveda_initialState() {
   return {
