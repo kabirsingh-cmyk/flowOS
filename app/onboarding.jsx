@@ -1,5 +1,5 @@
 // MVEDA — onboarding wizard (Klaviyo-style: clean step rail, website scan → live brand theme)
-const { useState: useStateOB, useEffect: useEffectOB, useRef: useRefOB } = React;
+const { useState: useStateOB } = React;
 
 // ─── Brand palette library ─────────────────────────────────────────────────
 // Each preset maps to a full set of CSS custom property overrides.
@@ -272,29 +272,6 @@ function StepDots({ current, total }) {
         }}/>
       ))}
     </div>
-  );
-}
-
-// ─── Colour swatch ─────────────────────────────────────────────────────────
-function PaletteCard({ palette, selected, onClick }) {
-  return (
-    <button onClick={onClick} style={{
-      textAlign: "left", padding: "12px 14px", borderRadius: 8,
-      border: `1.5px solid ${selected ? "var(--accent)" : "var(--rule)"}`,
-      background: selected ? "var(--accent-wash)" : "var(--paper)",
-      cursor: "pointer", display: "flex", flexDirection: "column", gap: 8,
-      transition: "border-color .15s",
-    }}>
-      <div style={{ display: "flex", gap: 6 }}>
-        {palette.swatches.map((c, i) => (
-          <div key={i} style={{ width: 18, height: 18, borderRadius: 4, background: c, flexShrink: 0 }}/>
-        ))}
-      </div>
-      <div>
-        <div style={{ fontSize: 12.5, fontWeight: 500 }}>{palette.name}</div>
-        <div style={{ fontSize: 11, color: "var(--muted)" }}>{palette.desc}</div>
-      </div>
-    </button>
   );
 }
 
