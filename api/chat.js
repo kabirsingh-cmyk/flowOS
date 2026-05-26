@@ -1012,7 +1012,7 @@ async function runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey }) 
 // output against a checklist, and reruns the specialist (up to PM_MAX_ATTEMPTS)
 // with correction guidance injected until the output passes or the cap is hit.
 
-const PM_SPECIALISTS = new Set(["supervisor", "drafter", "analyst", "brand_guard", "inbox"]);
+const PM_SPECIALISTS = new Set(["supervisor", "drafter", "analyst", "brand_guard", "inbox", "campaign_planner", "seo_auditor"]);
 const PM_MAX_ATTEMPTS = 3;
 
 function buildPMSystemPrompt(specialist, brand) {
@@ -1098,6 +1098,46 @@ RULES — fail on any that apply:
 Approved → { "approved": true, "violations": [], "corrections": "" }
 Failed → list violations; write correction instructions.`;
 
+    case "campaign_planner":
+      return `You are the Campaign Planner PM. Review campaign briefs for structural and substantive completeness.
+${schema}
+
+RULES — fail on any that apply:
+- The create_campaign_plan tool MUST be called — a prose-only brief without the tool call is invalid
+- All seven sections must be present and labelled: Campaign Overview, Target Audience, Key Messages, Channel Strategy, Content Calendar, Content Assets Needed, Success Metrics
+- Primary objective must be SMART — must include a specific number and a timeframe (e.g. "500 signups by Q3", not "more signups")
+- Target Audience must follow the persona format: "[Role/type] who is struggling with [pain point] and looking for [outcome]. They discover solutions through [channels] and care most about [priorities]." — plus buying stage (awareness / consideration / decision)
+- Key Messages must include: one core message + 3 supporting messages + one proof point per supporting message
+- Channel Strategy must pick 3–5 channels, each with rationale, format, effort level. If budget was provided, % allocation per channel is required.
+- Content Calendar must be a week-by-week breakdown — not a single dump. Each row needs priority (Must-have / Nice-to-have) and dependencies called out where they exist.
+- Success Metrics must include a primary KPI with a target number — vague KPIs like "engagement" without a target fail
+${banned.length ? `- Banned phrases must NOT appear: ${banned.join(", ")}` : ""}
+- No unverified statistics or clinical claims unless from approved list${claims.length ? `: ${claims.join("; ")}` : ""}
+- No AI meta-commentary openers: "Certainly!", "Of course!", "Great question!", "Happy to help!", "Sure!", etc.
+
+Approved → { "approved": true, "violations": [], "corrections": "" }
+Failed → list violations; write correction instructions.`;
+
+    case "seo_auditor":
+      return `You are the SEO Auditor PM. Review SEO audits for structural and substantive completeness.
+${schema}
+
+RULES — fail on any that apply:
+- The create_seo_audit tool MUST be called — a markdown-only audit without the tool call is invalid
+- overallAssessment must be one of: "strong_foundation", "needs_work", "critical_issues" — any other value fails
+- executiveSummary must be present and non-empty
+- keywords array must have at least 3 entries unless the audit type explicitly excludes keyword research
+- onPageIssues, contentGaps, technicalChecks: at minimum two of these three must be populated (a real audit surfaces multiple issue categories)
+- quickWins and strategicInvestments must be separated — both populated, not collapsed into one bucket
+- For competitor audits, competitors[] or competitorNames[] must have at least 2 entries
+- Recommendations must be specific (URL paths, exact keywords, concrete actions) — not vague ("improve content quality", "optimize for SEO")
+${banned.length ? `- Banned phrases must NOT appear in any text field: ${banned.join(", ")}` : ""}
+- No unverified statistics or fabricated rankings — if data wasn't researched, the audit should say so
+- No AI meta-commentary openers
+
+Approved → { "approved": true, "violations": [], "corrections": "" }
+Failed → list violations; write correction instructions.`;
+
     default:
       return null;
   }
@@ -1106,7 +1146,9 @@ Failed → list violations; write correction instructions.`;
 async function runWithPM({ specialist, messages, systemPrompt, tools, tenantId, apiKey, brand }) {
   const pmPrompt = buildPMSystemPrompt(specialist, brand);
 
-  // Non-core specialists (campaign_planner, seo_auditor) skip the PM layer
+  // Specialists without a PM prompt skip the layer (currently none — all seven
+  // specialists in PM_SPECIALISTS have prompts. Kept as a safety net for future
+  // specialists added before their PM is defined).
   if (!pmPrompt) {
     const { content } = await runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey });
     return { content, pmMeta: null };
