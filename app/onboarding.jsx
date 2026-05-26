@@ -1,5 +1,5 @@
 // MVEDA — onboarding wizard (Klaviyo-style: clean step rail, website scan → live brand theme)
-const { useState: useStateOB } = React;
+const { useState: useStateOB, useEffect: useEffectOB, useRef: useRefOB } = React;
 
 // ─── Brand palette library ─────────────────────────────────────────────────
 // Each preset maps to a full set of CSS custom property overrides.
@@ -358,21 +358,109 @@ function Step1({ data, onChange, onNext }) {
 }
 
 // ─── Step 2 — Add your first connector (Google) ───────────────────────────
+// Each tile maps to a Composio toolkit slug; OAuth is the Google sign-in popup,
+// scoped by the toolkit Composio requests.
 const GOOGLE_CONNECTOR_OPTIONS = [
-  { id: "google-personal",  label: "Google · Personal",  sub: "Gmail · personal Google account" },
-  { id: "google-workspace", label: "Google · Workspace", sub: "Workspace · GA4, Search Console, Google Ads" },
+  { id: "google-workspace", composioApp: "ga4", label: "Google · Workspace", sub: "Workspace · Google Analytics 4" },
 ];
 
 function Step2({ data, onChange, onFinish, onBack }) {
-  const [connecting, setConnecting] = useStateOB(null);
-  const [connected, setConnected]   = useStateOB(null);
+  const [connecting, setConnecting] = useStateOB(null); // option id mid-flight
+  const [connected, setConnected]   = useStateOB(null); // option id that finished
+  const [error, setError]           = useStateOB("");
+  const pollerRef = useRefOB(null);
 
-  const connect = (id) => {
-    setConnecting(id);
-    setTimeout(() => {
-      setConnected(id);
+  useEffectOB(() => () => { if (pollerRef.current) clearInterval(pollerRef.current); }, []);
+
+  const stopPoller = () => {
+    if (pollerRef.current) { clearInterval(pollerRef.current); pollerRef.current = null; }
+  };
+
+  const persistConnection = async (opt, accountId) => {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session?.user) return;
+    await sb.from("channels").upsert({
+      user_id:                session.user.id,
+      platform:               opt.composioApp,
+      composio_connection_id: accountId,
+      status:                 "connected",
+      updated_at:             new Date().toISOString(),
+    }, { onConflict: "user_id, platform" });
+  };
+
+  const connect = async (opt) => {
+    setError("");
+    setConnecting(opt.id);
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session?.user) throw new Error("Not signed in");
+      const callbackUrl = `${window.location.origin}/oauth-callback.html?composio_connected=${opt.composioApp}`;
+
+      const res = await apiFetch("/api/composio", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ action: "initiate_connection", app: opt.composioApp, redirectUri: callbackUrl }),
+      });
+      const raw = await res.text();
+      let init;
+      try { init = JSON.parse(raw); } catch { throw new Error(`Server (${res.status}): ${raw.slice(0,120)}`); }
+      if (!init.ok) throw new Error(init.error || "Failed to initiate connection");
+
+      const popup = window.open(init.redirectUrl, "flowos_oauth", "width=600,height=720");
+      if (!popup) {
+        // Popup blocked → full-page redirect; ?composio_connected= handled by workspaces4 on return
+        window.location.href = init.redirectUrl;
+        return;
+      }
+
+      const start = Date.now();
+      const TIMEOUT_MS = 3 * 60 * 1000;
+      pollerRef.current = setInterval(async () => {
+        if (popup.closed) {
+          stopPoller();
+          // One last verify before declaring cancelled (OAuth may have completed as user closed)
+          try {
+            const r = await apiFetch("/api/composio", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body:   JSON.stringify({ action: "connection_status", app: opt.composioApp }),
+            }).then(r => r.json());
+            if (r.connected) {
+              await persistConnection(opt, r.accountId);
+              setConnected(opt.id);
+            } else {
+              setError(`${opt.label} connection cancelled`);
+            }
+          } catch (e) {
+            setError(`${opt.label} connection cancelled`);
+          }
+          setConnecting(null);
+          return;
+        }
+        if (Date.now() - start > TIMEOUT_MS) {
+          stopPoller();
+          setConnecting(null);
+          setError(`${opt.label} connection timed out`);
+          return;
+        }
+        try {
+          const r = await apiFetch("/api/composio", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ action: "connection_status", app: opt.composioApp }),
+          }).then(r => r.json());
+          if (r.connected) {
+            stopPoller();
+            await persistConnection(opt, r.accountId);
+            setConnected(opt.id);
+            setConnecting(null);
+            try { popup.close(); } catch {}
+          }
+        } catch {}
+      }, 1500);
+    } catch (err) {
       setConnecting(null);
-    }, 900);
+      setError(err.message || `${opt.label} connection failed`);
+    }
   };
 
   return (
@@ -412,7 +500,7 @@ function Step2({ data, onChange, onFinish, onBack }) {
               {isConnected ? (
                 <span className="mono" style={{ fontSize: 10.5, color: "var(--accent-ink)", letterSpacing: "0.06em" }}>Connected</span>
               ) : (
-                <button onClick={() => connect(opt.id)} disabled={!!connecting} style={{
+                <button onClick={() => connect(opt)} disabled={!!connecting} style={{
                   padding: "7px 16px", borderRadius: 5,
                   background: isConnecting ? "var(--rule)" : "var(--accent)",
                   color: isConnecting ? "var(--muted)" : "var(--accent-ink)",
@@ -425,13 +513,20 @@ function Step2({ data, onChange, onFinish, onBack }) {
         })}
       </div>
 
+      {error && (
+        <div style={{ fontSize: 12, color: "var(--danger)" }}>{error}</div>
+      )}
+
       <p className="mono" style={{ margin: 0, fontSize: 10.5, color: "var(--muted)", lineHeight: 1.6 }}>
         More connectors (Meta, TikTok, Klaviyo, Shopify…) live in Settings → Connections.
       </p>
 
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={onBack} style={{ padding: "11px 18px", borderRadius: 6, background: "transparent", border: "1px solid var(--rule-strong)", color: "var(--ink-2)", fontFamily: "var(--font-sans)", fontSize: 13.5, cursor: "pointer" }}>← Back</button>
-        <button onClick={() => onFinish({ connectedChannels: connected ? [connected] : [] })} style={{
+        <button onClick={() => {
+          const opt = GOOGLE_CONNECTOR_OPTIONS.find(o => o.id === connected);
+          onFinish({ connectedChannels: opt ? [opt.composioApp] : [] });
+        }} style={{
           padding: "11px 24px", borderRadius: 6, background: "var(--accent)", color: "var(--paper)",
           border: "none", fontWeight: 500, fontSize: 14, fontFamily: "var(--font-sans)", cursor: "pointer",
         }}>{connected ? "Enter workspace →" : "Skip — enter workspace →"}</button>

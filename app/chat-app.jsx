@@ -1039,7 +1039,7 @@ function ChatOSAuthed({ auth, brand, onLogout }) {
   const handleArtifactAction = (args) => {
     if (args.kind === "queue_draft") {
       const d = args.data;
-      const draftId = "d_" + Math.random().toString(36).slice(2, 8);
+      const draftId = "d_" + crypto.randomUUID();
       actions.addDraft(d.platform, d.contentType, d.copy, d.imagePrompt, draftId);
 
       // Fire image generation async — Runware returns the URL inline, so the
@@ -1122,7 +1122,7 @@ function ChatOSAuthed({ auth, brand, onLogout }) {
     }
     if (args.kind === "push_klaviyo_sms") {
       const d = args.data;
-      const smsId = "os_" + Math.random().toString(36).slice(2, 8);
+      const smsId = "os_" + crypto.randomUUID();
       actions.addOutboundSms({
         id:           smsId,
         body:         d.body,
@@ -1170,7 +1170,7 @@ function ChatOSAuthed({ auth, brand, onLogout }) {
     }
     if (args.kind === "push_klaviyo") {
       const d = args.data;
-      const emailId = "oe_" + Math.random().toString(36).slice(2, 8);
+      const emailId = "oe_" + crypto.randomUUID();
       actions.addOutboundEmail({
         id:           emailId,
         subject:      d.subject,

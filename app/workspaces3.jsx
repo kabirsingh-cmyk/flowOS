@@ -88,6 +88,7 @@ function PublishingQueue({ state, actions }) {
               status:          "sent",
               publishStatus:   "published",
               scheduledPostId: row.id,
+              publishedAt:     row.published_at || null,
               ...map(row.result, row.payload),
             });
           }
@@ -358,6 +359,13 @@ function PublishingQueue({ state, actions }) {
   // legacy alias so calendar grid still works
   const queue = scheduled;
 
+  // Recently published — last 7 days, newest first
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const sentPosts = state.calendar
+    .filter(c => c.status === "sent")
+    .filter(c => !c.publishedAt || new Date(c.publishedAt).getTime() >= sevenDaysAgo)
+    .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
+
   const slotOf = (item) => {
     const h = parseInt((item.scheduledAt || "09:00").split(":")[0], 10);
     if (h < 12) return "morning";
@@ -403,14 +411,18 @@ function PublishingQueue({ state, actions }) {
             <h1 style={{ fontSize: 24, fontWeight: 500, letterSpacing: "-0.025em", margin: "4px 0 0" }}>Publishing Queue</h1>
           </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            {["calendar", "list"].map(v => (
-              <button key={v} onClick={() => setView(v)} style={{
+            {[
+              { id: "calendar", label: "Calendar" },
+              { id: "list",     label: "Queue" },
+              { id: "sent",     label: `Published${sentPosts.length ? " · " + sentPosts.length : ""}` },
+            ].map(({ id, label }) => (
+              <button key={id} onClick={() => setView(id)} style={{
                 padding: "4px 10px", borderRadius: 4, fontSize: 11, fontWeight: 500,
-                border: "1px solid " + (v === view ? "var(--rule-strong)" : "var(--rule)"),
-                background: v === view ? "var(--paper-3)" : "var(--paper)",
-                color: v === view ? "var(--ink)" : "var(--muted)",
-                cursor: "pointer", fontFamily: "var(--font-sans)", textTransform: "capitalize",
-              }}>{v}</button>
+                border: "1px solid " + (id === view ? "var(--rule-strong)" : "var(--rule)"),
+                background: id === view ? "var(--paper-3)" : "var(--paper)",
+                color: id === view ? "var(--ink)" : "var(--muted)",
+                cursor: "pointer", fontFamily: "var(--font-sans)",
+              }}>{label}</button>
             ))}
             <Btn size="sm" variant="primary" data-testid="generate-drafts-btn" onClick={handleGenerateDrafts} disabled={generating}
               style={{ minWidth: 130 }}>
@@ -528,7 +540,64 @@ function PublishingQueue({ state, actions }) {
           </div>
         )}
 
-        {view === "calendar" ? (
+        {view === "sent" ? (
+          /* ── Recently Published ── */
+          <div style={{ padding: "16px 24px" }}>
+            {sentPosts.length === 0 ? (
+              <div style={{ padding: "48px 0", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
+                No posts published in the last 7 days.
+              </div>
+            ) : (
+              <div style={{ border: "1px solid var(--rule)", borderRadius: 6, overflow: "hidden" }}>
+                <div style={{
+                  display: "grid", gridTemplateColumns: "140px 80px 1fr 120px",
+                  padding: "8px 12px", background: "var(--paper-2)", borderBottom: "1px solid var(--rule)",
+                  fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)",
+                  letterSpacing: "0.06em", textTransform: "uppercase",
+                }}>
+                  <span>Published</span><span>Platform</span><span>Content</span><span/>
+                </div>
+                {sentPosts.map(item => {
+                  const pkey  = (item.platform || item.channel || "").toLowerCase();
+                  const color = CH_COLOR[pkey] || "var(--accent)";
+                  const abbr  = CH_ABBR[pkey] || pkey.slice(0, 2).toUpperCase();
+                  const postUrl = item.linkedinUrl || item.facebookUrl || item.xUrl || item.instagramUrl || item.redditUrl || null;
+                  const publishedLabel = item.publishedAt
+                    ? new Date(item.publishedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                    : "—";
+                  return (
+                    <div key={item.id} className="row-hover" style={{
+                      display: "grid", gridTemplateColumns: "140px 80px 1fr 120px",
+                      padding: "10px 12px", borderBottom: "1px solid var(--rule)",
+                      alignItems: "center", fontSize: 12,
+                    }}>
+                      <span className="mono" style={{ color: "var(--muted)", fontSize: 10 }}>
+                        {publishedLabel}
+                      </span>
+                      <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: color, flexShrink: 0 }}/>
+                        {abbr}
+                      </span>
+                      <span style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 12 }}>
+                        {item.body || item.title || ""}
+                      </span>
+                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                        {postUrl ? (
+                          <a href={postUrl} target="_blank" rel="noopener noreferrer"
+                            style={{ fontSize: 11, color: "var(--accent)", textDecoration: "none", fontWeight: 500 }}>
+                            View post ↗
+                          </a>
+                        ) : (
+                          <span style={{ fontSize: 11, color: "var(--muted)" }}>No link</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : view === "calendar" ? (
           /* ── Weekly calendar grid ── */
           <div style={{ padding: "16px 24px" }}>
             {/* Day header row */}
@@ -921,6 +990,7 @@ function PublishingQueue({ state, actions }) {
                   title:          editDraft.body.slice(0, 80),
                   status:         "sent",
                   publishStatus:  "published",
+                  publishedAt:    new Date().toISOString(),
                   ...(pub.needsTitle ? { redditTitle: redditTitle.trim() } : {}),
                   ...pub.resultFields(res, author),
                 }, {
@@ -947,9 +1017,10 @@ function PublishingQueue({ state, actions }) {
 
           // Platforms without a Composio publisher — local-only "sent" flip
           actions.updateItem(editItem.id, {
-            body:   editDraft.body,
-            title:  editDraft.body.slice(0, 80),
-            status: "sent",
+            body:        editDraft.body,
+            title:       editDraft.body.slice(0, 80),
+            status:      "sent",
+            publishedAt: new Date().toISOString(),
           }, {
             logEvent: `sent · '${editDraft.body.slice(0, 40)}'`,
             notify:   { tone: "ok", text: `Sent · ${platformLabel}` },

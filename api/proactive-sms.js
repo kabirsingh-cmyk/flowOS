@@ -19,6 +19,7 @@
 
 import { fetchBrandProfile, sbHeaders } from './lib/supabase.js';
 import { requireAuth, requireAuthOrCron } from './lib/auth.js';
+import { getFastModel } from './lib/anthropic.js';
 
 export const config = { runtime: "edge" };
 
@@ -245,7 +246,7 @@ async function generateSms(brand, rule, signal) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model:      "claude-haiku-4-5-20251001",
+        model:      getFastModel(),
         max_tokens: 300,
         messages:   [{ role: "user", content: prompt }],
       }),

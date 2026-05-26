@@ -581,6 +581,8 @@ Planner-created items have `channel` (display name), `tone`, `campaign`, `day` (
 
 ```
 ANTHROPIC_API_KEY        Claude API — required for live AI
+ANTHROPIC_MODEL          Main Claude model (default: claude-opus-4-5) — used by chat, insights, drafts, brand-import
+ANTHROPIC_MODEL_FAST     Fast Claude model (default: claude-haiku-4-5-20251001) — used by title gen, SMS drafts, Google Ads copy
 SUPABASE_URL             Supabase project URL
 SUPABASE_SERVICE_KEY     Supabase service role key (server-side only)
 COMPOSIO_API_KEY2        Composio tool execution (non-social only: ads, analytics, CRM, email, SEO)

@@ -13,6 +13,7 @@
 
 import { fetchBrandProfile, sbHeaders } from './lib/supabase.js';
 import { requireAuth, requireAuthOrCron } from './lib/auth.js';
+import { getModel } from './lib/anthropic.js';
 
 export const config = { runtime: "edge" };
 
@@ -271,7 +272,7 @@ export default async function handler(req) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model:      "claude-opus-4-5",
+        model:      getModel(),
         max_tokens: 3000,
         messages:   [{ role: "user", content: prompt }],
       }),

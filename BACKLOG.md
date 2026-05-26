@@ -15,7 +15,7 @@ Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` ar
 | b_fad1 | Reddit subreddit typeahead suggestions | backlog | 2026-05-22 |
 | b_b274 | Instagram carousel + video/Reels posting | backlog | 2026-05-22 |
 | b_55ec | X chunked media upload (video / large images) | backlog | 2026-05-22 |
-| b_5da8 | Recently-Published view in Publishing Queue (all platforms) | backlog | 2026-05-22 |
+| b_5da8 | Recently-Published view in Publishing Queue (all platforms) | done | 2026-05-25 |
 | b_7117 | LinkedIn sponsored content / Ads | backlog | 2026-05-22 |
 | b_2633 | LinkedIn true Articles (long-form) | backlog | 2026-05-22 |
 | b_6236 | Programmatic Creative (Variant Testing) | backlog | 2026-05-22 |
@@ -32,11 +32,11 @@ Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` ar
 | b_0f34 | Reduce Klaviyo response logging to structured minimum | done | 2026-05-25 |
 | b_6c61 | Verify Composio connection_status / list_connections after JWT auth lands | done | 2026-05-23 |
 | b_d25a | Verify /api/brand-import tenant scoping after JWT auth lands | done | 2026-05-23 |
-| b_6c24 | Centralise Claude model selection via env var + shared helper | backlog | 2026-05-22 |
+| b_6c24 | Centralise Claude model selection via env var + shared helper | done | 2026-05-26 |
 | b_47d0 | Add InsightsCenter to CLAUDE.md hook-alias table and rename bare hooks | done | 2026-05-25 |
 | b_8ff1 | Require explicit APP_ORIGIN or derive from VERCEL_URL with https | done | 2026-05-25 |
-| b_0394 | Replace Math.random() UUIDs with crypto.randomUUID() | backlog | 2026-05-22 |
-| b_2557 | Align app.html and index.html script lists (or remove app.html) | backlog | 2026-05-22 |
+| b_0394 | Replace Math.random() UUIDs with crypto.randomUUID() | done | 2026-05-26 |
+| b_2557 | Align app.html and index.html script lists (or remove app.html) | done | 2026-05-26 |
 | b_801d | Move set_updated_at() helper to 000_helpers.sql | backlog | 2026-05-22 |
 | b_b88d | Switch Google Ads OAuth prompt to select_account after initial consent | backlog | 2026-05-22 |
 | b_d824 | Deploy-time guard for Vercel cron schedule (Pro vs Hobby) | backlog | 2026-05-22 |
@@ -248,9 +248,9 @@ Open · added 2026-05-14. Priority: Low.
 
 ## b_5da8 · Recently-Published view in Publishing Queue (all platforms)
 
-- **status**: backlog
+- **status**: done
 - **created**: 2026-05-22
-- **last-touched**: 2026-05-22
+- **last-touched**: 2026-05-25
 - **effort**: unsized
 - **source**: bootstrap (from LinkedIn — Recently-Published view in Publishing Queue)
 - **depends-on**: []

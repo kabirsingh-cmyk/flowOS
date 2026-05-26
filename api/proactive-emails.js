@@ -21,6 +21,7 @@
 import { fetchBrandProfile, sbHeaders } from './lib/supabase.js';
 import { requireAuth, requireAuthOrCron } from './lib/auth.js';
 import { corsHeaders } from './lib/cors.js';
+import { getModel } from './lib/anthropic.js';
 
 export const config = { runtime: "edge" };
 
@@ -270,7 +271,7 @@ async function generateEmail(brand, rule, signal) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model:      "claude-opus-4-5",
+        model:      getModel(),
         max_tokens: 1200,
         messages:   [{ role: "user", content: prompt }],
       }),

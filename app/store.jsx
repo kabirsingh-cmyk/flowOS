@@ -43,7 +43,7 @@ function mveda_initialState() {
       { name: "Google Business", publish: "human", reply: "human", ai: "review" },
     ],
     thresholds: { confidence: 85, dailyCap: 12, sla: 90 },
-    activity: SEED.audit.map(a => ({ ...a, id: "e_" + Math.random().toString(36).slice(2,8) })),
+    activity: SEED.audit.map(a => ({ ...a, id: "e_" + crypto.randomUUID() })),
     notifications: [],
     dateRange: "30d",
     activeBrandId: "mveda",
@@ -102,8 +102,8 @@ function mveda_reducer(s, a) {
     const d = new Date();
     return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
   };
-  const log = (actor, event) => ({ id: "e_"+Math.random().toString(36).slice(2,8), t: now(), actor, event });
-  const notify = (tone, text) => ({ id: "n_"+Math.random().toString(36).slice(2,8), tone, text, at: Date.now() });
+  const log = (actor, event) => ({ id: "e_"+crypto.randomUUID(), t: now(), actor, event });
+  const notify = (tone, text) => ({ id: "n_"+crypto.randomUUID(), tone, text, at: Date.now() });
 
   switch (a.type) {
     case "CAL_ADD": {
@@ -297,14 +297,14 @@ function mveda_reducer(s, a) {
         activity: [log("Brand Guard", `promoted A/B winner to brand rule · ${a.rule}`), ...s.activity],
         notifications: [notify("ok", `Brand rule added from A/B winner`), ...s.notifications] };
     case "AB_CREATE_FROM_DRAFT": {
-      const test = { id: "ab_" + Math.random().toString(36).slice(2,6), subject: a.subject, variantA: a.variantA, variantB: a.variantB, status: "running", confidence: 0, lift: "—", linkedDraftId: a.linkedDraftId };
+      const test = { id: "ab_" + crypto.randomUUID(), subject: a.subject, variantA: a.variantA, variantB: a.variantB, status: "running", confidence: 0, lift: "—", linkedDraftId: a.linkedDraftId };
       return { ...s, abTests: [test, ...s.abTests],
         activity: [log("Drafter", `A/B test created from draft · ${a.subject}`), ...s.activity],
         notifications: [notify("ok", `A/B test launched`), ...s.notifications] };
     }
 
     case "GUEST_INVITE":
-      return { ...s, guests: [{ id: "g_" + Math.random().toString(36).slice(2,6), ...a.guest, last: "just now" }, ...s.guests],
+      return { ...s, guests: [{ id: "g_" + crypto.randomUUID(), ...a.guest, last: "just now" }, ...s.guests],
         activity: [log("Greg", `invited guest · ${a.guest.name}`), ...s.activity],
         notifications: [notify("ok", `Invite sent · ${a.guest.email}`), ...s.notifications] };
     case "GUEST_REMOVE":
@@ -340,7 +340,7 @@ function mveda_reducer(s, a) {
       const newItems = (a.items || [])
         .filter(d => !existingIds.has(d.id))
         .map(d => ({
-          id:          d.id || "p_" + Math.random().toString(36).slice(2,8),
+          id:          d.id || "p_" + crypto.randomUUID(),
           platform:    d.platform,
           kind:        d.contentType,
           title:       (d.copy || "").slice(0, 80),
@@ -364,7 +364,7 @@ function mveda_reducer(s, a) {
     case "QUEUE_ADD_DRAFT": {
       const platformKey = (a.platform || "").toLowerCase();
       const item = {
-        id:            a.id || ("d_" + Math.random().toString(36).slice(2,8)),
+        id:            a.id || ("d_" + crypto.randomUUID()),
         platform:      a.platform,
         kind:          a.contentType,
         title:         (a.copy || "").slice(0, 80),
@@ -390,7 +390,7 @@ function mveda_reducer(s, a) {
     }
     case "OUTBOUND_EMAIL_ADD": {
       const email = {
-        id:                a.id || ("oe_" + Math.random().toString(36).slice(2, 8)),
+        id:                a.id || ("oe_" + crypto.randomUUID()),
         subject:           a.subject || "",
         preheader:         a.preheader || "",
         bodyHtml:          a.bodyHtml || "",
@@ -470,7 +470,7 @@ function mveda_reducer(s, a) {
     }
     case "OUTBOUND_SMS_ADD": {
       const sms = {
-        id:                a.id || ("os_" + Math.random().toString(36).slice(2, 8)),
+        id:                a.id || ("os_" + crypto.randomUUID()),
         body:              a.body || "",
         audienceHint:      a.audienceHint || "",
         status:            a.status || "pushing",
@@ -501,7 +501,7 @@ function mveda_reducer(s, a) {
         ...s,
         activePlan: a.plan ? {
           ...a.plan,
-          id:        a.plan.id || ("br_" + Math.random().toString(36).slice(2, 10)),
+          id:        a.plan.id || ("br_" + crypto.randomUUID()),
           createdAt: a.plan.createdAt || new Date().toISOString(),
         } : null,
         notifications: a.plan

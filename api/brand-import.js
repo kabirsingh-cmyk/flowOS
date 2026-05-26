@@ -20,6 +20,7 @@
 
 import { requireAuth } from "./lib/auth.js";
 import { corsHeaders } from "./lib/cors.js";
+import { getModel } from "./lib/anthropic.js";
 
 export const config = { runtime: "edge" };
 
@@ -314,7 +315,7 @@ BRAND TYPE → ACCENT HUE REFERENCE (use these as anchors, refine from detected 
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model:      "claude-opus-4-5",
+        model:      getModel(),
         max_tokens: 2048,
         messages:   [{ role: "user", content: prompt }],
       }),

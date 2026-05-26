@@ -13,6 +13,7 @@
 import { COMPOSIO_BASE, composioHeaders, getConnectedAccountSlugs, executeComposioTool as _execTool } from './lib/composio.js';
 import { sbHeaders, fetchBrandProfile } from './lib/supabase.js';
 import { requireAuth } from './lib/auth.js';
+import { getModel, getFastModel } from './lib/anthropic.js';
 
 export const config = { runtime: "edge" };
 
@@ -935,7 +936,7 @@ async function runToolLoop({ messages, systemPrompt, tools, tenantId, apiKey }) 
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model:      "claude-opus-4-5",
+        model:      getModel(),
         max_tokens: 2048,
         system:     systemPrompt,
         tools:      tools.length > 0 ? tools : undefined,
@@ -1138,7 +1139,7 @@ async function runWithPM({ specialist, messages, systemPrompt, tools, tenantId, 
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model:      "claude-haiku-4-5-20251001",
+          model:      getFastModel(),
           max_tokens: 512,
           system:     pmPrompt,
           messages:   [{ role: "user", content: pmInput }],
