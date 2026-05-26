@@ -69,22 +69,23 @@ A file can only use globals defined by files loaded before it. If you add a new 
 
 Every file aliases React hooks to avoid collisions across the global scope:
 
-| File | useState | useMemo | useEffect | useRef | useReducer |
-|---|---|---|---|---|---|
-| `ui.jsx` | useState | useMemo | useEffect | useRef | — |
-| `ui2.jsx` | useStateUI2 | — | useEffectUI2 | useRefUI2 | — |
-| `store.jsx` | — | — | — | — | useReducerStore |
-| `workspaces1.jsx` | useState1 | useMemo1 | useEffect1 | useRef1 | — |
-| `workspaces2.jsx` | useState2 | useMemo2 | useEffect2 | — | — |
-| `workspaces3.jsx` | useState3 | useMemo3 | useEffect3 | useRef3 | — |
-| `workspaces4.jsx` | useState4 | useMemo4 | useEffect4 | useRef4 | — |
-| `chat-app.jsx` | useStateApp | useMemoApp | useEffectApp | — | useReducerApp |
-| `chat-ui.jsx` | useStateChat | useMemoChat | useEffectChat | useRefChat | — |
-| `features.jsx` | useStateF | useMemoF | useEffectF | useRefF | — |
-| `studio.jsx` | useStateS | — | — | — | — |
-| `onboarding.jsx` | useStateOB | — | useEffectOB | useRefOB | — |
-| `agents.jsx` | useStateA | — | useEffectA | — | — |
-| `channel-strategy.jsx` | useStateCS | useMemoCS | useEffectCS | — | — |
+| File | useState | useMemo | useEffect | useRef | useReducer | useCallback |
+|---|---|---|---|---|---|---|
+| `ui.jsx` | useState | useMemo | useEffect | useRef | — | — |
+| `ui2.jsx` | useStateUI2 | — | useEffectUI2 | useRefUI2 | — | — |
+| `store.jsx` | — | — | — | — | useReducerStore | useCallbackStore |
+| `workspaces1.jsx` | useState1 | useMemo1 | useEffect1 | useRef1 | — | — |
+| `workspaces2.jsx` | useState2 | useMemo2 | useEffect2 | — | — | — |
+| `workspaces3.jsx` | useState3 | useMemo3 | useEffect3 | useRef3 | — | — |
+| `workspaces4.jsx` | useState4 | useMemo4 | useEffect4 | useRef4 | — | — |
+| `chat-app.jsx` | useStateApp | useMemoApp | useEffectApp | — | useReducerApp | — |
+| `chat-ui.jsx` | useStateChat | useMemoChat | useEffectChat | useRefChat | — | — |
+| `features.jsx` | useStateF | useMemoF | useEffectF | useRefF | — | — |
+| `studio.jsx` | useStateS | — | — | — | — | — |
+| `onboarding.jsx` | useStateOB | — | useEffectOB | useRefOB | — | — |
+| `agents.jsx` | useStateA | — | useEffectA | — | — | useCallbackA |
+| `channel-strategy.jsx` | useStateCS | useMemoCS | useEffectCS | — | — | — |
+| `insights.jsx` | useStateI | — | useEffectI | useRefI | — | useCallbackI |
 
 **Always use the alias for the file you're editing.** Never use bare `useState` unless you're in `ui.jsx`.
 
@@ -142,7 +143,7 @@ state.calendar items shape:
     facebookPostId,  facebookUrl,  facebookPageId,
     xPostId,         xUrl,
     instagramPostId, instagramUrl, instagramCreationId, instagramAccountId,
-    redditPostId,    redditUrl,    redditSubreddit, redditTitle, redditImageAsLink }
+    redditPostId,    redditUrl,    redditSubreddit, redditTitle }
 
   imageStatus: "none" | "pending" | "completed" | "failed" | "failed_content_policy"
     — set on QUEUE_ADD_DRAFT based on whether imagePrompt is present

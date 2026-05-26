@@ -11,7 +11,7 @@ Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` ar
 | b_9d59 | Enable Row Level Security on every table | done | 2026-05-22 |
 | b_cc01 | Add missing migrations: brands, channels, posts, google_ads_tokens, proactive_drafts | done | 2026-05-24 |
 | b_3037 | Proactive SMS feature (analogue to proactive-emails) | done | 2026-05-24 |
-| b_43d9 | Reddit native image posts (bypass Composio) | backlog | 2026-05-22 |
+| b_43d9 | Reddit native image posts (bypass Composio) | done | 2026-05-25 |
 | b_fad1 | Reddit subreddit typeahead suggestions | backlog | 2026-05-22 |
 | b_b274 | Instagram carousel + video/Reels posting | backlog | 2026-05-22 |
 | b_55ec | X chunked media upload (video / large images) | backlog | 2026-05-22 |
@@ -19,22 +19,22 @@ Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` ar
 | b_7117 | LinkedIn sponsored content / Ads | backlog | 2026-05-22 |
 | b_2633 | LinkedIn true Articles (long-form) | backlog | 2026-05-22 |
 | b_6236 | Programmatic Creative (Variant Testing) | backlog | 2026-05-22 |
-| b_b826 | Google Ads OAuth — sign state with HMAC for CSRF protection | backlog | 2026-05-22 |
+| b_b826 | Google Ads OAuth — sign state with HMAC for CSRF protection | n/a | 2026-05-25 |
 | b_c0a8 | Replace fake API-key connector validation with real validate calls | backlog | 2026-05-22 |
 | b_317a | Strip or preview-tag platform pickers without backends | backlog | 2026-05-22 |
-| b_4b42 | Tighten CORS to allowlist + add CORS to klaviyo/proactive-emails | backlog | 2026-05-22 |
-| b_e15e | Fix cron fail-open and cron→platform auth handoff | backlog | 2026-05-22 |
-| b_0035 | /api/chat should 503 when ANTHROPIC_API_KEY missing | backlog | 2026-05-22 |
-| b_9d66 | Scope and allowlist keys on PATCH endpoints | backlog | 2026-05-22 |
-| b_8f1f | Don't trust client-supplied brand in Claude prompts | backlog | 2026-05-22 |
-| b_9eda | Replace MVEDA-specific fallback drafts with tenant-aware generation | backlog | 2026-05-22 |
-| b_c91d | Replace simulateImageGen with real generation or label as demo-only | backlog | 2026-05-22 |
-| b_0f34 | Reduce Klaviyo response logging to structured minimum | backlog | 2026-05-22 |
+| b_4b42 | Tighten CORS to allowlist + add CORS to klaviyo/proactive-emails | done | 2026-05-25 |
+| b_e15e | Fix cron fail-open and cron→platform auth handoff | done | 2026-05-25 |
+| b_0035 | /api/chat should 503 when ANTHROPIC_API_KEY missing | done | 2026-05-25 |
+| b_9d66 | Scope and allowlist keys on PATCH endpoints | done | 2026-05-25 |
+| b_8f1f | Don't trust client-supplied brand in Claude prompts | done | 2026-05-25 |
+| b_9eda | Replace MVEDA-specific fallback drafts with tenant-aware generation | done | 2026-05-25 |
+| b_c91d | Replace simulateImageGen with real generation or label as demo-only | done | 2026-05-25 |
+| b_0f34 | Reduce Klaviyo response logging to structured minimum | done | 2026-05-25 |
 | b_6c61 | Verify Composio connection_status / list_connections after JWT auth lands | done | 2026-05-23 |
 | b_d25a | Verify /api/brand-import tenant scoping after JWT auth lands | done | 2026-05-23 |
 | b_6c24 | Centralise Claude model selection via env var + shared helper | backlog | 2026-05-22 |
-| b_47d0 | Add InsightsCenter to CLAUDE.md hook-alias table and rename bare hooks | backlog | 2026-05-22 |
-| b_8ff1 | Require explicit APP_ORIGIN or derive from VERCEL_URL with https | backlog | 2026-05-22 |
+| b_47d0 | Add InsightsCenter to CLAUDE.md hook-alias table and rename bare hooks | done | 2026-05-25 |
+| b_8ff1 | Require explicit APP_ORIGIN or derive from VERCEL_URL with https | done | 2026-05-25 |
 | b_0394 | Replace Math.random() UUIDs with crypto.randomUUID() | backlog | 2026-05-22 |
 | b_2557 | Align app.html and index.html script lists (or remove app.html) | backlog | 2026-05-22 |
 | b_801d | Move set_updated_at() helper to 000_helpers.sql | backlog | 2026-05-22 |
@@ -42,22 +42,23 @@ Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` ar
 | b_d824 | Deploy-time guard for Vercel cron schedule (Pro vs Hobby) | backlog | 2026-05-22 |
 | b_c664 | Extract shared platformPublisher helper for the five publish_now endpoints | backlog | 2026-05-22 |
 | b_2504 | Enforce sourceBriefId on CAL_ADD path | backlog | 2026-05-22 |
-| b_38f0 | Edit-after-schedule warning + Unschedule button in drawer | backlog | 2026-05-22 |
-| b_60f8 | Composio code 306 (no managed auth) — Connect modal hangs forever | backlog | 2026-05-22 |
+| b_38f0 | Edit-after-schedule warning + Unschedule button in drawer | done | 2026-05-25 |
+| b_60f8 | Composio code 306 (no managed auth) — Connect modal hangs forever | done | 2026-05-24 |
 | b_ea4e | Text-only Instagram post fails at publish (imageUrl required) | done | 2026-05-24 |
 | b_b259 | Chat AI confidently drafts for platforms with no publish path | backlog | 2026-05-22 |
-| b_c945 | InsightsCenter empty state can't distinguish no-data from broken fetch | backlog | 2026-05-22 |
+| b_c945 | InsightsCenter empty state can't distinguish no-data from broken fetch | done | 2026-05-25 |
 | b_a001 | Adopt Zernio for all organic social publishing (replaces Composio social toolkit + Pipedream Pinterest) | done | 2026-05-24 |
 | b_a002 | Route paid social ads through Zernio (Meta / LinkedIn / TikTok / Pinterest / X Ads) | backlog | 2026-05-22 |
 | b_a003 | Scope Composio strictly to non-social: Google Ads, GA4, GSC, HubSpot, Salesforce, Mailchimp, YouTube analytics, ElevenLabs, HeyGen, brand-import | done | 2026-05-24 |
 | b_a004 | Remove SendGrid; transactional email via Postmark/Resend, marketing via Klaviyo | backlog | 2026-05-22 |
 | b_a005 | Defer Twilio integration until validated tenant request (scope decision) | backlog | 2026-05-22 |
-| b_a006 | generation_usage Supabase table to track Runware / HeyGen / Higgsfield cost per tenant | backlog | 2026-05-22 |
+| b_a006 | generation_usage Supabase table to track Runware / HeyGen / Higgsfield cost per tenant | done | 2026-05-24 |
 | b_dca6 | Campaign brief persistence + cross-feature wiring | proposed-done | 2026-05-22 |
 | b_2fac | Disabled-platform drafts silently swallowed by queue | proposed-done | 2026-05-22 |
 | b_3686 | Cron must mint per-tenant JWT for /api/<platform> publish calls | proposed-done | 2026-05-22 |
 | b_8698 | Scheduled posting via Vercel Cron + Supabase queue | done | 2026-05-22 |
 | b_e061 | InsightsCenter undefined globals + duplicate stub | done | 2026-05-22 |
+| b_img1_smoke | Smoke test: verify b_img1 durable URLs in production | backlog | 2026-05-25 |
 
 ---
 ## b_8cad · Wire social platform publishers via Zernio
@@ -334,16 +335,16 @@ Open questions:
 
 ## b_b826 · Google Ads OAuth — sign state with HMAC for CSRF protection
 
-- **status**: backlog
+- **status**: n/a
 - **created**: 2026-05-22
-- **last-touched**: 2026-05-22
+- **last-touched**: 2026-05-25
 - **effort**: unsized
 - **source**: bootstrap (from Google Ads OAuth — CSRF state binding)
 - **depends-on**: []
 - **touches**: api/google-ads-auth.js
 
 ### Why
-Open · added 2026-05-14. Priority: Critical — auth gap independent of JWT work. `api/google-ads-auth.js:40` sets `state = tenantId` and `:129` verifies on callback by trusting that same value. An attacker who knows a victim's tenantId crafts a malicious callback URL with their own `code` and the victim's tenantId — Google Ads account gets bound to the victim's tenant.
+Closed N/A 2026-05-25. `api/google-ads-auth.js` is a 410 Gone tombstone — Google Ads OAuth moved to Composio (2026-05-17). The vulnerable OAuth callback no longer exists. No fix required.
 
 ### Notes
 Fix: sign state with HMAC-SHA256 over `{tenantId, nonce, exp}` using a new `OAUTH_STATE_SECRET`. 10-min TTL. Verify HMAC + exp on callback. The OAuth callback can't use the user's JWT (it's a Google redirect), so signed state is the only path.
@@ -406,21 +407,18 @@ Fix: shared helper in `api/lib/cors.js` — restrict origin to allowlist (`proce
 
 ## b_e15e · Fix cron fail-open and cron→platform auth handoff
 
-- **status**: backlog
+- **status**: done
 - **created**: 2026-05-22
-- **last-touched**: 2026-05-22
+- **last-touched**: 2026-05-25
 - **effort**: unsized
 - **source**: bootstrap (from Cron fail-open + cron-to-platform auth handoff)
 - **depends-on**: []
 - **touches**: api/cron/fire-scheduled.js, api/cron/
 
 ### Why
-Open · added 2026-05-14. Priority: Critical — companion to JWT auth work.
-
-### Notes
-Two bugs:
-1. **Fail-open** — `api/cron/*` handlers use `if (cronSecret && req.headers.get("authorization") !== ...)`. If `CRON_SECRET` env var is unset, auth is bypassed entirely. Should fail closed.
-2. **Cron-to-platform** — `api/cron/fire-scheduled.js:98` POSTs to `/api/<platform>` with no auth header. Once platform endpoints require JWT (from the auth-and-rls work), scheduled fires will break unless cron is allowlisted via a dual-auth pattern (`CRON_SECRET` accepted in lieu of JWT for service-to-service paths).
+Closed 2026-05-25 — verified both bugs already resolved:
+1. **Fail-closed** — `api/lib/auth.js` `requireCron()` returns 401 if `CRON_SECRET` is unset (fail-closed, not fail-open). Verified by audit.
+2. **Cron-to-platform auth** — `api/cron/fire-scheduled.js:114` sends `Authorization: Bearer ${CRON_SECRET}`. All 15 platform handlers (`linkedin`, `facebook`, `x`, `instagram`, `reddit`, `tiktok`, `pinterest`, `threads`, `bluesky`, `youtube`, `whatsapp`, `telegram`, `snapchat`, `discord`, `googlebusiness`) use `requireAuthOrCron` which accepts the cron secret. End-to-end wired.
 
 ## b_0035 · /api/chat should 503 when ANTHROPIC_API_KEY missing
 
@@ -440,34 +438,29 @@ Fix: return 503 + `{ ok: false, error: "missing_anthropic_key" }`; have `ai.jsx`
 
 ## b_9d66 · Scope and allowlist keys on PATCH endpoints
 
-- **status**: backlog
+- **status**: done
 - **created**: 2026-05-22
-- **last-touched**: 2026-05-22
+- **last-touched**: 2026-05-25
 - **effort**: unsized
 - **source**: bootstrap (from PATCH endpoints accept arbitrary patch keys)
 - **depends-on**: []
-- **touches**: api/proactive-emails.js
+- **touches**: api/proactive-emails.js, api/proactive-sms.js
 
 ### Why
-Open · added 2026-05-14. Priority: Needs attention. `api/proactive-emails.js:311-318` accepts `{ id, patch }` from the client and applies the whole patch object to the row. Client can overwrite `klaviyo_campaign_id`, `source_insight_id`, `tenant_id`, etc. — no tenant scope, no key allowlist.
-
-### Notes
-Fix: scope filter by `tenant_id` (from `requireAuth`) and allowlist patch keys (`{ status, klaviyo_campaign_id, klaviyo_template_id, sent_at }` only).
-
-Same pattern audit on any other PATCH/UPDATE handlers added in future.
+Shipped 2026-05-25. `patchDraft` in both `api/proactive-emails.js` and `api/proactive-sms.js` now filters on `id AND tenant_id` — cross-tenant UUID forging is a no-op. PATCH handler strips the client patch to an allowlist before touching the DB (`status`, `klaviyo_campaign_id`, `klaviyo_template_id`/`klaviyo_message_id`, `sent_at`). Empty patch after filtering returns 400.
 
 ## b_8f1f · Don't trust client-supplied brand in Claude prompts
 
-- **status**: backlog
+- **status**: done
 - **created**: 2026-05-22
-- **last-touched**: 2026-05-22
+- **last-touched**: 2026-05-25
 - **effort**: unsized
 - **source**: bootstrap (from Brand prompt injection via client-supplied `brand`)
 - **depends-on**: []
 - **touches**: api/chat.js, api/proactive-drafts.js
 
 ### Why
-Open · added 2026-05-14. Priority: Needs attention. `api/chat.js:445` and `api/proactive-drafts.js:27` accept `brand` from the request body as a fallback when the Supabase brand profile lookup misses. Client can pass an arbitrary brand object that gets embedded into Claude's system prompt — prompt injection vector.
+Shipped 2026-05-25. `api/chat.js` no longer reads `brand` from the request body — `brandFromClient` removed from destructure; `brand = brandProfile || null` (Supabase only). `api/proactive-drafts.js` same — `brand` stripped from body destructure; fallback logic simplified to `fetchBrandProfile(tenantId)` only.
 
 ### Notes
 Fix: if Supabase lookup misses, return an error or use a server-side default. Never trust client-supplied brand in the prompt.
@@ -1069,3 +1062,31 @@ Known constraints:
 
 ### Why
 Shipped — PR `feat/fix-insights-center` (commit `d21b963`). Priority: Critical (resolved 2026-05-14). `app/insights.jsx` was reading `window.__SUPABASE_URL__` / `__SUPABASE_ANON_KEY__` — neither is set anywhere, so cached analytics fetches silently failed. Swapped to the existing `window.sb` client. Also deleted the 532-line dead InsightsCenter stub in `workspaces3.jsx:1126-1657` (overridden at runtime by `insights.jsx` via load order).
+
+## b_img1_smoke · Smoke test: verify b_img1 durable URLs in production
+
+- **status**: backlog
+- **created**: 2026-05-25
+- **last-touched**: 2026-05-25
+- **effort**: XS
+- **source**: b_img1 follow-up
+- **depends-on**: [b_img1]
+- **touches**: db (read-only queries)
+
+### Why
+PR #49 (b_img1) ships rehost() and the migration but can't be verified without a live provider call. Need a human to generate an image and confirm the URL shape changed.
+
+### Steps
+1. Merge PR #49 and let Vercel deploy
+2. Open the app, generate an image via the Studio drawer
+3. Run in Supabase SQL editor:
+   ```sql
+   SELECT raw_url FROM generation_jobs ORDER BY created_at DESC LIMIT 1;
+   ```
+   Confirm the URL starts with `{SUPABASE_URL}/storage/v1/object/public/tenant-media/`
+4. Confirm `media_assets` has a matching row:
+   ```sql
+   SELECT * FROM media_assets ORDER BY created_at DESC LIMIT 1;
+   ```
+5. Schedule a post with the generated image → inspect `scheduled_posts.payload` → confirm `imageUrl` is the durable URL
+6. (Optional) async video: generate a video, poll job_status, confirm `rawUrl` in response is durable

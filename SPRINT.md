@@ -14,6 +14,16 @@ Nothing actively in progress.
 
 | ID | What | Date |
 |----|------|------|
+| b_9eda | Tenant-aware fallback drafts | `api/proactive-drafts.js`: replaced hardcoded MVEDA/Ayurveda `FALLBACK_DRAFTS` constant with `buildFallbackDrafts(brand, count)` — uses `brand.name`/`brand.industry` from Supabase so all fallback paths produce brand-appropriate placeholder content. Brand fetch moved before the API-key check so it's always available. | 2026-05-25 |
+| b_0035 | /api/chat 503 on missing key | `api/chat.js`: changed no-API-key response from `200 { ok:true, content:[…] }` to `503 { ok:false, error:"…" }`. Frontend `callSpecialist` treats `!response.ok` as `fallback:true`, triggering `inferResponse` simulation correctly. | 2026-05-25 |
+| b_4b42 | CORS wildcard fix | `api/generate.js` + `api/spend.js`: replaced hardcoded `'Access-Control-Allow-Origin': '*'` with `corsHeaders()` from `./lib/cors.js`. `b_8ff1` already resolved — `cors.js` omits the header entirely when `APP_ORIGIN` unset. | 2026-05-25 |
+| b_sec2 | Prompt injection fix | `api/chat.js`: dropped `brandFromClient` from body — brand is now Supabase-only, never client-supplied. `api/proactive-drafts.js`: same; removed `brand` from body destructure and fallback logic. | 2026-05-25 |
+| b_sec1 | PATCH allowlist + tenant scope | `api/proactive-emails.js` + `api/proactive-sms.js`: `patchDraft` now filters on `id AND tenant_id`; PATCH handler strips patch to allowlisted keys only (`status`, `klaviyo_*`, `sent_at`). | 2026-05-25 |
+| b_img1 | Durable video storage | `api/generate.js`: `handleGenerateVideo` now calls `rehost()` after row insert for sync providers, patches row with durable Supabase Storage URL. Closes the video gap (image path was already done). | 2026-05-25 |
+| b_cbnd | CanvasErrorBoundary | `chat-app.jsx`: `class CanvasErrorBoundary` wraps `<CanvasBody>`; catches throws, logs once at warn, shows inline retry. Silences the repeating CanvasBody crash spam from seed-bypass JWT failure. | 2026-05-25 |
+| b_gsc1 | GSC channel display | `insights.jsx`: `gsc` entry in `CHANNEL_META` (organic group, 🔎) + `CHANNEL_KEY_METRICS`; `avg_ctr`/`avg_position` label+format; Search Clicks KPI strip; key-first `channelMeta` lookup in `InsightsGrid`. | 2026-05-25 |
+| b_ins1 | Analytics → Insights pipeline | `api/analytics-ingest.js`: GA4 slug fix, Google Ads → Zernio, GSC fetcher added. `app/insights.jsx`: hook aliases (b_47d0), ErrorState + three-state render (b_c945), workspace-specific CTAs on action + insight cards. `CLAUDE.md` hook-alias table updated. | 2026-05-25 |
+| b_inb1 | Wire Inbox | `api/inbox.js` (new edge fn); `workspaces3.jsx` fetchInbox → `/api/inbox`; `conversation_id` → `conversationId` fix; local-only fallback for reply_comment (b_inb2 gap). | 2026-05-25 |
 | b_60f8 | Fix Shopify 306 → modal shows actionable error + Composio link | `workspaces4.jsx`: catch block re-opens `ConnectorAuthModal` with `errorMsg` on 409; modal renders error banner + "Open Composio dashboard" button instead of spinning | 2026-05-24 |
 | b_c003 | Fix unverified inbox/analytics endpoints in zernio.js | Removed stale `ENDPOINT_UNVERIFIED` from `handleBoostPost` and `ENDPOINT_PARTIAL` from `handleGetAnalytics` — paths were already correct from prior session | 2026-05-24 |
 | b_c002 | Social ads action layer (all 5 paid platforms) | `api/social-ads.js` — `list_campaigns`, `create_campaign`, `boost_post`, `get_analytics`, `create_audience` via Zernio; covers metaads/liads/ttads/xads/pinads | 2026-05-24 |
@@ -54,4 +64,4 @@ Run `node scripts/health-check.mjs` after any session. Silent = all clear.
 
 ---
 
-*Last updated: 2026-05-24 — googleads migrated to Zernio; backlog restructured with one-chat scopes*
+*Last updated: 2026-05-25 — b_0035/b_9eda/b_4b42 shipped; security audit complete (b_sec1/b_sec2/b_e15e/b_b826/b_8ff1 all closed)*

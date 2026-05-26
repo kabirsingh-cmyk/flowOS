@@ -1190,9 +1190,8 @@ export default async function handler(req) {
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    // Fallback for dev without key
-    return new Response(JSON.stringify({ ok: true, content: [{ type: "text", text: "API key not configured." }] }), {
-      status: 200,
+    return new Response(JSON.stringify({ ok: false, error: "ANTHROPIC_API_KEY not configured" }), {
+      status: 503,
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1205,7 +1204,7 @@ export default async function handler(req) {
   try { body = await req.json(); }
   catch { return new Response("Bad request", { status: 400 }); }
 
-  const { messages, specialist = "supervisor", brand: brandFromClient } = body;
+  const { messages, specialist = "supervisor" } = body;
 
   try {
     // Fetch Composio tools, brand profile, agent override, and analytics data in parallel
@@ -1220,8 +1219,9 @@ export default async function handler(req) {
       composioTools.map(t => t.name.split("_")[0].toLowerCase())
     )].filter(Boolean);
 
-    // Prefer full Supabase profile; fall back to lightweight client-side brand
-    const brand = brandProfile || brandFromClient || null;
+    // Brand profile from Supabase only — never trust client-supplied brand data
+    // (prompt injection risk: client could embed arbitrary text into Claude's system prompt).
+    const brand = brandProfile || null;
 
     // Supervisor gets all tools; Drafter gets create_draft; Planner gets create_campaign_plan + open_workspace; others get none
     const tools = specialist === "supervisor"

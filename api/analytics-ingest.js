@@ -106,17 +106,30 @@ async function fetchMetaAds(tenantId, period) {
 }
 
 // ── Google Ads ────────────────────────────────────────────────────────────────
+// Routed through Zernio (migrated from Composio 2026-05-24)
 async function fetchGoogleAds(tenantId, period) {
-  const days = periodDays(period);
-  const data = await runTool("GOOGLEADS_GET_CAMPAIGN_PERFORMANCE_REPORT", {
-    date_range_type: "LAST_N_DAYS",
-    number_of_days: days,
-  }, tenantId);
+  const ORIGIN = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : (process.env.APP_ORIGIN || "http://localhost:3000");
+  let data;
+  try {
+    const res = await fetch(`${ORIGIN}/api/zernio`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.CRON_SECRET}`,
+      },
+      body: JSON.stringify({ action: "get_analytics", tenantId, platform: "googleads", period, metric: "campaign_performance" }),
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    data = json?.analytics;
+  } catch { return null; }
   if (!data) return null;
 
-  const campaigns = Array.isArray(data) ? data : [data];
+  const campaigns = data?.campaigns || (Array.isArray(data) ? data : []);
   const totals = campaigns.reduce((acc, c) => ({
-    spend:       acc.spend       + parseFloat(c.cost_micros || c.cost || 0) / 1e6,
+    spend:       acc.spend       + parseFloat(c.cost || c.spend || 0),
     impressions: acc.impressions + parseInt(c.impressions || 0),
     clicks:      acc.clicks      + parseInt(c.clicks || 0),
     conversions: acc.conversions + parseFloat(c.conversions || 0),
@@ -127,9 +140,9 @@ async function fetchGoogleAds(tenantId, period) {
     channel: "google_ads",
     metrics: {
       ...totals,
-      ctr:    totals.impressions ? +(totals.clicks / totals.impressions * 100).toFixed(2) : 0,
-      cpc:    totals.clicks      ? +(totals.spend  / totals.clicks).toFixed(2) : 0,
-      roas:   totals.spend       ? +(totals.conv_value / totals.spend).toFixed(2) : 0,
+      ctr:  totals.impressions ? +(totals.clicks / totals.impressions * 100).toFixed(2) : 0,
+      cpc:  totals.clicks      ? +(totals.spend  / totals.clicks).toFixed(2) : 0,
+      roas: totals.spend       ? +(totals.conv_value / totals.spend).toFixed(2) : 0,
       period,
     },
   };
@@ -221,6 +234,43 @@ async function fetchGA4(tenantId, period) {
   };
 }
 
+// ── Google Search Console ─────────────────────────────────────────────────────
+async function fetchGSC(tenantId, period) {
+  const { start, end } = dateRange(period);
+  const data = await runTool("GOOGLESEARCHCONSOLE_SEARCH_ANALYTICS_QUERY", {
+    site_url: "sc-domain:",   // Composio resolves to tenant's verified property
+    start_date: start,
+    end_date:   end,
+    dimensions: ["query"],
+    row_limit:  10,
+  }, tenantId);
+  if (!data) return null;
+
+  const rows = data?.rows || (Array.isArray(data) ? data : []);
+  if (rows.length === 0) return null;
+
+  const totals = rows.reduce((acc, r) => ({
+    clicks:      acc.clicks      + parseInt(r.clicks || 0),
+    impressions: acc.impressions + parseInt(r.impressions || 0),
+    ctr:         acc.ctr         + parseFloat(r.ctr || 0),
+    position:    acc.position    + parseFloat(r.position || 0),
+  }), { clicks: 0, impressions: 0, ctr: 0, position: 0 });
+
+  return {
+    channel: "gsc",
+    metrics: {
+      clicks:       totals.clicks,
+      impressions:  totals.impressions,
+      avg_ctr:      +(totals.ctr / rows.length * 100).toFixed(2),
+      avg_position: +(totals.position / rows.length).toFixed(1),
+      top_queries:  rows.slice(0, 5).map(r => r.keys?.[0] || r.query).filter(Boolean),
+      period,
+      date_start: start,
+      date_end:   end,
+    },
+  };
+}
+
 // ── Shopify ───────────────────────────────────────────────────────────────────
 async function fetchShopify(tenantId, period) {
   const { start, end } = dateRange(period);
@@ -259,20 +309,22 @@ async function fetchShopify(tenantId, period) {
 // ─── Channel dispatcher ───────────────────────────────────────────────────────
 
 const CHANNEL_FETCHERS = {
-  facebook_ads:  (tid, period) => fetchMetaAds(tid, period),
-  google_ads:    (tid, period) => fetchGoogleAds(tid, period),
-  klaviyo:       (tid, period) => fetchKlaviyo(tid, period),
-  googleanalytics: (tid, period) => fetchGA4(tid, period),
-  shopify:       (tid, period) => fetchShopify(tid, period),
+  facebook_ads:          (tid, period) => fetchMetaAds(tid, period),
+  google_ads:            (tid, period) => fetchGoogleAds(tid, period),
+  klaviyo:               (tid, period) => fetchKlaviyo(tid, period),
+  google_analytics:      (tid, period) => fetchGA4(tid, period),       // was: googleanalytics (slug mismatch fix)
+  google_search_console: (tid, period) => fetchGSC(tid, period),
+  shopify:               (tid, period) => fetchShopify(tid, period),
 };
 
-// Map Composio toolkit slugs → our channel names (for display)
+// Map Composio toolkit slugs → our channel names (for display/storage)
 const SLUG_TO_CHANNEL = {
-  facebook_ads:    "meta_ads",
-  google_ads:      "google_ads",
-  klaviyo:         "klaviyo",
-  googleanalytics: "ga4",
-  shopify:         "shopify",
+  facebook_ads:          "meta_ads",
+  google_ads:            "google_ads",
+  klaviyo:               "klaviyo",
+  google_analytics:      "ga4",           // was: googleanalytics (slug mismatch fix)
+  google_search_console: "gsc",
+  shopify:               "shopify",
 };
 
 // ─── Claude insight generator ─────────────────────────────────────────────────

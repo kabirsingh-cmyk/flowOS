@@ -5,15 +5,12 @@
  * cross-tenant cost aggregates. Not exposed to tenants — operator-only view.
  */
 
-import { requireAuth } from './lib/auth.js';
+import { requireAuth }  from './lib/auth.js';
+import { corsHeaders }  from './lib/cors.js';
 
 export const config = { runtime: 'edge' };
 
-const CORS = {
-  'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+const CORS = corsHeaders();
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {

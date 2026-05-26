@@ -134,11 +134,11 @@ async function insertDraft(row) {
   return Array.isArray(out) ? out[0] : out;
 }
 
-async function patchDraft(id, patch) {
-  if (!SUPABASE_URL || !id) return null;
+async function patchDraft(id, tenantId, patch) {
+  if (!SUPABASE_URL || !id || !tenantId) return null;
   const body = { ...patch, updated_at: new Date().toISOString() };
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/proactive_sms?id=eq.${encodeURIComponent(id)}`,
+    `${SUPABASE_URL}/rest/v1/proactive_sms?id=eq.${encodeURIComponent(id)}&tenant_id=eq.${encodeURIComponent(tenantId)}`,
     {
       method:  "PATCH",
       headers: { ...sbHeaders(), "Prefer": "return=representation" },
@@ -288,7 +288,14 @@ export default async function handler(req) {
     let body; try { body = await req.json(); } catch { return json(400, { ok: false, error: "Invalid JSON" }); }
     const { id, patch } = body;
     if (!id || !patch) return json(400, { ok: false, error: "id and patch required" });
-    const row = await patchDraft(id, patch);
+    // Allowlist patch keys — never let the client overwrite tenant_id,
+    // source_insight_id, rule, or any other immutable field.
+    const ALLOWED = ["status", "klaviyo_campaign_id", "klaviyo_message_id", "sent_at"];
+    const safePatch = Object.fromEntries(
+      Object.entries(patch).filter(([k]) => ALLOWED.includes(k))
+    );
+    if (Object.keys(safePatch).length === 0) return json(400, { ok: false, error: "no patchable fields" });
+    const row = await patchDraft(id, auth.tenantId, safePatch);
     if (!row) return json(500, { ok: false, error: "patch failed" });
     return json(200, { ok: true, draft: rowToClient(row) });
   }

@@ -257,9 +257,11 @@ async function handleCreateDraftSms(req) {
     from_number: fromNumber || undefined,
   }, tenantId);
 
-  // Log full response on first run — SMS shape may differ from email.
-  // eslint-disable-next-line no-console
-  console.log("[klaviyo-sms create response]", JSON.stringify(campaignRes));
+  // Structured log only — full response may contain audience PII.
+  console.log("[klaviyo-sms]", {
+    status:     campaignRes?.data?.attributes?.status,
+    campaignId: campaignRes?.data?.id || campaignRes?.id || null,
+  });
 
   const campaignId =
     campaignRes?.data?.id ||

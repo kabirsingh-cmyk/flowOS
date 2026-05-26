@@ -50,7 +50,6 @@ function PublishingQueue({ state, actions }) {
         redditPostId:    result?.postId || null,
         redditUrl:       result?.postUrl || null,
         redditSubreddit: payload?.subreddit || null,
-        ...(result?.imageAsLink ? { redditImageAsLink: true } : {}),
       }),
     };
 
@@ -248,7 +247,6 @@ function PublishingQueue({ state, actions }) {
         redditPostId:    res.postId || null,
         redditUrl:       res.postUrl || null,
         redditSubreddit: authorUrn,
-        ...(res.imageAsLink ? { redditImageAsLink: true } : {}),
       }),
       logLabel: "Reddit",
     },
@@ -837,6 +835,37 @@ function PublishingQueue({ state, actions }) {
           }
         };
 
+        const handleUnschedule = async () => {
+          if (!editItem.scheduledPostId) return;
+          setScheduling(true);
+          try {
+            const res = await apiFetch("/api/scheduled-posts", {
+              method:  "POST",
+              headers: { "Content-Type": "application/json" },
+              body:    JSON.stringify({ action: "cancel", id: editItem.scheduledPostId }),
+            }).then(r => r.json());
+            if (!res?.ok && res?.cancelled === 0) {
+              actions.notify("warn", "Could not unschedule — post may already be firing");
+              return;
+            }
+            actions.updateItem(editItem.id, {
+              status:          "draft",
+              scheduledPostId: null,
+              fireAtUtc:       null,
+            }, {
+              logEvent: `unscheduled · ${platformLabel}`,
+              notify:   { tone: "ok", text: "Unscheduled — post returned to drafts" },
+            });
+            setEditItem(null);
+          } catch (e) {
+            actions.notify("warn", `Unschedule failed: ${e.message}`);
+          } finally {
+            setScheduling(false);
+          }
+        };
+
+        const isQueued = !!(editItem.scheduledPostId && editItem.status === "scheduled");
+
         const PLATFORM_TO_RULE = {
           instagram: "Instagram", linkedin: "LinkedIn", tiktok: "TikTok",
           facebook: "Facebook",   youtube: "YouTube",   email: "Email",
@@ -897,10 +926,8 @@ function PublishingQueue({ state, actions }) {
                 }, {
                   logEvent: `published to ${pub.logLabel} · '${editDraft.body.slice(0, 40)}'`,
                   notify:   {
-                    tone: res.imageAsLink ? "warn" : "ok",
-                    text: res.imageAsLink
-                      ? `Published to ${pub.logLabel} as link post (Reddit doesn't support image submissions via API)`
-                      : `Published to ${pub.logLabel}${res.postUrl ? " · " + res.postUrl : ""}`,
+                    tone: "ok",
+                    text: `Published to ${pub.logLabel}${res.postUrl ? " · " + res.postUrl : ""}`,
                   },
                 });
                 setEditItem(null);
@@ -934,10 +961,15 @@ function PublishingQueue({ state, actions }) {
           <Drawer open={true} onClose={() => setEditItem(null)}
             title={`${platformLabel} · ${kindLabel}`}
             actions={<>
-              {!isDraft && (
+              {!isDraft && !isQueued && (
                 <Btn variant="ghost" onClick={() => { togglePause(editItem); setEditItem(null); }}>
                   <Icon name={editItem.status === "paused" ? "play" : "pause"} size={12}/>
                   {editItem.status === "paused" ? " Resume" : " Pause"}
+                </Btn>
+              )}
+              {isQueued && (
+                <Btn variant="ghost" onClick={handleUnschedule} disabled={scheduling}>
+                  <Icon name="x" size={12}/> {scheduling ? "Cancelling…" : "Unschedule"}
                 </Btn>
               )}
               <Btn variant="danger" onClick={() => { actions.removeItem(editItem.id); setEditItem(null); }}>
@@ -980,6 +1012,21 @@ function PublishingQueue({ state, actions }) {
                 {editItem.publishStatus === "published" && <Chip tone="ok">published</Chip>}
                 {editItem.publishStatus === "failed" && <Chip tone="warn">publish failed</Chip>}
               </div>
+
+              {/* Queued-post warning — edits here don't affect the snapshot the cron fires */}
+              {isQueued && (
+                <div style={{
+                  padding: "10px 14px", borderRadius: 5, fontSize: 12.5,
+                  display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+                  background: "oklch(96% 0.04 250)", border: "1px solid oklch(80% 0.10 250)",
+                  color: "oklch(35% 0.12 250)",
+                }}>
+                  <Icon name="calendar" size={12}/>
+                  <span style={{ flex: 1 }}>
+                    Scheduled for {editItem.fireAtUtc ? new Date(editItem.fireAtUtc).toLocaleString() : "a future time"} — edits made here won't change what fires. Unschedule to modify.
+                  </span>
+                </div>
+              )}
 
               {/* No-publish-path callout — shown for platforms without a working publisher */}
               {editItem.noPublishPath && (

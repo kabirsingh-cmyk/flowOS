@@ -1012,9 +1012,31 @@ function OrganicSocialStudio({ state, actions }) {
   const connectedImageGen = ["runware", "fal", "replicate"].find(id => state.connectors?.[id]?.connected);
   const connectedVideoGen = ["higgsfield", "kling", "pika"].find(id => state.connectors?.[id]?.connected);
 
-  const simulateImageGen = () => {
+  const generateImage = async () => {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session?.user) { actions.notify("warn", "Sign in to generate images"); return; }
     setGenLoading(true);
-    setTimeout(() => { setGenLoading(false); setGenDone("product-shot-gen.jpg"); }, 2200);
+    try {
+      const scene    = (draft.caption || "").slice(0, 200) || "product shot, clean background, studio lighting";
+      const provider = connectedImageGen === "fal" ? "runware" : connectedImageGen;
+      const res  = await apiFetch("/api/generate", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          action:       "generate_image",
+          tenantId:     session.user.id,
+          provider,
+          promptIntent: { kind: "product", extra: { scene } },
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.rawUrl) throw new Error(data.error || "Generation failed");
+      setGenDone(data.rawUrl);
+    } catch (e) {
+      actions.notify("warn", `Image generation failed — ${e.message}`);
+    } finally {
+      setGenLoading(false);
+    }
   };
 
   // ── Save post to Supabase ──────────────────────────────────────────────────
@@ -1269,11 +1291,12 @@ function OrganicSocialStudio({ state, actions }) {
             <div>
               <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>Visual</div>
               {genDone ? (
-                <div style={{ background: "var(--success-wash)", border: "1px solid var(--success)", borderRadius: 6, padding: "10px 14px", fontSize: 13, color: "var(--success)" }}>
-                  ✓ Image generated: {genDone}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--success-wash)", border: "1px solid var(--success)", borderRadius: 6, padding: "10px 14px" }}>
+                  <img src={genDone} alt="Generated" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 4, flexShrink: 0 }}/>
+                  <span style={{ fontSize: 13, color: "var(--success)" }}>✓ Image generated</span>
                 </div>
               ) : connectedImageGen ? (
-                <Btn onClick={simulateImageGen} disabled={genLoading}>
+                <Btn onClick={generateImage} disabled={genLoading}>
                   <Icon name="spark" size={12}/> {genLoading ? "Generating…" : `Generate with ${connectedImageGen === "fal" ? "fal.ai" : connectedImageGen}`}
                 </Btn>
               ) : (

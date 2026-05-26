@@ -596,6 +596,46 @@ function ChatRailHeader({ channels, activeId, onSelect, auth, onLogout }) {
 }
 
 // ────────────────────────────── CANVAS ──────────────────────────────
+
+class CanvasErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(err) {
+    return { error: err };
+  }
+  componentDidCatch(err, info) {
+    // Log once at warn level — not a repeating error stream
+    console.warn("[CanvasErrorBoundary]", err?.message, info?.componentStack?.split("\n")[1]?.trim());
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{
+          display: "flex", flexDirection: "column", alignItems: "center",
+          justifyContent: "center", height: "100%", gap: 10,
+          color: "var(--muted)", fontSize: 13, padding: 40, textAlign: "center",
+        }}>
+          <span style={{ fontSize: 24 }}>⚠️</span>
+          <span>{this.state.error?.message || "This workspace failed to load."}</span>
+          <button
+            onClick={() => this.setState({ error: null })}
+            style={{
+              marginTop: 4, padding: "6px 16px", borderRadius: 7,
+              background: "var(--paper)", border: "1px solid var(--rule)",
+              fontSize: 12.5, cursor: "pointer", color: "var(--ink)",
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function Canvas({ canvas, onClose, state, actions, go }) {
   if (!canvas) return null;
 
@@ -635,7 +675,9 @@ function Canvas({ canvas, onClose, state, actions, go }) {
         </div>
       )}
       <div style={{ flex: 1, overflow: "auto" }}>
-        <CanvasBody canvas={canvas} state={state} actions={actions} go={go}/>
+        <CanvasErrorBoundary>
+          <CanvasBody canvas={canvas} state={state} actions={actions} go={go}/>
+        </CanvasErrorBoundary>
       </div>
     </div>
   );
@@ -752,19 +794,28 @@ function mapUser(sbUser) {
 
 // ────────────────────────────── MAIN APP ──────────────────────────────
 function ChatOS() {
-  const [auth, setAuth]           = useStateApp("loading"); // "loading" | null | user-object
-  const [onboarded, setOnboarded] = useStateApp(false);
+  const [auth, setAuth]                   = useStateApp("loading"); // "loading" | null | user-object
+  const [onboarded, setOnboarded]         = useStateApp(false);
+  // Full brand row hydrated from Supabase on login. null = no row (new user,
+  // load failure, or seed bypass). Consumed by ChatOSAuthed → store hydration
+  // (wired but not yet read — see CLAUDE.md "store-hydration contract").
+  const [hydratedBrand, setHydratedBrand] = useStateApp(null);
 
   const checkOnboarded = async (userId) => {
     try {
-      const { data } = await sb.from("brands").select("id, palette").eq("user_id", userId).limit(1);
+      const { data } = await sb.from("brands")
+        .select("id, name, industry, website, palette, palette_vars, goal, budget, revenue, voice, values, claims, prohibited_topics, target_audience, recommended_connectors, competitors, brand_analysis")
+        .eq("user_id", userId)
+        .limit(1);
       if (data && data.length > 0) {
         setOnboarded(true);
+        setHydratedBrand(data[0]);
         if (data[0].palette) applyPalette(data[0].palette);
         return;
       }
     } catch {}
-    // Fall back to localStorage
+    // Fall back to localStorage (palette only — full hydration requires the
+    // Supabase row).
     try {
       const saved = localStorage.getItem("flowos_onboarding");
       if (saved) {
@@ -802,6 +853,10 @@ function ChatOS() {
           email: `${seedParam}@dev.local`,
         });
         setOnboarded(true);
+        // Seed bypass uses SEED state — no Supabase brand row exists for the
+        // synthetic user, so explicitly clear any hydrated brand from a prior
+        // session in this tab.
+        setHydratedBrand(null);
       })();
       return;
     }
@@ -830,6 +885,7 @@ function ChatOS() {
       if (!session?.user) {
         initializedRef.current = false;
         setOnboarded(false);
+        setHydratedBrand(null);
       }
     });
 
@@ -841,6 +897,7 @@ function ChatOS() {
     try { localStorage.removeItem("flowos_onboarding"); } catch {}
     Object.keys(BRAND_PALETTES[0].vars).forEach(k => document.documentElement.style.removeProperty(k));
     setOnboarded(false);
+    setHydratedBrand(null);
   };
 
   // Loading — checking session
@@ -870,13 +927,28 @@ function ChatOS() {
     );
   }
 
-  return <ChatOSAuthed auth={auth} onLogout={handleLogout}/>;
+  return <ChatOSAuthed auth={auth} brand={hydratedBrand} onLogout={handleLogout}/>;
 }
 
-function ChatOSAuthed({ auth, onLogout }) {
+// `brand` is the full Supabase brands row (or null for seed bypass / no row).
+// When present, it's overlaid onto the SEED-derived initial store state via
+// the BRAND_HYDRATE action — silent, idempotent. brand is stable across the
+// session (set once in ChatOS.checkOnboarded, cleared on logout/sign-out),
+// so the effect fires exactly once per login.
+function ChatOSAuthed({ auth, brand, onLogout }) {
   const [chat, dispatch] = useReducerApp(chatReducer, undefined, chatInit);
   const [state, actions] = useMvedaStore();
   const [tweakOpen, setTweakOpen] = useStateApp(false);
+
+  useEffectApp(() => {
+    if (brand) {
+      // [hydration-debug] temporary — remove once verified. grep marker above.
+      console.log("[FlowOS] brand hydrated from Supabase:", brand);
+      actions.hydrateBrand(brand);
+    }
+    // actions is recreated each render; only `brand` should drive this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brand]);
 
   useEffectApp(() => {
     const onMsg = (e) => {
