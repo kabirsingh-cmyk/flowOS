@@ -1,5 +1,5 @@
 /**
- * FlowOS — Proactive email drafts
+ * FlowOS Reach — Proactive email drafts
  * Vercel Edge Function: GET/POST/PATCH /api/proactive-emails
  *
  * Content-creation flavor #1 (Proactive) for the email channel.

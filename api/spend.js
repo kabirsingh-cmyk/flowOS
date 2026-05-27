@@ -1,5 +1,5 @@
 /**
- * GET /api/spend — FlowOS operator spend dashboard
+ * GET /api/spend — FlowOS Reach operator spend dashboard
  *
  * Queries generation_usage with the service key (bypasses RLS) to return
  * cross-tenant cost aggregates. Not exposed to tenants — operator-only view.

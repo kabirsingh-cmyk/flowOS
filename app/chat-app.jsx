@@ -310,7 +310,7 @@ function ChannelList({ channels, active, onSelect, brandImported, brandPreset, a
       <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--rule)", display: "flex", alignItems: "center", gap: 10 }}>
         <div style={{ width: 26, height: 26, borderRadius: 5, background: "var(--accent)", color: "var(--accent-ink)", display: "grid", placeItems: "center", fontFamily: "var(--font-serif)", fontSize: 17 }}>F</div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em" }}>FlowOS</div>
+          <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em" }}>FlowOS Reach</div>
           <div className="mono" style={{ fontSize: 9.5, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase" }}>AI Marketing OS</div>
         </div>
       </div>
@@ -1333,7 +1333,7 @@ function ChatOSAuthed({ auth, brand, seedMode, onLogout }) {
       <div style={{
         display: "grid", gridTemplateColumns: "200px 1fr 320px",
         height: "100vh", background: "var(--paper-2)",
-      }} data-screen-label="FlowOS">
+      }} data-screen-label="FlowOS Reach">
 
         <NavRail active={activeCanvas.target} onOpen={handleNav} state={state} actions={actions} seedMode={seedMode}/>
 

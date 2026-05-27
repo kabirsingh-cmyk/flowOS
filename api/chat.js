@@ -1,5 +1,5 @@
 /**
- * FlowOS — Anthropic API proxy with Composio tool execution
+ * FlowOS Reach — Anthropic API proxy with Composio tool execution
  * Vercel Edge Function: POST /api/chat
  *
  * Flow:
@@ -224,7 +224,7 @@ ${prohibited.length ? `\nPROHIBITED TOPICS\n${prohibited.map(p => `- ${p}`).join
     : `No non-social platforms connected yet. Social publishing (all platforms) goes through Zernio and is handled from the Publishing Queue. For ads, analytics, email, or CRM actions, tell the tenant to connect those in Settings → Connections.`;
 
   const prompts = {
-    supervisor: `You are Flow — the AI marketing operator for FlowOS.
+    supervisor: `You are Flow — the AI marketing operator for FlowOS Reach.
 
 ${brandBlock}
 
@@ -254,7 +254,7 @@ BEHAVIOUR
 
 ${brandVoiceBlock}`,
 
-    drafter: `You are Drafter — the content AI for FlowOS.
+    drafter: `You are Drafter — the content AI for FlowOS Reach.
 ${brandBlock}
 
 Write in the tenant's brand voice. Output clean copy only — no preamble, no meta-commentary.
@@ -454,7 +454,7 @@ Rules for every email in a sequence:
           : "";
       }
 
-      return `You are Analyst — the data AI for FlowOS.
+      return `You are Analyst — the data AI for FlowOS Reach.
 ${brandBlock}${analyticsBlock}
 
 Interpret marketing performance and surface insights clearly.
@@ -464,20 +464,20 @@ If no data is available, tell the user to click Refresh in the Analytics tab to 
 Use show_metric for headline numbers.`;
     })(),
 
-    brand_guard: `You are Brand Guard — the policy AI for FlowOS.
+    brand_guard: `You are Brand Guard — the policy AI for FlowOS Reach.
 ${brandBlock}
 
 Check copy against brand guidelines.
 For each issue: Flag → Rule → Fix.
 If clean, say so in one sentence.`,
 
-    inbox: `You are Inbox — the customer communications AI for FlowOS.
+    inbox: `You are Inbox — the customer communications AI for FlowOS Reach.
 ${brandBlock}
 
 Triage: Urgent / Standard / Low.
 Output: classification → suggested reply → flag if human review needed.`,
 
-    campaign_planner: `You are FlowOS's campaign planning specialist. Generate complete, structured marketing campaign briefs that a solo marketer or small team can execute immediately.
+    campaign_planner: `You are FlowOS Reach's campaign planning specialist. Generate complete, structured marketing campaign briefs that a solo marketer or small team can execute immediately.
 
 ${brandBlock}
 
@@ -557,7 +557,7 @@ End every brief with: "Would you like me to draft specific content pieces from t
 
 ${brandVoiceBlock}`,
 
-    seo_auditor: `You are FlowOS's SEO specialist. You conduct SEO audits, keyword research, content gap analysis, and competitor comparisons.
+    seo_auditor: `You are FlowOS Reach's SEO specialist. You conduct SEO audits, keyword research, content gap analysis, and competitor comparisons.
 
 ${brandBlock}
 
@@ -570,7 +570,7 @@ When activated, ask for:
 Use web search throughout to research the actual keyword landscape, competitor content, and technical signals. Do not make up data — if web_search returns nothing for a section, leave that section's array empty rather than inventing rows.
 
 OUTPUT CONTRACT
-Do NOT write the audit as markdown in the chat. Instead, call create_seo_audit with the full structured payload — the FlowOS chat renders it as a first-class SeoAuditCard artifact with collapsible tables.
+Do NOT write the audit as markdown in the chat. Instead, call create_seo_audit with the full structured payload — the FlowOS Reach chat renders it as a first-class SeoAuditCard artifact with collapsible tables.
 
 Required call sequence at the end of every audit:
 1. create_seo_audit — fill every applicable field. Required: url, executiveSummary, overallAssessment, keywords, quickWins. Pass [] for sections that genuinely don't apply (e.g. competitors when none were named and none were discovered).
@@ -715,7 +715,7 @@ ${brandVoiceBlock}`;
   return defaultPrompt;
 }
 
-// ─── Internal FlowOS tools (always available to supervisor) ───────────────────
+// ─── Internal FlowOS Reach tools (always available to supervisor) ───────────────────
 
 const INTERNAL_TOOLS = [
   {

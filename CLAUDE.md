@@ -1,4 +1,4 @@
-# FlowOS — Claude Context
+# FlowOS Reach — Claude Context
 
 Read this at the start of every session. It replaces the need to re-discover the architecture by reading source files.
 
@@ -8,7 +8,7 @@ Read this at the start of every session. It replaces the need to re-discover the
 
 ## What this is
 
-**FlowOS** — an AI marketing operating system for brands. Multi-tenant SPA. One logged-in brand at a time (tenant switching via seed presets). Production stack: Vercel (edge functions) + Supabase (auth + data) + Anthropic (Claude) + Composio (platform tool execution).
+**FlowOS Reach** — an AI marketing operating system for brands. Multi-tenant SPA. One logged-in brand at a time (tenant switching via seed presets). Production stack: Vercel (edge functions) + Supabase (auth + data) + Anthropic (Claude) + Composio (platform tool execution).
 
 Two seed brands in `seed.jsx`: **MVEDA** (Ayurvedic skincare, DTC) and **Erickson Refrigeration** (B2B commercial HVAC).
 
@@ -281,7 +281,7 @@ The canonical connector list (now 54 connectors — Luma AI and AudioStack remov
 
 ```js
 {
-  id,         // FlowOS-stable slug, used as the key everywhere
+  id,         // FlowOS Reach-stable slug, used as the key everywhere
   name,       // display name
   category,   // canonical category (Paid Search / Paid Audio / Paid Social / Organic Social / Email Marketing / SMS Marketing / Email Verification / SEO & Search / E-commerce / A/B Testing / AI Video / Image / AI Audio / Voice / Analytics / CRM & Marketing Ops)
   group,      // pill-filter bucket: "Social" | "Ads" | "Email" | "SMS" | "Commerce" | "Analytics" | "Creative AI"
@@ -323,13 +323,13 @@ The connect surface in [workspaces4.jsx](app/workspaces4.jsx) is provider-agnost
 
 [api/zernio.js](api/zernio.js) handles all 15 social platforms via Zernio's OAuth-as-a-service. Auth: `ZERNIO_API_KEY` + `X-External-User-ID: {tenantId}` per call. Zernio manages per-user OAuth tokens internally.
 
-| Scope | Zernio slugs | FlowOS IDs |
+| Scope | Zernio slugs | FlowOS Reach IDs |
 |---|---|---|
 | **Organic Social** | facebook, instagram, linkedin, tiktok, pinterest, youtube, twitter, reddit, bluesky, threads, googlebusiness, whatsapp, telegram, snapchat, discord | fb, ig, li, tt, pn, yt, x, gbusiness (+ full names pass through) |
 | **Paid Social** | metaads, linkedinads, tiktokads, xads, pinterestads | metaads, liads, ttads, xads, pinads |
 | **Paid Search** | googleads | googleads |
 
-FlowOS IDs resolved to Zernio slugs in `PLATFORM_ID_MAP` (zernio.js): `x→twitter`, `gbusiness→googlebusiness`, `liads→linkedinads`, `ttads→tiktokads`, `pinads→pinterestads`. `metaads` and `xads` match in both.
+FlowOS Reach IDs resolved to Zernio slugs in `PLATFORM_ID_MAP` (zernio.js): `x→twitter`, `gbusiness→googlebusiness`, `liads→linkedinads`, `ttads→tiktokads`, `pinads→pinterestads`. `metaads` and `xads` match in both.
 
 Multi-tenancy: each tenant gets one Zernio profile (created on first connect via `POST /v1/profiles`, stored in `connector_credentials(user_id, platform='zernio_profile')`). The `profileId` is passed as a query param to `GET /v1/connect/{platform}?profileId=...`. Zernio account IDs (`_id` from `GET /v1/accounts`) are stored in `channels.composio_connection_id` and loaded automatically for publish calls.
 
@@ -372,13 +372,13 @@ WordPress was originally on Pipedream per the canonical doc but isn't in Pipedre
 
 Per-tenant API-key connectors that don't go through Composio or Pipedream live behind their own `/api/<provider>` routes and share persistence via `api/lib/directCredentials.js` (writes to `public.connector_credentials`, mirrored to `channels` for the tile state). The frontend route table is `DIRECT_API_ROUTES` in [workspaces4.jsx](app/workspaces4.jsx); connector ids not in that map fall through to a local setTimeout simulation.
 
-| FlowOS id | Route | Validation endpoint | State |
+| FlowOS Reach id | Route | Validation endpoint | State |
 |---|---|---|---|
 | `replicate`  | `/api/replicate`  | `GET /v1/account`                           | ✓ |
 | `higgsfield` | `/api/higgsfield` | `GET /models`                               | ✓ |
 | `optimizely` | `/api/optimizely` | `GET /v2/projects` (Bearer PAT)             | ✓ |
 | `wordpress`  | `/api/wordpress`  | `GET <siteUrl>/wp-json/wp/v2/users/me?context=edit` (Basic Auth — Application Password). 3-input credential: `{siteUrl, username, appPassword}` stored as a JSON blob in `secret_value`. | ✓ |
-| `spotifyads` | — (none) | Manual handoff — `auth: "Manual"` in seed.jsx. Spotify Ad Studio has no public API, and the partner-only Marketing API requires a signed agreement. FlowOS owns the creative (script via Claude, audio via ElevenLabs, video if needed via Higgsfield); the user uploads manually to adstudio.spotify.com. Connect flow flips the tile to "in use" via `actions.setConnector` without any backend call. No credential stored. | ✓ (manual) |
+| `spotifyads` | — (none) | Manual handoff — `auth: "Manual"` in seed.jsx. Spotify Ad Studio has no public API, and the partner-only Marketing API requires a signed agreement. FlowOS Reach owns the creative (script via Claude, audio via ElevenLabs, video if needed via Higgsfield); the user uploads manually to adstudio.spotify.com. Connect flow flips the tile to "in use" via `actions.setConnector` without any backend call. No credential stored. | ✓ (manual) |
 
 **Dropped from catalog 2026-05-24**: Luma AI (removed — no agent workflows, no direct API usage), AudioStack (removed — same). API routes `/api/luma` and `/api/audiostack` remain in the repo as tombstones but are no longer reachable from the frontend.
 
@@ -386,7 +386,7 @@ Per-tenant API-key connectors that don't go through Composio or Pipedream live b
 
 All API-key routes follow the same shape: `action=initiate_connection` validates the supplied credential against the provider's REST API, persists into `connector_credentials`, and upserts a `channels` row with `status=connected`. `action=disconnect` deletes the credential and flips the channels row. Downstream API routes (e.g. `/api/generate`) can read the per-tenant key with `loadCredential({ tenantId, platform })` and fall back to the global env-var key if absent.
 
-**Manual / creative-handoff connectors** (`auth: "Manual"` in seed.jsx) — for channels with no public API. Today only Spotify Ads. Click "Connect" → modal explains that FlowOS owns the creative + the user uploads manually → "Mark as in use" button flips `state.connectors[id].connected = true` with `note: "Manual upload · creative handoff"`. No backend call, no credential row. Disconnect just flips the local state back. Adding more Manual connectors requires no API code; just a catalog row + brand-import inclusion if the agent should know to recommend the channel.
+**Manual / creative-handoff connectors** (`auth: "Manual"` in seed.jsx) — for channels with no public API. Today only Spotify Ads. Click "Connect" → modal explains that FlowOS Reach owns the creative + the user uploads manually → "Mark as in use" button flips `state.connectors[id].connected = true` with `note: "Manual upload · creative handoff"`. No backend call, no credential row. Disconnect just flips the local state back. Adding more Manual connectors requires no API code; just a catalog row + brand-import inclusion if the agent should know to recommend the channel.
 
 WordPress is the one connector whose credential isn't a single string — `secret_value` is a JSON blob `{ siteUrl, username, appPassword }`; downstream callers must `JSON.parse(secret)` and base64-encode `${username}:${appPassword}` for the `Authorization: Basic …` header. Surfaced in the Connect modal via the `DIRECT_EXTRA_FIELDS` map in [workspaces4.jsx](app/workspaces4.jsx) — any future multi-input direct connector can add an entry there instead of forking the modal.
 

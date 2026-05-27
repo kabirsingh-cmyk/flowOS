@@ -1,5 +1,5 @@
 /**
- * FlowOS — CORS helper for /api/* edge handlers
+ * FlowOS Reach — CORS helper for /api/* edge handlers
  *
  * Restricts the Access-Control-Allow-Origin header to the APP_ORIGIN env var.
  * If APP_ORIGIN is not set the header is omitted entirely — no wildcard fallback.

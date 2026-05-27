@@ -99,7 +99,7 @@ const SEED = {
 
   // Canonical connector catalog — one row per platform.
   // Fields:
-  //   id         FlowOS-stable slug, used as the key everywhere in code
+  //   id         FlowOS Reach-stable slug, used as the key everywhere in code
   //   name       display name
   //   category   canonical category (used by filter pills, not as section headers)
   //   group      filter-pill bucket (Social, Ads, Email & SMS, Commerce, Analytics & Ops, Creative AI)

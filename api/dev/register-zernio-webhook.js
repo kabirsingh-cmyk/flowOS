@@ -1,4 +1,4 @@
-// FlowOS — one-time dev helper to register the Zernio webhook.
+// FlowOS Reach — one-time dev helper to register the Zernio webhook.
 //
 // Call this endpoint after deploying to a new environment (or after changing
 // the webhook URL) to tell Zernio where to deliver events.

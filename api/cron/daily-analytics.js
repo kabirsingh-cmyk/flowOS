@@ -1,5 +1,5 @@
 /**
- * FlowOS — Daily analytics cron
+ * FlowOS Reach — Daily analytics cron
  * Vercel Cron: GET /api/cron/daily-analytics — runs at 06:00 UTC every day
  *
  * 1. Verify Vercel cron secret (set automatically on Pro; optional on Hobby)

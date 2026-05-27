@@ -1,4 +1,4 @@
-// FlowOS — Google Ads API edge function (Zernio-backed)
+// FlowOS Reach — Google Ads API edge function (Zernio-backed)
 // Migrated from Composio to Zernio 2026-05-24.
 // All 8 frontend actions preserved; response shape ({ ok, data } | { ok:false, error }) unchanged.
 //

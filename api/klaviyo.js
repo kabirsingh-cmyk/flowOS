@@ -1,5 +1,5 @@
 /**
- * FlowOS — Klaviyo push
+ * FlowOS Reach — Klaviyo push
  * Vercel Edge Function: POST /api/klaviyo
  *
  * Actions:
@@ -142,7 +142,7 @@ async function handleCreateDraftCampaign(req) {
 
   // 2. Create email template
   const html = bodyToHtml(bodyText, bodyHtml);
-  const templateName = `FlowOS · ${subject}`.slice(0, 140);
+  const templateName = `FlowOS Reach · ${subject}`.slice(0, 140);
   const tplRes = await runTool("KLAVIYO_CREATE_EMAIL_TEMPLATE", {
     name:    templateName,
     html,
@@ -160,7 +160,7 @@ async function handleCreateDraftCampaign(req) {
 
   // 3. Create draft campaign
   const campaignRes = await runTool("KLAVIYO_CREATE_CAMPAIGN", {
-    name:       `FlowOS · ${subject}`.slice(0, 140),
+    name:       `FlowOS Reach · ${subject}`.slice(0, 140),
     subject_line: subject,
     preview_text: preheader,
     from_label: fromName  || undefined,
@@ -238,7 +238,7 @@ async function handleCreateDraftSms(req) {
   //    Klaviyo SMS has no template object — content lives on the
   //    campaign-message under definition.content.body.
   const campaignRes = await runTool("KLAVIYO_CREATE_CAMPAIGN", {
-    name:       `FlowOS · SMS · ${name}`.slice(0, 140),
+    name:       `FlowOS Reach · SMS · ${name}`.slice(0, 140),
     audiences:  { included: [aud.id] },
     channel:    "sms",
     "campaign-messages": {

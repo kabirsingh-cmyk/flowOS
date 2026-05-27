@@ -1,5 +1,5 @@
 /**
- * FlowOS — Brand Import
+ * FlowOS Reach — Brand Import
  * Vercel Edge Function: POST /api/brand-import
  *
  * 1. Scrape URL via Jina AI reader (markdown, no headless browser needed)

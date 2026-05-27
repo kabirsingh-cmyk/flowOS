@@ -1,5 +1,5 @@
 /**
- * FlowOS — Twilio connector REMOVED
+ * FlowOS Reach — Twilio connector REMOVED
  * Connector removed from catalog. Route kept as 410 tombstone.
  * SMS: Klaviyo SMS.
  */

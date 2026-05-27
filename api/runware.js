@@ -1,5 +1,5 @@
 /**
- * FlowOS — Runware direct connector
+ * FlowOS Reach — Runware direct connector
  * Vercel Edge Function: POST /api/runware
  *
  * Validates the API key via Runware's REST API, persists to

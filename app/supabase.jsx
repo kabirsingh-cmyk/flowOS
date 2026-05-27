@@ -1,4 +1,4 @@
-// FlowOS — Supabase client + authed fetch helper
+// FlowOS Reach — Supabase client + authed fetch helper
 //
 // The anon key is intentionally public — all data is now protected by Row
 // Level Security (see db/migrations/007_core_schema_and_rls.sql) and every

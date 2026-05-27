@@ -1,5 +1,5 @@
 /**
- * FlowOS — Proactive SMS drafts
+ * FlowOS Reach — Proactive SMS drafts
  * Vercel Edge Function: GET/POST/PATCH /api/proactive-sms
  *
  * Content-creation flavor #1 (Proactive) for the SMS channel.

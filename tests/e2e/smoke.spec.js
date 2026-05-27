@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * FlowOS — E2E smoke tests
+ * FlowOS Reach — E2E smoke tests
  *
  * Covers the critical happy paths. Uses ?seed=mveda to bypass Supabase auth —
  * no real credentials needed. The server must be running (playwright.config.js

@@ -1,5 +1,5 @@
 /**
- * FlowOS — Optimizely connector (Direct API, per-tenant API key)
+ * FlowOS Reach — Optimizely connector (Direct API, per-tenant API key)
  * Vercel Edge Function: POST /api/optimizely
  *
  * Actions:

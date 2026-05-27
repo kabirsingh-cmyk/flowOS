@@ -1,5 +1,5 @@
 /**
- * FlowOS — WordPress connector (Direct API, per-tenant Application Password)
+ * FlowOS Reach — WordPress connector (Direct API, per-tenant Application Password)
  * Vercel Edge Function: POST /api/wordpress
  *
  * Actions:

@@ -1,10 +1,10 @@
-# FlowOS — Agent Instructions
+# FlowOS Reach — Agent Instructions
 
-This file is the shared entry point for AI assistants working in the FlowOS repository. Keep it project-specific and safe to publish. Do not put personal machine setup, private network details, credentials, tokens, or local-only workflow notes here.
+This file is the shared entry point for AI assistants working in the FlowOS Reach repository. Keep it project-specific and safe to publish. Do not put personal machine setup, private network details, credentials, tokens, or local-only workflow notes here.
 
 ## Project Overview
 
-**FlowOS** is an AI marketing operating system for brands. It is a multi-tenant single-page application (SPA) that allows one logged-in brand at a time to create, publish, and measure marketing content across dozens of channels.
+**FlowOS Reach** is an AI marketing operating system for brands. It is a multi-tenant single-page application (SPA) that allows one logged-in brand at a time to create, publish, and measure marketing content across dozens of channels.
 
 Production stack:
 

@@ -1,4 +1,4 @@
-// FlowOS — request authentication for /api/* edge handlers
+// FlowOS Reach — request authentication for /api/* edge handlers
 //
 // Two helpers, each returning either a Response (caller should `return` it as
 // the failure response) or an object with the resolved identity:

@@ -1,5 +1,5 @@
 /**
- * FlowOS — SendGrid connector REMOVED
+ * FlowOS Reach — SendGrid connector REMOVED
  * Connector removed from catalog. Route kept as 410 tombstone.
  * Marketing email: Klaviyo. Transactional: not wired.
  */

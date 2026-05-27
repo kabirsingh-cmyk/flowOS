@@ -1,7 +1,7 @@
 {
   "name": "flowos",
   "version": "0.1.0",
-  "description": "FlowOS — AI that creates, posts, and measures across every channel",
+  "description": "FlowOS Reach — AI that creates, posts, and measures across every channel",
   "type": "module",
   "scripts": {
     "build": "echo 'Static site — no build required'",

@@ -1,4 +1,4 @@
-// FlowOS — shared UI primitives (merged from ui.jsx + ui2.jsx)
+// FlowOS Reach — shared UI primitives (merged from ui.jsx + ui2.jsx)
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
 // ─── Utilities ────────────────────────────────────────────────────────────────

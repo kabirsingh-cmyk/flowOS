@@ -1,4 +1,4 @@
-# FlowOS · Full Platform × Content Type × Creation Tool Mapping
+# FlowOS Reach · Full Platform × Content Type × Creation Tool Mapping
 
 > Every content type Flow can create, organised by platform and channel.
 > **Text/copy** → Claude · **Static image** → Runware · **UGC/avatar video** → HeyGen · **Cinematic/product video** → Runway or Luma · **Voice-over** → ElevenLabs

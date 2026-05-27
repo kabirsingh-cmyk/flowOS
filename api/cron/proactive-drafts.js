@@ -1,5 +1,5 @@
 /**
- * FlowOS — Proactive drafts cron
+ * FlowOS Reach — Proactive drafts cron
  * Vercel Cron: GET /api/cron/proactive-drafts — runs at 07:00 UTC every day
  *
  * 1. Verify CRON_SECRET

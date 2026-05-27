@@ -1,4 +1,4 @@
-// FlowOS — Scheduled posts queue (platform-agnostic)
+// FlowOS Reach — Scheduled posts queue (platform-agnostic)
 //
 // Frontend writes here when the user clicks Schedule in the Publishing Queue
 // drawer. Cron at /api/cron/fire-scheduled polls the resulting rows.
@@ -169,7 +169,7 @@ export default async function handler(req) {
 
     return reply({ error: `Unknown action: ${action}` }, 400);
   } catch (e) {
-    console.error("[FlowOS scheduled-posts]", e.message);
+    console.error("[FlowOS Reach scheduled-posts]", e.message);
     return reply({ error: e.message }, 500);
   }
 }

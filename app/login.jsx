@@ -1,4 +1,4 @@
-// FlowOS — login gate (Supabase Auth)
+// FlowOS Reach — login gate (Supabase Auth)
 const { useState: useStateLogin } = React;
 
 function LoginScreen() {
@@ -67,7 +67,7 @@ function LoginScreen() {
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div style={{ width: 36, height: 36, borderRadius: 6, background: "var(--accent)", color: "var(--accent-ink)", display: "grid", placeItems: "center", fontFamily: "var(--font-sans)", fontWeight: 700, fontSize: 16, letterSpacing: "-0.02em" }}>F</div>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 500, letterSpacing: "-0.01em" }}>FlowOS</div>
+          <div style={{ fontSize: 14, fontWeight: 500, letterSpacing: "-0.01em" }}>FlowOS Reach</div>
           <div className="mono" style={{ fontSize: 10, opacity: 0.6, letterSpacing: "0.14em", textTransform: "uppercase" }}>AI Marketing OS</div>
         </div>
       </div>
@@ -125,7 +125,7 @@ function LoginScreen() {
           </h2>
           <div style={{ marginTop: 8, fontSize: 13, color: "var(--muted)" }}>
             {mode === "signin"
-              ? <>New to FlowOS?{" "}<button onClick={() => { setMode("signup"); setError(""); }} style={{ background: "none", border: "none", color: "var(--accent)", fontWeight: 500, cursor: "pointer", fontSize: 13, padding: 0 }}>Create an account</button></>
+              ? <>New to FlowOS Reach?{" "}<button onClick={() => { setMode("signup"); setError(""); }} style={{ background: "none", border: "none", color: "var(--accent)", fontWeight: 500, cursor: "pointer", fontSize: 13, padding: 0 }}>Create an account</button></>
               : <>Already have an account?{" "}<button onClick={() => { setMode("signin"); setError(""); }} style={{ background: "none", border: "none", color: "var(--accent)", fontWeight: 500, cursor: "pointer", fontSize: 13, padding: 0 }}>Sign in</button></>
             }
           </div>
@@ -219,7 +219,7 @@ function LoginScreen() {
         </form>
 
         <div style={{ marginTop: 22, fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
-          By continuing you agree to FlowOS's{" "}
+          By continuing you agree to FlowOS Reach's{" "}
           <a href="#" onClick={e => e.preventDefault()} style={{ color: "var(--ink-2)" }}>Terms</a> and{" "}
           <a href="#" onClick={e => e.preventDefault()} style={{ color: "var(--ink-2)" }}>Privacy notice</a>.
         </div>

@@ -1,5 +1,5 @@
 /**
- * FlowOS — Zernio social publishing connector
+ * FlowOS Reach — Zernio social publishing connector
  * Vercel Edge Function: POST /api/zernio
  *
  * Zernio handles all 15 organic social platforms via OAuth-as-a-service.
@@ -8,7 +8,7 @@
  * Auth:
  *   ZERNIO_API_KEY — platform-level API key (server-side only)
  *   Header: Authorization: Bearer {key}
- *   Per-user isolation via Zernio profiles (one profile per FlowOS tenant).
+ *   Per-user isolation via Zernio profiles (one profile per FlowOS Reach tenant).
  *   Profiles are created on first connection and stored in
  *   connector_credentials(user_id, platform='zernio_profile').
  *
@@ -16,11 +16,11 @@
  *   facebook, instagram, linkedin, tiktok, pinterest, youtube,
  *   twitter (X), reddit, bluesky, threads, googlebusiness,
  *   whatsapp, telegram, snapchat, discord
- *   + FlowOS short IDs: fb, ig, li, tt, pn, yt, x, gbusiness
+ *   + FlowOS Reach short IDs: fb, ig, li, tt, pn, yt, x, gbusiness
  *
  * Supported ad platforms (connection via /v1/connect/{platform}/ads):
  *   metaads, linkedinads, tiktokads, xads, pinterestads, googleads
- *   FlowOS IDs: metaads, liads→linkedinads, ttads→tiktokads, xads, pinads→pinterestads
+ *   FlowOS Reach IDs: metaads, liads→linkedinads, ttads→tiktokads, xads, pinads→pinterestads
  *   googleads→googleads (migrated from Composio 2026-05-24; actions in api/google-ads.js)
  *
  *   Paid social OAuth quirks:
@@ -52,12 +52,12 @@ export const config = { runtime: "edge" };
 const ZERNIO_BASE = "https://zernio.com/api/v1";
 
 /**
- * PLATFORM_ID_MAP: FlowOS short connector IDs → Zernio platform slugs.
+ * PLATFORM_ID_MAP: FlowOS Reach short connector IDs → Zernio platform slugs.
  * workspaces4.jsx always sends connector.id as `app`; we resolve here.
  * Confirmed against https://docs.zernio.com (2026-05-24).
  */
 const PLATFORM_ID_MAP = {
-  // Organic social — FlowOS short IDs → Zernio slugs (confirmed 2026-05-24)
+  // Organic social — FlowOS Reach short IDs → Zernio slugs (confirmed 2026-05-24)
   fb:        "facebook",
   ig:        "instagram",
   li:        "linkedin",
@@ -66,7 +66,7 @@ const PLATFORM_ID_MAP = {
   yt:        "youtube",
   x:         "twitter",        // Zernio uses "twitter" not "x"
   gbusiness: "googlebusiness", // Zernio uses "googlebusiness"
-  // Paid social — FlowOS IDs → Zernio slugs (confirmed 2026-05-24)
+  // Paid social — FlowOS Reach IDs → Zernio slugs (confirmed 2026-05-24)
   liads:  "linkedinads",
   ttads:  "tiktokads",
   pinads: "pinterestads",
@@ -75,7 +75,7 @@ const PLATFORM_ID_MAP = {
 
 /**
  * ZERNIO_TO_FLOWOS: reverse map for Supabase channel lookups.
- * channels.platform stores FlowOS connector IDs (fb, ig, li…);
+ * channels.platform stores FlowOS Reach connector IDs (fb, ig, li…);
  * some callers (thin proxies) pass resolved Zernio slugs — this maps back.
  */
 const ZERNIO_TO_FLOWOS = {
@@ -104,13 +104,13 @@ function flowOSId(platform) {
 }
 
 const SUPPORTED_PLATFORMS = new Set([
-  // Organic — FlowOS short IDs
+  // Organic — FlowOS Reach short IDs
   "fb", "ig", "li", "tt", "pn", "yt", "x", "gbusiness",
   // Organic — Zernio slugs (confirmed)
   "facebook", "instagram", "linkedin", "tiktok", "pinterest", "youtube",
   "twitter", "reddit", "bluesky", "threads", "googlebusiness",
   "whatsapp", "telegram", "snapchat", "discord",
-  // Paid social — FlowOS IDs
+  // Paid social — FlowOS Reach IDs
   "metaads", "liads", "ttads", "xads", "pinads",
   // Paid social — Zernio slugs (confirmed)
   "linkedinads", "tiktokads", "pinterestads",
@@ -199,7 +199,7 @@ async function storeZernioProfileId(tenantId, profileId) {
 
 /**
  * Returns the cached Zernio profileId for a tenant, creating one if absent.
- * Each FlowOS tenant gets exactly one Zernio profile (named by tenantId).
+ * Each FlowOS Reach tenant gets exactly one Zernio profile (named by tenantId).
  */
 async function getOrCreateZernioProfile(tenantId) {
   const cached = await getZernioProfileId(tenantId);
@@ -207,7 +207,7 @@ async function getOrCreateZernioProfile(tenantId) {
 
   const data = await zernioFetch("/profiles", {
     method: "POST",
-    body:   JSON.stringify({ name: tenantId, description: "FlowOS tenant" }),
+    body:   JSON.stringify({ name: tenantId, description: "FlowOS Reach tenant" }),
   });
   const profileId = data.profile?._id || data._id;
   if (!profileId) throw new Error("Zernio profile creation returned no _id");
@@ -218,10 +218,10 @@ async function getOrCreateZernioProfile(tenantId) {
 /**
  * Load the Zernio accountId (_id from GET /accounts) for a connected platform.
  * Stored in channels.composio_connection_id at verify-and-persist time.
- * Accepts either a Zernio slug ("linkedin") or FlowOS ID ("li").
+ * Accepts either a Zernio slug ("linkedin") or FlowOS Reach ID ("li").
  */
 async function getZernioAccountId(tenantId, platform) {
-  const channelPlatform = flowOSId(platform); // normalize to FlowOS ID for DB lookup
+  const channelPlatform = flowOSId(platform); // normalize to FlowOS Reach ID for DB lookup
   const url = `${process.env.SUPABASE_URL}/rest/v1/channels` +
     `?user_id=eq.${encodeURIComponent(tenantId)}&platform=eq.${encodeURIComponent(channelPlatform)}` +
     `&select=composio_connection_id&limit=1`;
@@ -388,7 +388,7 @@ async function handlePublishNow(body) {
 
 /**
  * schedule_post
- * Delegates scheduling to Zernio natively (no FlowOS cron needed for social).
+ * Delegates scheduling to Zernio natively (no FlowOS Reach cron needed for social).
  * POST /v1/posts with { content, scheduledFor, timezone, platforms: [{platform, accountId}] }
  */
 async function handleSchedulePost(body) {

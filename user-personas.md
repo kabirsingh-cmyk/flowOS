@@ -1,4 +1,4 @@
-# FlowOS · User Personas & User Stories
+# FlowOS Reach · User Personas & User Stories
 
 > 4 personas · mix of role and business type · end-to-end interaction with Flow
 > Format: As a [persona], I want to [action] so that [outcome].
@@ -13,13 +13,13 @@
 ### Setup
 
 **US-1.1**
-As a solo DTC founder, I want to paste my brand URL and have FlowOS scrape my site so that I get an instant brand profile — voice, palette, values, competitor signals — without spending hours filling in forms.
+As a solo DTC founder, I want to paste my brand URL and have FlowOS Reach scrape my site so that I get an instant brand profile — voice, palette, values, competitor signals — without spending hours filling in forms.
 
 **US-1.2**
-As a solo DTC founder, I want to review and confirm extracted prohibited phrases in Brand Memory so that FlowOS never publishes anything that contradicts my Ayurvedic philosophy or uses clinical claims I can't back up.
+As a solo DTC founder, I want to review and confirm extracted prohibited phrases in Brand Memory so that FlowOS Reach never publishes anything that contradicts my Ayurvedic philosophy or uses clinical claims I can't back up.
 
 **US-1.3**
-As a solo DTC founder, I want FlowOS to recommend which connectors to activate based on my brand type so that I'm not browsing 20+ integrations figuring out where to start.
+As a solo DTC founder, I want FlowOS Reach to recommend which connectors to activate based on my brand type so that I'm not browsing 20+ integrations figuring out where to start.
 
 ---
 
@@ -80,7 +80,7 @@ As a solo DTC founder, I want to invite a part-time contractor as a guest with v
 ### Setup
 
 **US-2.1**
-As a marketing manager at a B2B service company, I want to import our website so that FlowOS extracts our positioning, service language, and approved claims — and pre-populates Brand Memory with compliance-safe guardrails from day one.
+As a marketing manager at a B2B service company, I want to import our website so that FlowOS Reach extracts our positioning, service language, and approved claims — and pre-populates Brand Memory with compliance-safe guardrails from day one.
 
 **US-2.2**
 As a marketing manager at a B2B service company, I want to connect GA4, LinkedIn Pages, and our email platform in one Connections flow so that all performance data surfaces in a single place.
@@ -208,7 +208,7 @@ As an agency account manager, I want to assign specific chat rail workstreams to
 ### Setup
 
 **US-4.1**
-As a head of growth at a mid-size e-commerce brand, I want to connect Meta Ads, Google Ads, TikTok Ads, Klaviyo, GA4, Ahrefs, and Shopify in a single Connections setup so that FlowOS has a complete picture of our stack from day one and the Analyst has full data access.
+As a head of growth at a mid-size e-commerce brand, I want to connect Meta Ads, Google Ads, TikTok Ads, Klaviyo, GA4, Ahrefs, and Shopify in a single Connections setup so that FlowOS Reach has a complete picture of our stack from day one and the Analyst has full data access.
 
 **US-4.2**
 As a head of growth at a mid-size e-commerce brand, I want extracted competitor signals to automatically inform the Analyst's benchmarking baseline so that our performance is always contextualised against our actual competitive landscape.

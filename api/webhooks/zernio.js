@@ -1,5 +1,5 @@
 /**
- * FlowOS — Zernio webhook receiver
+ * FlowOS Reach — Zernio webhook receiver
  * Vercel Edge Function: POST /api/webhooks/zernio
  *
  * Receives real-time events from Zernio for messages, comments, reactions,

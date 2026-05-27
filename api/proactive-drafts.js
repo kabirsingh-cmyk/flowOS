@@ -1,5 +1,5 @@
 /**
- * FlowOS — Proactive draft generation
+ * FlowOS Reach — Proactive draft generation
  * Vercel Edge Function: POST /api/proactive-drafts
  *
  * Takes a tenant's brand profile and generates a week of ready-to-edit

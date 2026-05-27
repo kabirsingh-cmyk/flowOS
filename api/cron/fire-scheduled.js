@@ -1,5 +1,5 @@
 /**
- * FlowOS — Scheduled post firing cron
+ * FlowOS Reach — Scheduled post firing cron
  * Vercel Cron: GET /api/cron/fire-scheduled — runs every minute on Pro.
  *
  * Flow per invocation:

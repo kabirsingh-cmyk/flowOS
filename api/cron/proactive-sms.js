@@ -1,5 +1,5 @@
 /**
- * FlowOS — Proactive SMS cron
+ * FlowOS Reach — Proactive SMS cron
  * Vercel Cron: GET /api/cron/proactive-sms — runs at 08:00 UTC every day
  *
  * Runs 30 min after proactive-emails (07:30). Iterates every tenant in `brands`,

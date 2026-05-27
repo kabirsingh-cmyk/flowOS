@@ -1,5 +1,5 @@
 /**
- * FlowOS — Proactive emails cron
+ * FlowOS Reach — Proactive emails cron
  * Vercel Cron: GET /api/cron/proactive-emails — runs at 07:30 UTC every day
  *
  * Runs 30 min after proactive-drafts so analytics_insights from the 06:00 cron

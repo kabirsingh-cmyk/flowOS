@@ -1,4 +1,4 @@
-# FlowOS Backlog
+# FlowOS Reach Backlog
 
 Maintained by `scripts/backlog-engine.mjs`. Free-text `### Why` / `### Notes` are user-owned — the engine never rewrites them.
 
@@ -858,12 +858,12 @@ When `analytics_snapshots` and `analytics_insights` return zero rows, InsightsCe
 - **touches**: api/zernio.js (new), api/linkedin.js, api/facebook.js, api/x.js, api/instagram.js, api/reddit.js, api/cron/fire-scheduled.js, app/seed.jsx, app/workspaces4.jsx, app/workspaces3.jsx, app/channel-strategy.jsx, api/brand-import.js, agents.jsx, db/migrations/
 
 ### Why
-Zernio collapses all organic social publishing — LinkedIn, Facebook, Instagram, X, TikTok, Reddit, Pinterest, Threads, Bluesky, YouTube, Snapchat, Google Business, Telegram, WhatsApp, Discord — behind one REST API with one OAuth flow per tenant account. Zernio owns the developer apps and platform approvals, which eliminates the entire class of failures FlowOS hits today: Composio error 306 (no managed credentials for X / TikTok / Shopify — b_60f8), TikTok content-posting gating (b_8cad row), Reddit's lack of native image post support (b_43d9, REDDIT_CREATE_REDDIT_POST kind:link fallback), Instagram's two-step creation+publish dance with required imageUrl (b_ea4e), and the seven platforms currently surfaced in the picker with no backend (b_b259, b_2fac). Replaces Composio social toolkit usage (LinkedIn / Facebook / Instagram / X / Reddit) and the Pipedream Pinterest connector. Pricing scales predictably: free for the first two tenant social accounts, $6/account for 3–10, $3 for 11–100, $1 for 101–2,000 — bakes cleanly into per-tenant unit economics.
+Zernio collapses all organic social publishing — LinkedIn, Facebook, Instagram, X, TikTok, Reddit, Pinterest, Threads, Bluesky, YouTube, Snapchat, Google Business, Telegram, WhatsApp, Discord — behind one REST API with one OAuth flow per tenant account. Zernio owns the developer apps and platform approvals, which eliminates the entire class of failures FlowOS Reach hits today: Composio error 306 (no managed credentials for X / TikTok / Shopify — b_60f8), TikTok content-posting gating (b_8cad row), Reddit's lack of native image post support (b_43d9, REDDIT_CREATE_REDDIT_POST kind:link fallback), Instagram's two-step creation+publish dance with required imageUrl (b_ea4e), and the seven platforms currently surfaced in the picker with no backend (b_b259, b_2fac). Replaces Composio social toolkit usage (LinkedIn / Facebook / Instagram / X / Reddit) and the Pipedream Pinterest connector. Pricing scales predictably: free for the first two tenant social accounts, $6/account for 3–10, $3 for 11–100, $1 for 101–2,000 — bakes cleanly into per-tenant unit economics.
 
 ### Notes
 **Scope of replacement**
 
-| FlowOS today | Moves to Zernio |
+| FlowOS Reach today | Moves to Zernio |
 |---|---|
 | `/api/linkedin` (Composio LINKEDIN) | `/api/zernio` `publish` with platform=linkedin |
 | `/api/facebook` (Composio FACEBOOK) | `/api/zernio` platform=facebook |
@@ -948,12 +948,12 @@ Composio earns its place on CRM + analytics + creative-AI: deep connector catalo
 - **touches**: app/seed.jsx, api/pipedream.js (APP_MAP), scripts/verify-pipedream.mjs, agents.jsx, channel-strategy.jsx, api/brand-import.js, (new) api/lib/transactional.js
 
 ### Why
-SendGrid currently sits as a Pipedream-keys connector for transactional system email (password reset, onboarding confirmations) but is not wired anywhere FlowOS actually sends mail. Marketing + campaign email already routes through Klaviyo via `/api/klaviyo create_draft_campaign` — that path is shipped and adequate. SendGrid's role was always the FlowOS-to-tenant-user transactional path, which is a tiny use case that doesn't justify Pipedream-mediated auth or per-tenant SendGrid accounts. Postmark or Resend with one FlowOS-platform SMTP account is dramatically simpler, has better deliverability for transactional, and costs cents per month at our scale. This is also what Supabase Auth uses by default for password-reset flows — likely we can lean on Supabase's built-in email and only need a Postmark/Resend layer if/when we send anything beyond auth (welcome emails, billing notices). Defer building the abstraction until we have something to send.
+SendGrid currently sits as a Pipedream-keys connector for transactional system email (password reset, onboarding confirmations) but is not wired anywhere FlowOS Reach actually sends mail. Marketing + campaign email already routes through Klaviyo via `/api/klaviyo create_draft_campaign` — that path is shipped and adequate. SendGrid's role was always the FlowOS Reach-to-tenant-user transactional path, which is a tiny use case that doesn't justify Pipedream-mediated auth or per-tenant SendGrid accounts. Postmark or Resend with one FlowOS Reach-platform SMTP account is dramatically simpler, has better deliverability for transactional, and costs cents per month at our scale. This is also what Supabase Auth uses by default for password-reset flows — likely we can lean on Supabase's built-in email and only need a Postmark/Resend layer if/when we send anything beyond auth (welcome emails, billing notices). Defer building the abstraction until we have something to send.
 
 ### Notes
-**Decision**: SendGrid leaves the connector catalog entirely. We add **no replacement to the catalog** — Postmark/Resend is platform-internal infrastructure (FlowOS sends to its own users), not a tenant-facing connector.
+**Decision**: SendGrid leaves the connector catalog entirely. We add **no replacement to the catalog** — Postmark/Resend is platform-internal infrastructure (FlowOS Reach sends to its own users), not a tenant-facing connector.
 
-**Today**: Supabase Auth's built-in transactional mailer handles password reset and email confirmation. That's all the transactional email FlowOS sends today, so no Postmark/Resend integration is needed yet.
+**Today**: Supabase Auth's built-in transactional mailer handles password reset and email confirmation. That's all the transactional email FlowOS Reach sends today, so no Postmark/Resend integration is needed yet.
 
 **When to add Postmark/Resend**: first time we need to send a non-auth platform email (welcome series, plan-change notice, generation-quota alert, etc.). At that point add `api/lib/transactional.js` with one method `sendTransactional({ to, subject, html })` backed by whichever provider has the better free tier when the moment arrives. Single env var: `TRANSACTIONAL_PROVIDER_KEY`.
 
@@ -977,7 +977,7 @@ SendGrid currently sits as a Pipedream-keys connector for transactional system e
 - **touches**: app/seed.jsx, api/pipedream.js, scripts/verify-pipedream.mjs, agents.jsx, channel-strategy.jsx, api/brand-import.js
 
 ### Why
-Twilio currently sits in the Pipedream-keys catalog but is not wired to any FlowOS feature. Klaviyo SMS (via Composio, shipped) covers the marketing/campaign SMS use case — scheduled sends, audience targeting, STOP compliance — which is the SMS use case FlowOS actually has today. Twilio's value-add is two-way conversational SMS, transactional triggered messages, dedicated phone numbers, and subaccount-per-tenant isolation — all real capabilities, but ones we should build against a validated tenant request, not speculatively. Removing Twilio from the catalog now keeps the connector surface honest (no integration is listed as "available" when it doesn't work end-to-end) and re-adds it cleanly when the first tenant actually asks.
+Twilio currently sits in the Pipedream-keys catalog but is not wired to any FlowOS Reach feature. Klaviyo SMS (via Composio, shipped) covers the marketing/campaign SMS use case — scheduled sends, audience targeting, STOP compliance — which is the SMS use case FlowOS Reach actually has today. Twilio's value-add is two-way conversational SMS, transactional triggered messages, dedicated phone numbers, and subaccount-per-tenant isolation — all real capabilities, but ones we should build against a validated tenant request, not speculatively. Removing Twilio from the catalog now keeps the connector surface honest (no integration is listed as "available" when it doesn't work end-to-end) and re-adds it cleanly when the first tenant actually asks.
 
 ### Notes
 **Decision**: drop Twilio from the catalog. If a tenant later asks for two-way SMS, dedicated number, or transactional SMS triggers, re-evaluate then. Twilio's per-tenant subaccount model is well-documented and the integration is cheap to add when there's a buyer.
@@ -1004,7 +1004,7 @@ Twilio currently sits in the Pipedream-keys catalog but is not wired to any Flow
 - **touches**: db/migrations/, api/generate.js, api/lib/providerRouter.js
 
 ### Why
-Runware, HeyGen, and Higgsfield are all platform-managed — FlowOS holds one API key per provider and absorbs cost into platform pricing. That's the right product call (tenants should never hit a rate limit mid-campaign because they forgot to top up a third-party account), but it means FlowOS bears the variable cost without per-tenant visibility today. Adding a `generation_usage` table now — *before* introducing usage-based pricing tiers, generation limits per plan, or high-cost-tenant alerts — is cheap and gives the data needed to make those decisions later without a schema migration under pressure. Strictly a data-collection item; no UI, no pricing logic, no enforcement. Just write a row per generation job.
+Runware, HeyGen, and Higgsfield are all platform-managed — FlowOS Reach holds one API key per provider and absorbs cost into platform pricing. That's the right product call (tenants should never hit a rate limit mid-campaign because they forgot to top up a third-party account), but it means FlowOS Reach bears the variable cost without per-tenant visibility today. Adding a `generation_usage` table now — *before* introducing usage-based pricing tiers, generation limits per plan, or high-cost-tenant alerts — is cheap and gives the data needed to make those decisions later without a schema migration under pressure. Strictly a data-collection item; no UI, no pricing logic, no enforcement. Just write a row per generation job.
 
 ### Notes
 **Schema** (`db/migrations/008_generation_usage.sql` or next available number)

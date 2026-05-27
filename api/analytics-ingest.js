@@ -1,5 +1,5 @@
 /**
- * FlowOS — Analytics Ingestion + Insight Generation
+ * FlowOS Reach — Analytics Ingestion + Insight Generation
  * Vercel Edge Function: POST /api/analytics-ingest
  *
  * Flow:
@@ -340,7 +340,7 @@ async function generateInsights(snapshots, brand, period) {
     `CHANNEL: ${s.channel}\n${JSON.stringify(s.metrics, null, 2)}`
   )).join("\n\n---\n\n");
 
-  const systemPrompt = `You are Analyst — the data AI for FlowOS, an AI marketing OS for ${brandName} (${industry}).
+  const systemPrompt = `You are Analyst — the data AI for FlowOS Reach, an AI marketing OS for ${brandName} (${industry}).
 
 Analyze the marketing performance data below and produce a structured JSON response.
 

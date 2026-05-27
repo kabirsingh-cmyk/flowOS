@@ -17,7 +17,7 @@ const CONNECTOR_PILLS = [
   { id: "Creative AI", label: "Creative AI" },
 ];
 
-// Map FlowOS connector provider → backend API route.
+// Map FlowOS Reach connector provider → backend API route.
 // zernio handles all social platforms; composio handles non-social toolkits.
 function providerApiPath(provider) {
   if (provider === "zernio") return "/api/zernio";
@@ -156,7 +156,7 @@ function BrandImportModal({ open, onClose, onApply }) {
       {step === "input" && (
         <div>
           <div style={{ fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.55, marginBottom: 18 }}>
-            FlowOS analyses your website and builds a brand memory — palette, voice, claims, channels, and competitors.
+            FlowOS Reach analyses your website and builds a brand memory — palette, voice, claims, channels, and competitors.
             Nothing is applied until you approve.
           </div>
 
@@ -595,7 +595,7 @@ function Connections({ state, actions }) {
     const apiKey = creds?.apiKey || "";
 
     // ── Manual / creative-handoff connectors ──
-    // No auth, no API. FlowOS owns the creative (script, audio, image) and the
+    // No auth, no API. FlowOS Reach owns the creative (script, audio, image) and the
     // user uploads to the provider's UI manually (e.g. Spotify Ad Studio).
     // "Connecting" just marks the tile as acknowledged so downstream agents
     // know the channel is in use.
@@ -1123,13 +1123,13 @@ function ConnectorAuthModal({ step, onClose, onSubmit }) {
       {!isApiKey && !isManual && (
         <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55, marginBottom: 14 }}>
           Connect your {connector.name} account. We'll open a browser window, you approve access there,
-          and FlowOS will detect the connection automatically.
+          and FlowOS Reach will detect the connection automatically.
         </div>
       )}
 
       {isManual && (
         <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55, marginBottom: 14 }}>
-          {connector.name} doesn't expose a public API. FlowOS generates the creative
+          {connector.name} doesn't expose a public API. FlowOS Reach generates the creative
           (script, audio, image) — you upload it manually to{" "}
           <span style={{ fontFamily: "var(--font-mono)", fontSize: 11.5 }}>
             {connector.domain || "the provider's UI"}
@@ -1178,7 +1178,7 @@ function ConnectorAuthModal({ step, onClose, onSubmit }) {
         fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5,
       }}>
         {connector.name} can expose {connector.category.toLowerCase()} data. After you connect,
-        FlowOS's agent permissions are controlled in the Manage panel as read, write, and admin toggles.
+        FlowOS Reach's agent permissions are controlled in the Manage panel as read, write, and admin toggles.
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>

@@ -1,5 +1,5 @@
 /**
- * FlowOS — Luma AI connector (Direct API, per-tenant API key)
+ * FlowOS Reach — Luma AI connector (Direct API, per-tenant API key)
  * Vercel Edge Function: POST /api/luma
  *
  * Actions:

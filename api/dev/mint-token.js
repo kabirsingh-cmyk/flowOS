@@ -1,4 +1,4 @@
-// FlowOS — dev-only JWT minting for the ?seed=mveda / ?seed=erickson bypass.
+// FlowOS Reach — dev-only JWT minting for the ?seed=mveda / ?seed=erickson bypass.
 //
 // Returns a short-lived (1h) Supabase-shaped JWT signed with SUPABASE_JWT_SECRET
 // so the seed bypass path can call /api/* endpoints that require user auth.

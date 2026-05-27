@@ -1,5 +1,5 @@
 /**
- * FlowOS — Composio connector
+ * FlowOS Reach — Composio connector
  * Vercel Edge Function: POST /api/composio
  *
  * Composio v3 API (backend.composio.dev/api/v3).
@@ -67,7 +67,7 @@ async function composioFetch(path, options = {}) {
 }
 
 // ─── App slug mapping ─────────────────────────────────────────────────────────
-// Maps FlowOS connector IDs → Composio toolkit slugs.
+// Maps FlowOS Reach connector IDs → Composio toolkit slugs.
 // Source of truth for the canonical 50 lives in app/seed.jsx. Only IDs with
 // provider: "composio" need mapping here (32 of 50). Shared-auth platforms
 // resolve to the same Composio toolkit (e.g. metaads + fb + ig → facebook;
@@ -422,7 +422,7 @@ async function handleDisconnect({ accountId }) {
 /**
  * list_toolkits
  * Debug helper — returns every toolkit slug Composio knows about, so we can
- * verify the FlowOS APP_MAP. Useful when adding new connectors or when an
+ * verify the FlowOS Reach APP_MAP. Useful when adding new connectors or when an
  * initiate_connection call fails with "No managed auth config".
  *
  * Returns: { ok, toolkits: [{ slug, name, hasManaged }], count }
@@ -440,7 +440,7 @@ async function handleListToolkits() {
 
 /**
  * verify_app
- * Debug helper — verifies that a single FlowOS connector id resolves to a
+ * Debug helper — verifies that a single FlowOS Reach connector id resolves to a
  * Composio toolkit slug that exists AND has a managed auth config available.
  * Returns { ok, app, toolkitSlug, exists, managedAvailable }
  */

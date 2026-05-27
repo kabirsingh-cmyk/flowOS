@@ -2,7 +2,7 @@
 import { defineConfig } from "@playwright/test";
 
 /**
- * FlowOS — Playwright E2E configuration
+ * FlowOS Reach — Playwright E2E configuration
  *
  * The tests use the Python dev server (server.py, port 8765).
  * Start it before running: python3 server.py  (or let `webServer` below do it).

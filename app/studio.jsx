@@ -1,4 +1,4 @@
-// FlowOS — Studio: Social Studio hub, Email Studio, Search Studio
+// FlowOS Reach — Studio: Social Studio hub, Email Studio, Search Studio
 const { useState: useStateS } = React;
 
 // ─────────────────────────── LOCAL HELPERS ─────────────────────────────────
@@ -1598,7 +1598,7 @@ function SettingsHub({ state, actions, go }) {
 }
 
 // ───────────────────────────── SPEND DASHBOARD ──────────────────────────────
-// FlowOS operator view — all-tenant AI generation cost tracking.
+// FlowOS Reach operator view — all-tenant AI generation cost tracking.
 // Data comes from /api/spend which uses the service key to bypass RLS.
 
 function SpendDashboard({ actions }) {
@@ -1646,7 +1646,7 @@ function SpendDashboard({ actions }) {
       <div style={{ padding: "24px 32px 20px", borderBottom: "1px solid var(--rule)", background: "var(--paper)", flexShrink: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
           <div>
-            <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Operator · FlowOS internal</div>
+            <div className="mono" style={{ fontSize: 11, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Operator · FlowOS Reach internal</div>
             <h1 style={{ fontSize: 28, fontWeight: 500, letterSpacing: "-0.025em", margin: "4px 0 0" }}>Generation Spend</h1>
             <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 4 }}>All-tenant AI generation costs — runware · replicate · heygen · higgsfield · elevenlabs</div>
           </div>

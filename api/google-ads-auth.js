@@ -1,4 +1,4 @@
-// FlowOS — Google Ads OAuth endpoint (REMOVED)
+// FlowOS Reach — Google Ads OAuth endpoint (REMOVED)
 // Tombstone left in place to give stale browser bookmarks and any in-flight
 // OAuth redirects a clear signal instead of a generic 404.
 //

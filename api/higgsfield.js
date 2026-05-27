@@ -1,5 +1,5 @@
 /**
- * FlowOS — Higgsfield connector (Direct API, per-tenant API key)
+ * FlowOS Reach — Higgsfield connector (Direct API, per-tenant API key)
  * Vercel Edge Function: POST /api/higgsfield
  *
  * Actions:
