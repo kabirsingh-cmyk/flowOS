@@ -2,5 +2,27 @@
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    {
+      "path":     "/api/cron/daily-analytics",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path":     "/api/cron/proactive-drafts",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path":     "/api/cron/proactive-emails",
+      "schedule": "30 7 * * *"
+    },
+    {
+      "path":     "/api/cron/proactive-sms",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path":     "/api/cron/fire-scheduled",
+      "schedule": "* * * * *"
+    }
   ]
 }

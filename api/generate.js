@@ -14,7 +14,6 @@
  *   models_explore     — provider model discovery pass-through
  */
 
-import { z } from 'zod';
 import { buildPrompt }                     from './lib/assetPrompts.js';
 import {
   UNWORKABLE_MODELS,
@@ -611,17 +610,14 @@ export default async function handler(req) {
   }
 
   // Validate action
-  const ActionSchema = z.enum([
-    'upload_reference', 'generate_image', 'generate_video', 'job_status', 'models_explore'
-  ]);
-  const actionResult = ActionSchema.safeParse(body.action);
-  if (!actionResult.success) {
-    return err(`Invalid action. Supported: upload_reference, generate_image, generate_video, job_status, models_explore`, 400);
+  const VALID_ACTIONS = ['upload_reference', 'generate_image', 'generate_video', 'job_status', 'models_explore'];
+  if (!VALID_ACTIONS.includes(body.action)) {
+    return err(`Invalid action. Supported: ${VALID_ACTIONS.join(', ')}`, 400);
   }
 
   // Server-trusted tenantId — overrides anything the client sent.
   body = { ...body, tenantId: auth.tenantId };
-  const action = actionResult.data;
+  const action = body.action;
 
   try {
     switch (action) {
