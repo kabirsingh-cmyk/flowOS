@@ -44,7 +44,6 @@
  *   reply_dm             — reply to a DM (POST /inbox/conversations/{id}/messages)
  */
 
-import { z } from "zod";
 import { requireAuthOrCron, requireAuth } from "./lib/auth.js";
 import { corsPreflightResponse, jsonResponse, errResponse } from "./lib/cors.js";
 
@@ -617,22 +616,19 @@ export default async function handler(req) {
   let body;
   try { body = await req.json(); } catch { return errResponse("Invalid JSON body", 400); }
 
-  const ActionSchema = z.enum([
+  const VALID_ACTIONS = [
     "initiate_connection", "connection_status", "disconnect",
     "publish_now", "schedule_post", "get_analytics",
     "get_dms", "get_comments", "boost_post",
     "resolve_authors", "reply_comment", "reply_dm",
-  ]);
-  const actionResult = ActionSchema.safeParse(body.action);
-  if (!actionResult.success) {
+  ];
+  if (!VALID_ACTIONS.includes(body.action)) {
     return errResponse(
-      `Invalid action. Supported: initiate_connection, connection_status, disconnect, ` +
-      `publish_now, schedule_post, get_analytics, get_dms, get_comments, boost_post, ` +
-      `resolve_authors, reply_comment, reply_dm`,
+      `Invalid action. Supported: ${VALID_ACTIONS.join(", ")}`,
       400,
     );
   }
-  const action = actionResult.data;
+  const action = body.action;
   const dualAuthActions = new Set(["publish_now", "schedule_post"]);
 
   let tenantId;
