@@ -16,7 +16,7 @@
 // When a SKU name contains any of these words the model's semantic prior may
 // override the visual reference, shifting the palette toward the named colour.
 export const COLOUR_WORDS =
-  /\b(green|pink|black|red|crimson|saffron|honey|amber|gold|silver|blue|navy|cream|ivory|forest|emerald|onyx|ruby|chocolate|caramel|coral|peach|lavender|rose|sand)\b/i;
+  /\b(green|pink|black|red|crimson|saffron|honey|amber|gold|silver|blue|navy|cream|ivory|forest|emerald|onyx|ruby|chocolate|caramel|coral|peach|lavender|sand)\b/i;
 
 // ─── DM-03: Functional / sensitivity cue detection ────────────────────────────
 // When these words appear in intent text, latent colour associations push the

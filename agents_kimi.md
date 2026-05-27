@@ -12,7 +12,7 @@ Production stack:
 - **Backend**: Vercel Edge Functions (Node.js runtime).
 - **Database / Auth**: Supabase (PostgreSQL + JWT auth).
 - **AI**: Anthropic Claude API.
-- **Integrations**: Composio (tool execution), Pipedream (hosted OAuth / API keys), and direct API connectors.
+- **Integrations**: Composio (tool execution), Zernio (social publishing), and direct API connectors.
 - **Deployment**: Vercel (auto-deploy on push to `main`).
 
 Two seed brands are baked in for local development: **MVEDA** (Ayurvedic skincare, DTC) and **Erickson Refrigeration** (B2B commercial HVAC).
@@ -42,7 +42,7 @@ For connector or integration work, also read:
 | Database | Supabase (PostgreSQL) |
 | Auth | Supabase Auth (JWT, HS256) |
 | AI / LLM | Anthropic Claude API |
-| Integrations | Composio, Pipedream, Direct REST APIs |
+| Integrations | Composio, Zernio, Direct REST APIs |
 | Testing | Node.js built-in test runner (unit / integration), Playwright (E2E) |
 | Dev server | Python 3 (`server.py`, port 8765) |
 
@@ -106,7 +106,7 @@ node scripts/health-check.mjs
 │   ├── brand-import.js     # URL scraping → Claude → Supabase brands table
 │   ├── generate.js         # Image/video generation router
 │   ├── composio.js         # Composio OAuth + API-key connector flows
-│   ├── pipedream.js        # Pipedream Connect flows
+│   ├── zernio.js           # Zernio social publishing
 │   ├── google-ads.js       # Google Ads via Composio
 │   ├── klaviyo.js          # Klaviyo email/SMS push
 │   ├── linkedin.js         # LinkedIn organic posting
@@ -218,7 +218,7 @@ When adding a new connector to the catalog:
 3. `channel-strategy.jsx` — `connectedSet` id→display-name map (if publishing channel)
 4. `api/brand-import.js` — `CONNECTOR_IDS` array
 5. `store.jsx` — `channelRules` (if publishing channel)
-6. For Composio / Pipedream / Direct: the respective API route + verify script
+6. For Composio / Zernio / Direct: the respective API route + verify script
 
 ## Testing Instructions
 
@@ -278,10 +278,7 @@ Required for local development and production:
 | `ZERNIO_WEBHOOK_SECRET` | Zernio webhook HMAC verification |
 | `RUNWARE_API_KEY` | Runware image + video generation |
 | `HIGGSFIELD_API_KEY` | Higgsfield video generation |
-| `PIPEDREAM_PROJECT_ID` | Pipedream Connect project ID |
-| `PIPEDREAM_CLIENT_ID` | Pipedream OAuth client ID |
-| `PIPEDREAM_CLIENT_SECRET` | Pipedream OAuth client secret |
-| `PIPEDREAM_ENVIRONMENT` | `production` or `development` |
+| `REPLICATE_API_KEY` | Replicate image/video generation (global fallback) |
 
 The Supabase anon key is baked into `app/supabase.jsx` (public — safe).
 

@@ -14,6 +14,7 @@
  *   models_explore     — provider model discovery pass-through
  */
 
+import { z } from 'zod';
 import { buildPrompt }                     from './lib/assetPrompts.js';
 import {
   UNWORKABLE_MODELS,
@@ -29,13 +30,19 @@ import { corsHeaders }                     from './lib/cors.js';
 
 export const config = { runtime: 'edge' };
 
-// ─── CORS headers ──────────────────────────────────────────────────────────────
-const CORS = corsHeaders();
+// ─── CORS headers (shared lib — no wildcard fallback) ─────────────────────────
+function buildCors() {
+  return {
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    ...corsHeaders(),
+  };
+}
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json', ...CORS },
+    headers: { 'Content-Type': 'application/json', ...buildCors() },
   });
 }
 
@@ -105,9 +112,7 @@ const COST_MAP = {
   replicate:  0.0030,  // varies by model; $0.003 is a conservative estimate
   heygen:     0.0500,  // avatar video ~$0.05 per render
   higgsfield: 0.0200,  // cinematic video
-  luma:       0.0150,
   elevenlabs: 0.0030,
-  audiostack: 0.0100,
 };
 
 async function logGenerationUsage({ tenantId, provider, model, jobType, jobId, status = "completed" }) {
@@ -141,10 +146,40 @@ async function logGenerationUsage({ tenantId, provider, model, jobType, jobId, s
  * @param {string} provider
  * @returns {Promise<string>}   Durable URL
  */
+const ALLOWED_REHOST_ORIGINS = new Set([
+  'runware.ai',
+  'api.runware.ai',
+  'higgsfield.ai',
+  'api.higgsfield.ai',
+  'replicate.delivery',
+  'replicate.com',
+  'pbxt.replicate.delivery',
+  'replicate.delivery',
+  'heygen.com',
+  'api.heygen.com',
+]);
+
+const MAX_REHOST_BYTES = 100 * 1024 * 1024; // 100 MB
+
+function isAllowedRehostUrl(url) {
+  try {
+    const u = new URL(url);
+    return ALLOWED_REHOST_ORIGINS.has(u.hostname) || u.hostname.endsWith('.replicate.delivery');
+  } catch {
+    return false;
+  }
+}
+
 async function rehost(rawUrl, tenantId, jobId, assetType = 'image', provider = 'unknown') {
   const base = process.env.SUPABASE_URL;
   const key  = process.env.SUPABASE_SERVICE_KEY;
   if (!base || !key || !rawUrl) return rawUrl;
+
+  if (!isAllowedRehostUrl(rawUrl)) {
+    console.warn('[rehost] blocked non-provider URL:', rawUrl);
+    return rawUrl;
+  }
+
   try {
     const urlPath = rawUrl.split('?')[0];
     const ext = urlPath.match(/\.(mp4|webm|mov|png|jpg|jpeg|webp|gif)$/i)?.[1]
@@ -153,8 +188,22 @@ async function rehost(rawUrl, tenantId, jobId, assetType = 'image', provider = '
 
     const fetchRes = await fetch(rawUrl);
     if (!fetchRes.ok) throw new Error(`Fetch failed: ${fetchRes.status}`);
+
+    const contentLength = fetchRes.headers.get('content-length');
+    if (contentLength && parseInt(contentLength, 10) > MAX_REHOST_BYTES) {
+      throw new Error(`Asset too large: ${contentLength} bytes (max ${MAX_REHOST_BYTES})`);
+    }
+
     const buffer      = await fetchRes.arrayBuffer();
-    const contentType = fetchRes.headers.get('content-type')
+    if (buffer.byteLength > MAX_REHOST_BYTES) {
+      throw new Error(`Asset too large: ${buffer.byteLength} bytes (max ${MAX_REHOST_BYTES})`);
+    }
+
+    const ct = fetchRes.headers.get('content-type') || '';
+    const allowedTypes = assetType === 'video'
+      ? ['video/mp4', 'video/webm', 'video/quicktime']
+      : ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    const contentType = allowedTypes.find(t => ct.includes(t))
       || (assetType === 'video' ? 'video/mp4' : 'image/jpeg');
 
     const uploadUrl = `${base}/storage/v1/object/tenant-media/${storagePath}`;
@@ -542,7 +591,7 @@ async function handleModelsExplore(body) {
 export default async function handler(req) {
   // OPTIONS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: CORS });
+    return new Response(null, { status: 204, headers: buildCors() });
   }
 
   if (req.method !== 'POST') {
@@ -561,9 +610,18 @@ export default async function handler(req) {
     return err('Invalid JSON body', 400);
   }
 
+  // Validate action
+  const ActionSchema = z.enum([
+    'upload_reference', 'generate_image', 'generate_video', 'job_status', 'models_explore'
+  ]);
+  const actionResult = ActionSchema.safeParse(body.action);
+  if (!actionResult.success) {
+    return err(`Invalid action. Supported: upload_reference, generate_image, generate_video, job_status, models_explore`, 400);
+  }
+
   // Server-trusted tenantId — overrides anything the client sent.
   body = { ...body, tenantId: auth.tenantId };
-  const { action } = body;
+  const action = actionResult.data;
 
   try {
     switch (action) {

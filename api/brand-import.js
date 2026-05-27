@@ -177,6 +177,13 @@ export default async function handler(req) {
   const { url } = body;
   if (!url) return new Response(JSON.stringify({ ok: false, error: "url required" }), { status: 400 });
 
+  // Validate URL format: must be http(s), have a TLD, no spaces, no control chars
+  const URL_RE = /^https?:\/\/[a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z0-9][-a-zA-Z0-9]*)+.*$/;
+  const MAX_URL_LEN = 2048;
+  if (typeof url !== 'string' || url.length > MAX_URL_LEN || !URL_RE.test(url)) {
+    return new Response(JSON.stringify({ ok: false, error: "Invalid URL format" }), { status: 400 });
+  }
+
   // Normalize URL
   const cleanUrl  = url.replace(/^https?:\/\//, "").replace(/\/$/, "");
   const fullUrl   = `https://${cleanUrl}`;

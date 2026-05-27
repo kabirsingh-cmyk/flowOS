@@ -1,7 +1,7 @@
 # FlowOS Reach · Full Platform × Content Type × Creation Tool Mapping
 
 > Every content type Flow can create, organised by platform and channel.
-> **Text/copy** → Claude · **Static image** → Runware · **UGC/avatar video** → HeyGen · **Cinematic/product video** → Runway or Luma · **Voice-over** → ElevenLabs
+> **Text/copy** → Claude · **Static image** → Runware · **UGC/avatar video** → HeyGen · **Cinematic/product video** → Runway or Higgsfield · **Voice-over** → ElevenLabs
 
 ---
 
@@ -13,7 +13,7 @@
 |---|---|---|---|---|
 | Feed post (single image) | Claude | Runware | — | — |
 | Feed post (carousel) | Claude | Runware | — | — |
-| Reel | Claude (script + caption) | — | Runway · Luma · HeyGen | ElevenLabs |
+| Reel | Claude (script + caption) | — | Runway · Higgsfield · HeyGen | ElevenLabs |
 | Story (static) | Claude | Runware | — | — |
 | Story (video) | Claude (script) | — | Runway · HeyGen | ElevenLabs |
 | Broadcast channel message | Claude | Runware | — | — |
@@ -22,7 +22,7 @@
 
 | Content Type | Text | Image | Video | Voice |
 |---|---|---|---|---|
-| Short video (≤60s) | Claude (script + hook + caption) | — | Runway · Luma · HeyGen | ElevenLabs |
+| Short video (≤60s) | Claude (script + hook + caption) | — | Runway · Higgsfield · HeyGen | ElevenLabs |
 | Long video (1–10 min) | Claude (script + description) | — | Runway · HeyGen | ElevenLabs |
 | Photo mode (carousel) | Claude | Runware | — | — |
 | Live script | Claude | — | — | — |
@@ -55,7 +55,7 @@
 
 | Content Type | Text | Image | Video | Voice |
 |---|---|---|---|---|
-| Long-form video (script + desc) | Claude | Runware (thumbnail) | Runway · Luma · HeyGen | ElevenLabs |
+| Long-form video (script + desc) | Claude | Runware (thumbnail) | Runway · Higgsfield · HeyGen | ElevenLabs |
 | YouTube Short | Claude (script + caption) | — | Runway · HeyGen | ElevenLabs |
 | Community post | Claude | Runware | — | — |
 | Video chapters / timestamps | Claude | — | — | — |
@@ -67,7 +67,7 @@
 |---|---|---|---|---|
 | Standard pin | Claude | Runware | — | — |
 | Carousel pin | Claude | Runware | — | — |
-| Video pin | Claude (description) | — | Runway · Luma | — |
+| Video pin | Claude (description) | — | Runway · Higgsfield | — |
 | Idea pin (multi-page) | Claude | Runware | Runway | — |
 | Shopping pin | Claude (product copy) | Runware | — | — |
 
@@ -206,7 +206,7 @@
 | Content Type | Text | Image | Video | Voice |
 |---|---|---|---|---|
 | Promoted pin (static) | Claude | Runware | — | — |
-| Promoted video pin | Claude (description) | — | Runway · Luma | — |
+| Promoted video pin | Claude (description) | — | Runway · Higgsfield | — |
 | Promoted carousel | Claude (per-card copy) | Runware | — | — |
 | Shopping ad | Claude (product title + desc) | Runware | — | — |
 | Quiz ad | Claude (questions + copy) | Runware | — | — |

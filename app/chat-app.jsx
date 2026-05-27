@@ -1,6 +1,39 @@
 // MVEDA Chat-OS — main app shell with channels, thread, canvas
 const { useState: useStateApp, useEffect: useEffectApp, useMemo: useMemoApp, useReducer: useReducerApp } = React;
 
+// ─── Error Boundary (prevents one crashed workspace from killing the app) ───
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info) {
+    console.error("[ErrorBoundary]", error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 40, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>Something went wrong</div>
+          <div style={{ fontSize: 12, color: "var(--muted)", fontFamily: "monospace" }}>
+            {this.state.error?.message || "Unknown error"}
+          </div>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--rule)", background: "var(--paper)", cursor: "pointer", fontSize: 12, alignSelf: "flex-start" }}
+          >
+            Try again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ────────────────────────────── CHAT REDUCER ──────────────────────────────
 function chatInit() {
   const ts = (h, m) => `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
@@ -713,7 +746,11 @@ function CanvasBody({ canvas, state, actions, go }) {
       spend: SpendDashboard,
     }[canvas.target];
     if (!Comp) return <div style={{ padding: 40, color: "var(--muted)" }}>Unknown workspace</div>;
-    return <Comp state={state} actions={actions} go={go} payload={{}}/>;
+    return (
+      <ErrorBoundary>
+        <Comp state={state} actions={actions} go={go} payload={{}}/>
+      </ErrorBoundary>
+    );
   }
   if (canvas.kind === "calendar") {
     return <CampaignPlanner state={state} actions={actions} go={() => {}} payload={{}}/>;
@@ -1409,4 +1446,4 @@ function ChatOSAuthed({ auth, brand, seedMode, onLogout }) {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<ChatOS/>);
+export { ChatOS };
