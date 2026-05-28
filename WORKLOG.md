@@ -4,6 +4,29 @@ Reverse-chronological record of notable changes. New entries on top.
 
 ---
 
+## 2026-05-27 · Track A · PR 1 chunk 2 — Bulk upload + CSV import drawer
+
+**Scope:** `bulk_upload` action on the new Zernio publish route + an in-app CSV import drawer with column mapping, dry-run, and per-row results.
+
+### Changes
+- **[api/zernio-publish.js](api/zernio-publish.js)** — `bulk_upload` action accepts `{ posts: [{ platform, content, scheduledFor?, media? }], dryRun? }`, capped at 200 rows. Resolves platform via `resolvePlatform`, fetches each tenant's Zernio profileId once, and resolves an accountId per distinct platform via `getZernioAccountId`. Builds an in-memory CSV (header `profileId,platform,accountId,scheduledAt,content,mediaUrls`) and posts it as `multipart/form-data` to `/v1/posts/bulk-upload`. Early-error rows (missing platform, missing content, no connected account) are short-circuited into the response with synthetic error codes so the client always sees one result row per input row in original order. Forwards `?dryRun=true` when requested.
+- **[app/store.jsx](app/store.jsx)** — Track A block adds `importCSV({ posts, dryRun })`. Returns the bulk_upload response 1:1 so the drawer can render per-row outcomes; toasts a summary on real submits (suppressed on dry runs).
+- **[app/workspaces3.jsx](app/workspaces3.jsx)** — Header gets an "Import CSV" button. New Drawer (sibling to the edit drawer) with three steps: (1) file picker, (2) auto-detected column mapping for `platform / content / scheduled_for / media_urls` over the parsed header + 10-row preview, (3) results table. Includes a minimal RFC4180-ish CSV parser (`parseCsv`) and a heuristic mapper (`autoMapColumns`) — both module-level helpers in the IIFE.
+
+### CSV column assumption
+The Zernio OpenAPI spec defines `/v1/posts/bulk-upload` as a multipart upload but does **not** document the CSV column schema. Header used here (`profileId,platform,accountId,scheduledAt,content,mediaUrls`) is best-guess inferred from documented row-level error codes (`unknown_profile`, `no_account_for_platform`, `schedule_time_missing`, `rate_limited:<platform>:@<username>`). If Zernio rejects with "Invalid CSV", verify the column order in `BULK_CSV_HEADER` against their canonical header. Flagged in code with a comment block above the constant.
+
+### Deliberately not done
+- **No write to `state.calendar`** on successful import. Bulk-uploaded rows live in Zernio; the local calendar will pick them up via the existing scheduled-post hydration path on the next sync. Avoiding a partial duplicate write that would drift from Zernio's source of truth.
+- **No client-side platform-slug validation** beyond what Zernio returns. Easier to let Zernio be the authority and surface its error codes.
+
+### Verification
+- `node --check api/zernio-publish.js` → OK
+- `@babel/standalone` transform of the two .jsx files → OK
+- End-to-end smoke is: drop a 5-row CSV with mixed valid/invalid platforms, dry-run, then real import — expect the results table to show the corresponding ok/failed breakdown and the natural Zernio error codes for the bad rows.
+
+---
+
 ## 2026-05-27 · Track A · PR 1 chunk 1 — Zernio edit / unpublish / retry
 
 **Scope:** New `api/zernio-publish.js` edge route + PublishingQueue UI hooks for post-lifecycle actions on already-published rows.

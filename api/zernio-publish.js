@@ -28,10 +28,38 @@
 
 import { requireAuth } from "./lib/auth.js";
 import { corsPreflightResponse, jsonResponse, errResponse } from "./lib/cors.js";
-import { zernioFetch, getOrCreateZernioProfile, requireZernioAccountId } from "./lib/zernioClient.js";
+import {
+  zernioFetch, zernioHeaders, ZERNIO_BASE,
+  getOrCreateZernioProfile, getZernioAccountId,
+} from "./lib/zernioClient.js";
 import { resolvePlatform } from "./lib/zernioMap.js";
 
 export const config = { runtime: "edge" };
+
+const BULK_UPLOAD_MAX = 200;
+
+// CSV header for bulk-upload. The Zernio OpenAPI spec defines the endpoint
+// as multipart/form-data but does NOT document the CSV column schema —
+// these column names are best-guess inferred from the documented row-level
+// error codes (unknown_profile, no_account_for_platform, schedule_time_missing).
+// If Zernio rejects with "Invalid CSV", verify the column order here against
+// their actual expected header.
+const BULK_CSV_HEADER = ["profileId", "platform", "accountId", "scheduledAt", "content", "mediaUrls"];
+
+function csvEscape(value) {
+  if (value == null) return "";
+  const s = String(value);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function buildCsv(rows) {
+  const lines = [BULK_CSV_HEADER.join(",")];
+  for (const row of rows) {
+    lines.push(BULK_CSV_HEADER.map(col => csvEscape(row[col])).join(","));
+  }
+  return lines.join("\n") + "\n";
+}
 
 // ─── Action handlers ─────────────────────────────────────────────────────────
 
@@ -85,6 +113,117 @@ async function handleUnpublishPost(body) {
   });
 }
 
+async function handleBulkUpload(body) {
+  const { tenantId, posts, dryRun } = body;
+  if (!Array.isArray(posts) || posts.length === 0) {
+    return errResponse("posts[] required (non-empty array)");
+  }
+  if (posts.length > BULK_UPLOAD_MAX) {
+    return errResponse(`Too many posts (${posts.length}). Max ${BULK_UPLOAD_MAX} per call.`);
+  }
+
+  const profileId = await getOrCreateZernioProfile(tenantId);
+
+  // Resolve accountId per distinct platform once. Rows targeting an
+  // unconnected platform get a synthetic error row in the response so
+  // callers see exactly which rows blew up and why.
+  const accountByPlatform = new Map();
+  const earlyErrors = [];
+  for (let i = 0; i < posts.length; i++) {
+    const p = posts[i];
+    if (!p?.platform) {
+      earlyErrors.push({ rowIndex: i + 1, ok: false, errors: ["platform_required"] });
+      continue;
+    }
+    if (typeof p.content !== "string" || !p.content.trim()) {
+      earlyErrors.push({ rowIndex: i + 1, ok: false, errors: ["content_required"] });
+      continue;
+    }
+    const slug = resolvePlatform(p.platform);
+    if (!accountByPlatform.has(slug)) {
+      const id = await getZernioAccountId(tenantId, slug);
+      accountByPlatform.set(slug, id);
+    }
+    if (!accountByPlatform.get(slug)) {
+      earlyErrors.push({ rowIndex: i + 1, ok: false, errors: [`no_account_for_platform:${slug}`] });
+    }
+  }
+
+  // Build the CSV from rows that passed the local checks. Drop early-error
+  // rows from the CSV — we'll splice their synthetic errors back in below
+  // so the response covers every input row in its original order.
+  const csvRows = [];
+  const csvRowOriginalIndex = []; // maps csv index → original posts index
+  for (let i = 0; i < posts.length; i++) {
+    if (earlyErrors.find(e => e.rowIndex === i + 1)) continue;
+    const p = posts[i];
+    const slug = resolvePlatform(p.platform);
+    const media = Array.isArray(p.media) ? p.media.join(";")
+                : typeof p.media === "string" ? p.media
+                : "";
+    csvRows.push({
+      profileId,
+      platform:    slug,
+      accountId:   accountByPlatform.get(slug),
+      scheduledAt: p.scheduledFor || "",
+      content:     p.content,
+      mediaUrls:   media,
+    });
+    csvRowOriginalIndex.push(i);
+  }
+
+  let zernioResult = { total: 0, valid: 0, invalid: 0, results: [], warnings: [] };
+  let zernioStatus = 200;
+
+  if (csvRows.length > 0) {
+    const csv = buildCsv(csvRows);
+    const form = new FormData();
+    form.append("file", new Blob([csv], { type: "text/csv" }), "bulk.csv");
+
+    const { Authorization } = zernioHeaders();
+    const qs = dryRun ? "?dryRun=true" : "";
+    const res = await fetch(`${ZERNIO_BASE}/posts/bulk-upload${qs}`, {
+      method:  "POST",
+      headers: { Authorization }, // intentionally no Content-Type — FormData sets the boundary
+      body:    form,
+    });
+    const text = await res.text();
+    try { zernioResult = JSON.parse(text); } catch { zernioResult = { raw: text }; }
+    zernioStatus = res.status;
+    if (!res.ok && res.status !== 207) {
+      const err = new Error(zernioResult?.error || `Zernio bulk-upload ${res.status}`);
+      err.status = res.status;
+      err.body   = zernioResult;
+      throw err;
+    }
+  }
+
+  // Re-attach early-error rows to results, preserving original row order.
+  const mergedResults = [];
+  const zResults = Array.isArray(zernioResult.results) ? zernioResult.results : [];
+  for (let i = 0; i < posts.length; i++) {
+    const early = earlyErrors.find(e => e.rowIndex === i + 1);
+    if (early) { mergedResults.push(early); continue; }
+    const csvIdx = csvRowOriginalIndex.indexOf(i);
+    const zRow   = zResults[csvIdx];
+    mergedResults.push(zRow ? { ...zRow, rowIndex: i + 1 } : { rowIndex: i + 1, ok: false, errors: ["no_response_for_row"] });
+  }
+
+  const valid   = mergedResults.filter(r => r.ok).length;
+  const invalid = mergedResults.length - valid;
+
+  return jsonResponse({
+    ok:         invalid === 0,
+    total:      mergedResults.length,
+    valid,
+    invalid,
+    results:    mergedResults,
+    warnings:   zernioResult.warnings || [],
+    dryRun:     !!dryRun,
+    upstreamStatus: zernioStatus,
+  });
+}
+
 async function handleRetryPost(body) {
   const { postId } = body;
   if (!postId) return errResponse("postId required");
@@ -116,7 +255,7 @@ export default async function handler(req) {
   let body;
   try { body = await req.json(); } catch { return errResponse("Invalid JSON body", 400); }
 
-  const VALID_ACTIONS = ["edit_post", "unpublish_post", "retry_post"];
+  const VALID_ACTIONS = ["edit_post", "unpublish_post", "retry_post", "bulk_upload"];
   if (!VALID_ACTIONS.includes(body.action)) {
     return errResponse(`Invalid action. Supported: ${VALID_ACTIONS.join(", ")}`, 400);
   }
@@ -136,6 +275,7 @@ export default async function handler(req) {
       case "edit_post":      return await handleEditPost(body);
       case "unpublish_post": return await handleUnpublishPost(body);
       case "retry_post":     return await handleRetryPost(body);
+      case "bulk_upload":    return await handleBulkUpload(body);
       default:
         return errResponse(`Unknown action "${body.action}"`);
     }
@@ -146,6 +286,3 @@ export default async function handler(req) {
   }
 }
 
-// requireZernioAccountId is imported for use by bulk_upload in PR 2 — keep the
-// import here so the helper surface stays visible to future edits in this file.
-void requireZernioAccountId;

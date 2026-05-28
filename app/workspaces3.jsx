@@ -12,6 +12,52 @@ function getZernioPostId(item) {
       || item.instagramPostId || item.redditPostId    || null;
 }
 
+// Minimal RFC4180-ish CSV parser. Handles quoted fields with embedded
+// commas, newlines, and escaped quotes ("" → "). Trailing newline tolerated.
+// Returns { header: string[], rows: string[][] }.
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else { field += c; }
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ",") { row.push(field); field = ""; }
+      else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+      else if (c === "\r") { /* swallow */ }
+      else field += c;
+    }
+  }
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+  const header = rows.shift() || [];
+  return { header, rows: rows.filter(r => r.length && r.some(v => v !== "")) };
+}
+
+// Heuristic auto-mapping from CSV header names → our 4 logical fields.
+function autoMapColumns(header) {
+  const norm = h => h.trim().toLowerCase().replace(/[\s_-]+/g, "");
+  const find = patterns => {
+    for (const h of header) {
+      const n = norm(h);
+      if (patterns.some(p => n === p || n.includes(p))) return h;
+    }
+    return "";
+  };
+  return {
+    platform:      find(["platform", "channel", "network"]),
+    content:       find(["content", "body", "text", "caption", "message", "post"]),
+    scheduled_for: find(["scheduledfor", "scheduledat", "scheduletime", "schedule", "datetime", "date"]),
+    media_urls:    find(["mediaurls", "media", "imageurl", "image", "video", "attachments"]),
+  };
+}
+
 // ────────────────────────────── PUBLISHING QUEUE ──────────────────────────────
 function PublishingQueue({ state, actions }) {
   const [view, setView]           = useState3("calendar"); // "calendar" | "list"
@@ -24,6 +70,21 @@ function PublishingQueue({ state, actions }) {
   const [scheduling, setScheduling] = useState3(false);
   const [generatingImage, setGeneratingImage] = useState3(false);
   const [redditTitle, setRedditTitle] = useState3("");      // Reddit-specific title field
+
+  // CSV import (Track A — PR 1.2)
+  const [csvOpen,       setCsvOpen]       = useState3(false);
+  const [csvFileName,   setCsvFileName]   = useState3("");
+  const [csvHeader,     setCsvHeader]     = useState3([]);    // string[] of column names parsed from CSV
+  const [csvRows,       setCsvRows]       = useState3([]);    // array of object rows keyed by header
+  const [csvMapping,    setCsvMapping]    = useState3({ platform: "", content: "", scheduled_for: "", media_urls: "" });
+  const [csvSubmitting, setCsvSubmitting] = useState3(false);
+  const [csvResult,     setCsvResult]     = useState3(null);  // { total, valid, invalid, results, warnings, dryRun }
+
+  const resetCsv = () => {
+    setCsvFileName(""); setCsvHeader([]); setCsvRows([]);
+    setCsvMapping({ platform: "", content: "", scheduled_for: "", media_urls: "" });
+    setCsvResult(null);
+  };
 
   // Hydrate scheduled_posts rows into the calendar on mount. The cron writes
   // status transitions to that table — clients reconcile here. Per-platform
@@ -473,6 +534,9 @@ function PublishingQueue({ state, actions }) {
                 ? <><span className="dot-pulse" style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "currentColor", marginRight: 6 }}/> Generating…</>
                 : <><Icon name="edit" size={11}/> Generate drafts</>
               }
+            </Btn>
+            <Btn size="sm" onClick={() => { resetCsv(); setCsvOpen(true); }}>
+              <Icon name="upload" size={11}/> Import CSV
             </Btn>
             <Btn size="sm" onClick={() => {
               queue.forEach(q => { if (q.status !== "paused") actions.updateItem(q.id, { status: "paused" }); });
@@ -1444,6 +1508,185 @@ function PublishingQueue({ state, actions }) {
           </Drawer>
         );
       })()}
+
+      {csvOpen && (
+        <Drawer open={true} onClose={() => { setCsvOpen(false); resetCsv(); }}
+          title="Import CSV"
+          actions={<>
+            <Btn variant="ghost" onClick={() => { setCsvOpen(false); resetCsv(); }}>
+              <Icon name="x" size={12}/> Cancel
+            </Btn>
+            {csvRows.length > 0 && !csvResult && (() => {
+              const mapped = csvMapping.platform && csvMapping.content;
+              return (
+                <>
+                  <Btn variant="ghost" disabled={!mapped || csvSubmitting}
+                    onClick={async () => {
+                      setCsvSubmitting(true);
+                      const posts = csvRows.map(r => ({
+                        platform:     r[csvMapping.platform],
+                        content:      r[csvMapping.content],
+                        scheduledFor: csvMapping.scheduled_for ? r[csvMapping.scheduled_for] : undefined,
+                        media:        csvMapping.media_urls ? r[csvMapping.media_urls] : undefined,
+                      }));
+                      const res = await actions.importCSV({ posts, dryRun: true });
+                      setCsvSubmitting(false);
+                      if (res?.ok) setCsvResult({ ...res.data, dryRun: true });
+                    }}>
+                    <Icon name="eye" size={12}/> Dry run
+                  </Btn>
+                  <Btn variant="primary" disabled={!mapped || csvSubmitting}
+                    onClick={async () => {
+                      setCsvSubmitting(true);
+                      const posts = csvRows.map(r => ({
+                        platform:     r[csvMapping.platform],
+                        content:      r[csvMapping.content],
+                        scheduledFor: csvMapping.scheduled_for ? r[csvMapping.scheduled_for] : undefined,
+                        media:        csvMapping.media_urls ? r[csvMapping.media_urls] : undefined,
+                      }));
+                      const res = await actions.importCSV({ posts, dryRun: false });
+                      setCsvSubmitting(false);
+                      if (res?.ok) setCsvResult({ ...res.data, dryRun: false });
+                    }}>
+                    <Icon name="upload" size={12}/> {csvSubmitting ? "Uploading…" : `Import ${csvRows.length}`}
+                  </Btn>
+                </>
+              );
+            })()}
+            {csvResult && (
+              <Btn variant="primary" onClick={() => { setCsvOpen(false); resetCsv(); }}>
+                <Icon name="check" size={12}/> Done
+              </Btn>
+            )}
+          </>}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Step 1 — file picker */}
+            {csvRows.length === 0 && (
+              <div>
+                <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>
+                  Step 1 · Choose a CSV
+                </div>
+                <p style={{ fontSize: 12.5, color: "var(--muted)", margin: "0 0 12px" }}>
+                  Header row required. Up to 200 rows per import. Columns can be in any order — you'll map them in the next step.
+                </p>
+                <input type="file" accept=".csv,text/csv"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      const text = String(reader.result || "");
+                      const { header, rows } = parseCsv(text);
+                      if (!header.length || !rows.length) {
+                        actions.notify("warn", "CSV looks empty — need a header row and at least one data row");
+                        return;
+                      }
+                      const objectRows = rows.map(r => Object.fromEntries(header.map((h, i) => [h, r[i] ?? ""])));
+                      setCsvFileName(f.name);
+                      setCsvHeader(header);
+                      setCsvRows(objectRows);
+                      setCsvMapping(autoMapColumns(header));
+                    };
+                    reader.readAsText(f);
+                  }}/>
+              </div>
+            )}
+
+            {/* Step 2 — column mapping + preview */}
+            {csvRows.length > 0 && !csvResult && (
+              <>
+                <div>
+                  <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>
+                    Step 2 · Map columns
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>
+                    {csvFileName} · {csvRows.length} rows
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 8, alignItems: "center" }}>
+                    {[
+                      ["platform",      "Platform *",     true],
+                      ["content",       "Content *",      true],
+                      ["scheduled_for", "Scheduled for",  false],
+                      ["media_urls",    "Media URLs",     false],
+                    ].map(([key, label, required]) => (
+                      <React.Fragment key={key}>
+                        <label style={{ fontSize: 12, color: "var(--ink)" }}>
+                          {label}
+                        </label>
+                        <select value={csvMapping[key]} onChange={(e) => setCsvMapping({ ...csvMapping, [key]: e.target.value })}
+                          style={{ padding: "5px 8px", fontSize: 12, border: "1px solid var(--rule)", borderRadius: 4, background: "var(--paper)", color: "var(--ink)" }}>
+                          <option value="">{required ? "— select —" : "— none —"}</option>
+                          {csvHeader.map(h => <option key={h} value={h}>{h}</option>)}
+                        </select>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>
+                    Preview · first {Math.min(10, csvRows.length)} of {csvRows.length}
+                  </div>
+                  <div style={{ border: "1px solid var(--rule)", borderRadius: 5, overflow: "hidden" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 120px 100px", padding: "6px 10px", background: "var(--paper-2)", borderBottom: "1px solid var(--rule)", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                      <span>Platform</span><span>Content</span><span>Scheduled</span><span>Media</span>
+                    </div>
+                    {csvRows.slice(0, 10).map((r, i) => (
+                      <div key={i} style={{ display: "grid", gridTemplateColumns: "80px 1fr 120px 100px", padding: "6px 10px", borderBottom: "1px solid var(--rule)", fontSize: 11.5, alignItems: "center" }}>
+                        <span style={{ fontWeight: 500 }}>{csvMapping.platform ? r[csvMapping.platform] || "—" : "—"}</span>
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 8 }}>
+                          {csvMapping.content ? r[csvMapping.content] || "—" : "—"}
+                        </span>
+                        <span style={{ color: "var(--muted)", fontSize: 10.5 }}>
+                          {csvMapping.scheduled_for ? r[csvMapping.scheduled_for] || "—" : "—"}
+                        </span>
+                        <span style={{ color: "var(--muted)", fontSize: 10.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {csvMapping.media_urls ? r[csvMapping.media_urls] || "—" : "—"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Step 3 — results */}
+            {csvResult && (
+              <div>
+                <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>
+                  {csvResult.dryRun ? "Dry-run results" : "Import results"}
+                </div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+                  <Chip tone="ok">{csvResult.valid} ok</Chip>
+                  {csvResult.invalid > 0 && <Chip tone="warn">{csvResult.invalid} failed</Chip>}
+                  <Chip>{csvResult.total} total</Chip>
+                  {csvResult.dryRun && <Chip tone="accent">dry run</Chip>}
+                </div>
+                {(csvResult.warnings || []).length > 0 && (
+                  <div style={{ marginBottom: 12, fontSize: 11.5, color: "oklch(45% 0.12 60)" }}>
+                    Warnings: {csvResult.warnings.join(", ")}
+                  </div>
+                )}
+                <div style={{ border: "1px solid var(--rule)", borderRadius: 5, overflow: "hidden", maxHeight: 320, overflowY: "auto" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "60px 80px 1fr", padding: "6px 10px", background: "var(--paper-2)", borderBottom: "1px solid var(--rule)", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--muted)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                    <span>Row</span><span>Status</span><span>Detail</span>
+                  </div>
+                  {(csvResult.results || []).map((r) => (
+                    <div key={r.rowIndex} style={{ display: "grid", gridTemplateColumns: "60px 80px 1fr", padding: "6px 10px", borderBottom: "1px solid var(--rule)", fontSize: 11.5, alignItems: "center" }}>
+                      <span className="mono" style={{ color: "var(--muted)" }}>#{r.rowIndex}</span>
+                      <span><Chip tone={r.ok ? "ok" : "warn"}>{r.ok ? "ok" : "failed"}</Chip></span>
+                      <span style={{ color: r.ok ? "var(--ink)" : "oklch(45% 0.14 25)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {r.ok ? (r.createdPostId || "queued") : (r.errors || []).join(", ")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </Drawer>
+      )}
     </div>
   );
 }

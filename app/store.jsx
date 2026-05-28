@@ -731,6 +731,31 @@ function useMvedaStore(seedMode = null, userId = null) {
         return { ok: false, error: e.message };
       }
     },
+    importCSV: async ({ posts, dryRun }) => {
+      if (!Array.isArray(posts) || posts.length === 0) {
+        return { ok: false, error: "posts[] required" };
+      }
+      try {
+        const res = await window.apiFetch("/api/zernio-publish", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ action: "bulk_upload", posts, dryRun: !!dryRun }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          dispatch({ type: "NOTIFY", tone: "warn", text: `Bulk upload failed: ${data.error || res.status}` });
+          return { ok: false, error: data.error || `HTTP ${res.status}` };
+        }
+        if (!dryRun) {
+          const tone = data.invalid === 0 ? "ok" : (data.valid === 0 ? "warn" : "accent");
+          dispatch({ type: "NOTIFY", tone, text: `CSV import · ${data.valid}/${data.total} queued${data.invalid ? `, ${data.invalid} failed` : ""}` });
+        }
+        return { ok: true, data };
+      } catch (e) {
+        dispatch({ type: "NOTIFY", tone: "warn", text: `Bulk upload failed: ${e.message}` });
+        return { ok: false, error: e.message };
+      }
+    },
     retryPost: async (itemId, { postId }) => {
       if (!postId) return { ok: false, error: "postId required" };
       try {
