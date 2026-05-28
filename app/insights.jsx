@@ -688,6 +688,174 @@
     );
   }
 
+  // ─── Comparison View ──────────────────────────────────────────────────────────
+
+  const HIGHER_IS_BETTER = new Set([
+    "roas","ctr","engagement_rate","open_rate","click_rate","revenue","conv_value",
+    "conversions","impressions","clicks","reach","sessions","active_users","orders",
+    "aov","unique_customers","net_revenue","page_fans","page_impressions",
+    "page_engaged_users","page_post_engagements","page_reactions_total",
+    "accounts_engaged","total_interactions","follower_count","following_count",
+    "likes_count","video_count","views","estimatedMinutesWatched","subscribersGained",
+    "followers_gained","engagements","calls","directionRequests","photoViews","sends","campaigns_sent",
+  ]);
+  const LOWER_IS_BETTER = new Set([
+    "bounce_rate","cpc","cpm","avg_position","subscribersLost","followers_lost",
+  ]);
+
+  function ComparisonView({ snapshots, selection, onToggle }) {
+    const available = snapshots.filter(s => CHANNEL_META[s.channel]);
+
+    if (available.length < 2) {
+      return (
+        <div style={{ textAlign: "center", padding: "60px 24px", color: "var(--muted)", fontSize: 14 }}>
+          Connect at least two platforms to use comparison mode.
+        </div>
+      );
+    }
+
+    const selectedSnaps = selection.map(key => available.find(s => s.channel === key)).filter(Boolean);
+
+    return (
+      <section style={{ marginBottom: 28 }}>
+        <h3 style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 12px" }}>
+          Compare Channels
+        </h3>
+
+        {/* Channel picker */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
+          {available.map(s => {
+            const meta = CHANNEL_META[s.channel];
+            const selected = selection.includes(s.channel);
+            return (
+              <button
+                key={s.channel}
+                onClick={() => onToggle(s.channel)}
+                style={{
+                  padding: "6px 12px", borderRadius: 6,
+                  border: selected ? `1.5px solid ${meta.color}` : "1px solid var(--rule)",
+                  background: selected ? `${meta.color}15` : "var(--paper)",
+                  color: selected ? meta.color : "var(--muted)",
+                  fontSize: 12.5, fontWeight: selected ? 600 : 400,
+                  cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
+                }}
+              >
+                <span>{meta.icon}</span>
+                <span>{meta.label}</span>
+                {selected && <span style={{ fontSize: 11, marginLeft: 2 }}>✓</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        {selection.length < 2 && (
+          <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>
+            Select 2–4 channels to compare side-by-side.
+          </div>
+        )}
+
+        {selectedSnaps.length >= 2 && (
+          <ComparisonTable snaps={selectedSnaps} />
+        )}
+      </section>
+    );
+  }
+
+  function ComparisonTable({ snaps }) {
+    // Gather all metric keys that appear in at least 2 selected channels
+    const keyCounts = {};
+    snaps.forEach(s => {
+      const keys = Object.keys(s.metrics || {}).filter(k => k !== "period" && k !== "dateRange" && k !== "date_start" && k !== "date_end" && !Array.isArray(s.metrics[k]));
+      keys.forEach(k => { keyCounts[k] = (keyCounts[k] || 0) + 1; });
+    });
+    const sharedKeys = Object.keys(keyCounts).filter(k => keyCounts[k] >= 2);
+    // Prefer known key order; append any extras alphabetically
+    const orderedKnown = [];
+    const allKnown = new Set();
+    snaps.forEach(s => {
+      (CHANNEL_KEY_METRICS[s.channel] || []).forEach(k => allKnown.add(k));
+    });
+    allKnown.forEach(k => { if (sharedKeys.includes(k)) orderedKnown.push(k); });
+    const extras = sharedKeys.filter(k => !allKnown.has(k)).sort();
+    const metricKeys = [...orderedKnown, ...extras];
+
+    if (metricKeys.length === 0) {
+      return (
+        <div style={{ fontSize: 13, color: "var(--muted)", padding: "20px 0" }}>
+          No overlapping metrics across the selected channels.
+        </div>
+      );
+    }
+
+    const getVal = (snap, key) => {
+      const raw = snap.metrics?.[key];
+      return snap.endpoint && snap.endpoint !== "legacy" ? resolveMetricValue(raw) : raw;
+    };
+
+    const cellStyle = {
+      padding: "10px 14px", borderBottom: "1px solid var(--rule)", borderRight: "1px solid var(--rule)",
+      fontSize: 13.5, color: "var(--ink)", fontFamily: "JetBrains Mono, monospace",
+    };
+    const headerCell = {
+      padding: "10px 14px", borderBottom: "1px solid var(--rule)", borderRight: "1px solid var(--rule)",
+      background: "var(--paper-2)", fontSize: 12, fontWeight: 600, color: "var(--ink)",
+      whiteSpace: "nowrap",
+    };
+
+    return (
+      <div style={{
+        background: "var(--paper)", border: "1px solid var(--rule)", borderRadius: 8, overflow: "hidden",
+        overflowX: "auto",
+      }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 400 }}>
+          <thead>
+            <tr>
+              <th style={{ ...headerCell, textAlign: "left", position: "sticky", left: 0, zIndex: 1 }}>Metric</th>
+              {snaps.map(s => {
+                const meta = CHANNEL_META[s.channel];
+                return (
+                  <th key={s.channel} style={{ ...headerCell, textAlign: "right" }}>
+                    <span style={{ marginRight: 6 }}>{meta.icon}</span>
+                    {meta.label}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {metricKeys.map(key => {
+              const vals = snaps.map(s => ({ snap: s, val: getVal(s, key) }));
+              const numeric = vals.filter(v => typeof v.val === "number" && !isNaN(v.val));
+              let bestVal = null;
+              if (numeric.length > 0) {
+                if (LOWER_IS_BETTER.has(key)) {
+                  bestVal = Math.min(...numeric.map(v => v.val));
+                } else if (HIGHER_IS_BETTER.has(key)) {
+                  bestVal = Math.max(...numeric.map(v => v.val));
+                }
+              }
+              return (
+                <tr key={key}>
+                  <td style={{ ...cellStyle, textAlign: "left", position: "sticky", left: 0, background: "var(--paper)", zIndex: 1, fontFamily: "inherit", fontWeight: 500 }}>
+                    {fmtMetricLabel(key)}
+                  </td>
+                  {vals.map(({ snap, val }) => {
+                    const isBest = bestVal !== null && typeof val === "number" && val === bestVal;
+                    return (
+                      <td key={snap.channel} style={{ ...cellStyle, textAlign: "right", background: isBest ? "rgba(34,197,94,0.08)" : "transparent", color: isBest ? "#16A34A" : "var(--ink)", fontWeight: isBest ? 600 : 400 }}>
+                        {fmtMetricValue(key, val)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   // ─── Main InsightsCenter component ────────────────────────────────────────────
 
   function InsightsCenter({ state }) {
@@ -700,6 +868,8 @@
     const [refreshing, setRefreshing]   = useStateI(false);
     const [lastUpdated, setLastUpdated] = useStateI(null);
     const [error, setError]             = useStateI(null);
+    const [compareMode, setCompareMode] = useStateI(false);
+    const [compareSelection, setCompareSelection] = useStateI([]);
 
     const sb = window.sb;
 
@@ -798,6 +968,14 @@
       window.dispatchEvent(new CustomEvent("flowos:navigate", { detail: { workspace } }));
     }
 
+    function toggleCompareChannel(key) {
+      setCompareSelection(prev => {
+        if (prev.includes(key)) return prev.filter(k => k !== key);
+        if (prev.length >= 4) return prev; // max 4
+        return [...prev, key];
+      });
+    }
+
     const hasData = snapshots.length > 0 || insights;
 
     return (
@@ -837,6 +1015,23 @@
                 </button>
               ))}
             </div>
+
+            {/* Compare toggle */}
+            <button
+              onClick={() => {
+                setCompareMode(v => !v);
+                if (compareMode) setCompareSelection([]);
+              }}
+              style={{
+                padding: "6px 14px", borderRadius: 7,
+                background: compareMode ? "var(--ink)" : "var(--paper-2)",
+                color: compareMode ? "#fff" : "var(--muted)",
+                border: "1px solid var(--rule)",
+                fontSize: 12.5, fontWeight: 500, cursor: "pointer",
+              }}
+            >
+              {compareMode ? "Exit Compare" : "⊕ Compare"}
+            </button>
 
             {/* Refresh button */}
             <button
@@ -885,12 +1080,22 @@
             <EmptyState onRefresh={handleRefresh} loading={refreshing} />
           ) : (
             <>
-              <SummarySection insights={insights} snapshots={snapshots} loading={loading} />
-              <RecommendedActions actions={insights?.recommended_actions} loading={loading} onNavigate={handleNavigate} />
-              <InsightsGrid items={insights?.insights} loading={loading} onNavigate={handleNavigate} />
-              <PrimitivesSection primitives={primitives} loading={loading} />
-              <DataByChannel snapshots={snapshots} loading={loading} />
-              <AnalyticsChat tenantId={tenantId} snapshots={snapshots} insights={insights} period={period} />
+              {compareMode ? (
+                <ComparisonView
+                  snapshots={snapshots}
+                  selection={compareSelection}
+                  onToggle={toggleCompareChannel}
+                />
+              ) : (
+                <>
+                  <SummarySection insights={insights} snapshots={snapshots} loading={loading} />
+                  <RecommendedActions actions={insights?.recommended_actions} loading={loading} onNavigate={handleNavigate} />
+                  <InsightsGrid items={insights?.insights} loading={loading} onNavigate={handleNavigate} />
+                  <PrimitivesSection primitives={primitives} loading={loading} />
+                  <DataByChannel snapshots={snapshots} loading={loading} />
+                  <AnalyticsChat tenantId={tenantId} snapshots={snapshots} insights={insights} period={period} />
+                </>
+              )}
             </>
           )}
         </div>
