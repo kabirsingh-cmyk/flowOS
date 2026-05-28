@@ -2,6 +2,16 @@
 // MVEDA workspaces — part 3: Publishing, Insights, Inbox, Autonomy
 const { useState: useState3, useMemo: useMemo3, useEffect: useEffect3, useRef: useRef3 } = React;
 
+// Per-platform mapping from calendar row → Zernio internal post _id.
+// publish_now responses store this in <platform>PostId fields (see
+// PLATFORM_PUBLISHERS.resultFields). Zernio's edit/unpublish/retry endpoints
+// key on the internal _id, not the platform-native post id.
+function getZernioPostId(item) {
+  if (!item) return null;
+  return item.linkedinPostId  || item.facebookPostId  || item.xPostId
+      || item.instagramPostId || item.redditPostId    || null;
+}
+
 // ────────────────────────────── PUBLISHING QUEUE ──────────────────────────────
 function PublishingQueue({ state, actions }) {
   const [view, setView]           = useState3("calendar"); // "calendar" | "list"
@@ -614,14 +624,27 @@ function PublishingQueue({ state, actions }) {
                       <span style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 12 }}>
                         {item.body || item.title || ""}
                       </span>
-                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                        {postUrl ? (
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 4, alignItems: "center" }}>
+                        {postUrl && (
                           <a href={postUrl} target="_blank" rel="noopener noreferrer"
                             style={{ fontSize: 11, color: "var(--accent)", textDecoration: "none", fontWeight: 500 }}>
-                            View post ↗
+                            View ↗
                           </a>
-                        ) : (
-                          <span style={{ fontSize: 11, color: "var(--muted)" }}>No link</span>
+                        )}
+                        <Btn size="sm" variant="ghost" onClick={() => setEditItem(item)} title="Edit">
+                          <Icon name="edit" size={11}/>
+                        </Btn>
+                        {getZernioPostId(item) && (
+                          <Btn size="sm" variant="ghost" title="Unpublish"
+                            onClick={async () => {
+                              if (!window.confirm("Delete this post from the platform?")) return;
+                              await actions.unpublishPost(item.id, {
+                                postId:   getZernioPostId(item),
+                                platform: (item.platform || item.channel || "").toLowerCase(),
+                              });
+                            }}>
+                            <Icon name="x" size={11}/>
+                          </Btn>
                         )}
                       </div>
                     </div>
@@ -1077,11 +1100,49 @@ function PublishingQueue({ state, actions }) {
           setEditItem(null);
         };
 
+        const zernioPostId = getZernioPostId(editItem);
+        const isPublished  = editItem.publishStatus === "published";
+        const isFailed     = editItem.publishStatus === "failed";
+
+        const handleEditOnPlatform = async () => {
+          if (!zernioPostId) {
+            actions.notify("warn", "No platform post id on this row — can't edit");
+            return;
+          }
+          const res = await actions.editPost(editItem.id, {
+            postId:   zernioPostId,
+            platform: platformKey,
+            content:  editDraft.body,
+          });
+          if (res?.ok) setEditItem(null);
+        };
+
+        const handleUnpublishOnPlatform = async () => {
+          if (!zernioPostId) {
+            actions.notify("warn", "No platform post id on this row — can't unpublish");
+            return;
+          }
+          if (!window.confirm(`Delete this post from ${platformLabel}?`)) return;
+          const res = await actions.unpublishPost(editItem.id, {
+            postId: zernioPostId, platform: platformKey,
+          });
+          if (res?.ok) setEditItem(null);
+        };
+
+        const handleRetryOnPlatform = async () => {
+          if (!zernioPostId) {
+            actions.notify("warn", "No platform post id on this row — can't retry");
+            return;
+          }
+          const res = await actions.retryPost(editItem.id, { postId: zernioPostId });
+          if (res?.ok) setEditItem(null);
+        };
+
         return (
           <Drawer open={true} onClose={() => setEditItem(null)}
             title={`${platformLabel} · ${kindLabel}`}
             actions={<>
-              {!isDraft && !isQueued && (
+              {!isDraft && !isQueued && !isPublished && !isFailed && (
                 <Btn variant="ghost" onClick={() => { togglePause(editItem); setEditItem(null); }}>
                   <Icon name={editItem.status === "paused" ? "play" : "pause"} size={12}/>
                   {editItem.status === "paused" ? " Resume" : " Pause"}
@@ -1090,6 +1151,22 @@ function PublishingQueue({ state, actions }) {
               {isQueued && (
                 <Btn variant="ghost" onClick={handleUnschedule} disabled={scheduling}>
                   <Icon name="x" size={12}/> {scheduling ? "Cancelling…" : "Unschedule"}
+                </Btn>
+              )}
+              {isPublished && zernioPostId && (
+                <Btn variant="ghost" onClick={handleUnpublishOnPlatform}>
+                  <Icon name="x" size={12}/> Unpublish
+                </Btn>
+              )}
+              {isFailed && zernioPostId && (
+                <Btn variant="ghost" onClick={handleRetryOnPlatform}>
+                  <Icon name="play" size={12}/> Retry
+                </Btn>
+              )}
+              {isPublished && zernioPostId && (
+                <Btn variant="primary" onClick={handleEditOnPlatform}
+                  disabled={overLimit || !editDraft.body?.trim()}>
+                  <Icon name="edit" size={12}/> Update post
                 </Btn>
               )}
               <Btn variant="danger" onClick={() => { actions.removeItem(editItem.id); setEditItem(null); }}>

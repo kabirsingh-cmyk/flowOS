@@ -588,6 +588,10 @@ function mveda_reducer(s, a) {
     case "ACTIVE_PLAN_CLEAR": {
       return { ...s, activePlan: null };
     }
+    // === TRACK A: PUBLISHING + ADS ===
+    // Reducer cases for Track A (publishing + ads). PR 1 uses CAL_UPDATE for
+    // optimistic queue mutations; new cases land here as later PRs need them.
+    // === END TRACK A ===
     default: return s;
   }
 }
@@ -671,6 +675,90 @@ function useMvedaStore(seedMode = null, userId = null) {
       dispatch({ type: "PROACTIVE_SMS_REMOVE", id, notify: opts.notify }),
     setActivePlan: (plan) => dispatch({ type: "ACTIVE_PLAN_SET", plan }),
     clearActivePlan: () => dispatch({ type: "ACTIVE_PLAN_CLEAR" }),
+
+    // === TRACK A: PUBLISHING + ADS ===
+    // Async helpers wrap window.apiFetch + dispatch CAL_UPDATE. Each resolves
+    // to { ok: true, ... } or { ok: false, error } so callers can toast/log.
+    editPost: async (itemId, { postId, platform, content }) => {
+      if (!postId || !platform || !content) {
+        return { ok: false, error: "postId, platform, content required" };
+      }
+      try {
+        const res = await window.apiFetch("/api/zernio-publish", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "edit_post", postId, platform, content }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          dispatch({ type: "NOTIFY", tone: "warn", text: `Edit failed: ${data.error || res.status}` });
+          return { ok: false, error: data.error || `HTTP ${res.status}` };
+        }
+        dispatch({
+          type:  "CAL_UPDATE",
+          id:    itemId,
+          patch: { body: content, ...(data.postId ? { xPostId: data.postId } : {}), ...(data.url ? { xUrl: data.url } : {}) },
+          notify: { tone: "ok", text: "Post edited" },
+        });
+        return { ok: true, data };
+      } catch (e) {
+        dispatch({ type: "NOTIFY", tone: "warn", text: `Edit failed: ${e.message}` });
+        return { ok: false, error: e.message };
+      }
+    },
+    unpublishPost: async (itemId, { postId, platform }) => {
+      if (!postId || !platform) return { ok: false, error: "postId, platform required" };
+      try {
+        const res = await window.apiFetch("/api/zernio-publish", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "unpublish_post", postId, platform }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          dispatch({ type: "NOTIFY", tone: "warn", text: `Unpublish failed: ${data.error || res.status}` });
+          return { ok: false, error: data.error || `HTTP ${res.status}` };
+        }
+        dispatch({
+          type:  "CAL_UPDATE",
+          id:    itemId,
+          patch: { status: "draft", publishStatus: "unpublished" },
+          notify: { tone: "ok", text: "Post unpublished" },
+        });
+        return { ok: true, data };
+      } catch (e) {
+        dispatch({ type: "NOTIFY", tone: "warn", text: `Unpublish failed: ${e.message}` });
+        return { ok: false, error: e.message };
+      }
+    },
+    retryPost: async (itemId, { postId }) => {
+      if (!postId) return { ok: false, error: "postId required" };
+      try {
+        const res = await window.apiFetch("/api/zernio-publish", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "retry_post", postId }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          dispatch({ type: "NOTIFY", tone: "warn", text: `Retry failed: ${data.error || res.status}` });
+          return { ok: false, error: data.error || `HTTP ${res.status}` };
+        }
+        const patch = { publishStatus: data.status || "published", publishError: null };
+        if (data.status === "published") patch.status = "scheduled";
+        dispatch({
+          type:  "CAL_UPDATE",
+          id:    itemId,
+          patch,
+          notify: { tone: "ok", text: data.status === "published" ? "Post retried · published" : "Retry queued" },
+        });
+        return { ok: true, data };
+      } catch (e) {
+        dispatch({ type: "NOTIFY", tone: "warn", text: `Retry failed: ${e.message}` });
+        return { ok: false, error: e.message };
+      }
+    },
+    // === END TRACK A ===
   };
   return [state, actions];
 }
