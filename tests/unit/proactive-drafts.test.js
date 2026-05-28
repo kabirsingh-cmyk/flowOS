@@ -5,7 +5,7 @@
  * Requires Node >= 18 (built-in test runner).
  *
  * Covers:
- *   - FALLBACK_DRAFTS schema completeness
+ *   - buildFallbackDrafts(brand) schema completeness
  *   - buildPrompt — required brand fields are injected
  *   - buildPrompt — platform distribution block is present
  *   - buildPrompt — count param controls the count directive
@@ -15,7 +15,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildPrompt, FALLBACK_DRAFTS } from "../../api/proactive-drafts.js";
+import { buildPrompt, buildFallbackDrafts } from "../../api/proactive-drafts.js";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -36,15 +36,19 @@ const BRAND_EMPTY   = {};
 const VALID_PLATFORMS = ["instagram", "tiktok", "linkedin", "pinterest", "email", "x"];
 const VALID_DAYS      = [0, 1, 2, 3, 4, 5, 6];
 
-// ─── FALLBACK_DRAFTS schema ────────────────────────────────────────────────────
+// ─── buildFallbackDrafts(brand) schema ────────────────────────────────────────
+// buildFallbackDrafts replaced the static FALLBACK_DRAFTS constant when fallback
+// copy became brand-aware. The schema checks below still apply to its output.
 
-describe("FALLBACK_DRAFTS schema", () => {
-  test("array is non-empty", () => {
-    assert.ok(Array.isArray(FALLBACK_DRAFTS) && FALLBACK_DRAFTS.length > 0);
+describe("buildFallbackDrafts schema", () => {
+  const drafts = buildFallbackDrafts(BRAND_FULL);
+
+  test("returns a non-empty array", () => {
+    assert.ok(Array.isArray(drafts) && drafts.length > 0);
   });
 
   test("every draft has required string fields: platform, contentType, copy", () => {
-    for (const d of FALLBACK_DRAFTS) {
+    for (const d of drafts) {
       assert.ok(typeof d.platform    === "string" && d.platform.length    > 0, `platform missing on: ${JSON.stringify(d)}`);
       assert.ok(typeof d.contentType === "string" && d.contentType.length > 0, `contentType missing on: ${JSON.stringify(d)}`);
       assert.ok(typeof d.copy        === "string" && d.copy.length        > 0, `copy missing on: ${JSON.stringify(d)}`);
@@ -52,13 +56,13 @@ describe("FALLBACK_DRAFTS schema", () => {
   });
 
   test("every draft.platform is a recognised slug", () => {
-    for (const d of FALLBACK_DRAFTS) {
+    for (const d of drafts) {
       assert.ok(VALID_PLATFORMS.includes(d.platform), `unrecognised platform "${d.platform}"`);
     }
   });
 
   test("suggestedDay is an integer 0–6 when present", () => {
-    for (const d of FALLBACK_DRAFTS) {
+    for (const d of drafts) {
       if (d.suggestedDay !== null && d.suggestedDay !== undefined) {
         assert.ok(VALID_DAYS.includes(d.suggestedDay), `invalid suggestedDay ${d.suggestedDay}`);
       }
@@ -67,7 +71,7 @@ describe("FALLBACK_DRAFTS schema", () => {
 
   test("suggestedTime matches HH:MM when present", () => {
     const TIME_RE = /^\d{2}:\d{2}$/;
-    for (const d of FALLBACK_DRAFTS) {
+    for (const d of drafts) {
       if (d.suggestedTime) {
         assert.match(d.suggestedTime, TIME_RE, `invalid suggestedTime "${d.suggestedTime}"`);
       }
@@ -75,7 +79,7 @@ describe("FALLBACK_DRAFTS schema", () => {
   });
 
   test("imagePrompt is string or null (never undefined)", () => {
-    for (const d of FALLBACK_DRAFTS) {
+    for (const d of drafts) {
       assert.ok(
         d.imagePrompt === null || typeof d.imagePrompt === "string",
         `imagePrompt must be string or null, got ${typeof d.imagePrompt}`
@@ -84,17 +88,35 @@ describe("FALLBACK_DRAFTS schema", () => {
   });
 
   test("covers at least 5 distinct platforms", () => {
-    const platforms = new Set(FALLBACK_DRAFTS.map(d => d.platform));
+    const platforms = new Set(drafts.map(d => d.platform));
     assert.ok(platforms.size >= 5, `only ${platforms.size} distinct platforms`);
   });
 
   test("no two drafts share the same platform + suggestedDay combination", () => {
     const seen = new Set();
-    for (const d of FALLBACK_DRAFTS) {
+    for (const d of drafts) {
       if (d.suggestedDay === null || d.suggestedDay === undefined) continue;
       const key = `${d.platform}:${d.suggestedDay}`;
       assert.ok(!seen.has(key), `duplicate platform+day: ${key}`);
       seen.add(key);
+    }
+  });
+
+  test("brand name appears in at least one fallback draft", () => {
+    assert.ok(drafts.some(d => d.copy.includes(BRAND_FULL.name)), "brand name must appear in fallback copy");
+  });
+
+  test("count param caps the output length", () => {
+    const three = buildFallbackDrafts(BRAND_FULL, 3);
+    assert.equal(three.length, 3);
+  });
+
+  test("empty/null brand still returns drafts without 'undefined' leaking in", () => {
+    const fromEmpty = buildFallbackDrafts(BRAND_EMPTY);
+    const fromNull  = buildFallbackDrafts(null);
+    assert.ok(fromEmpty.length > 0 && fromNull.length > 0);
+    for (const d of [...fromEmpty, ...fromNull]) {
+      assert.ok(!d.copy.includes("undefined"), `fallback copy must not contain literal 'undefined': ${d.copy.slice(0, 80)}`);
     }
   });
 });
