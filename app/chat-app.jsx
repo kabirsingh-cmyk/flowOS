@@ -745,6 +745,7 @@ function CanvasBody({ canvas, state, actions, go }) {
       agents: AgentsWorkspace,
       spend: SpendDashboard,
       ads: AdsWorkspace,
+      gmb: GmbWorkspace,
     }[canvas.target];
     if (!Comp) return <div style={{ padding: 40, color: "var(--muted)" }}>Unknown workspace</div>;
     return (
