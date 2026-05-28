@@ -30,6 +30,12 @@
     klaviyo:     { label: "Email",         icon: "📧", group: "owned",   color: "#2C9B63" },
     sms:         { label: "SMS",           icon: "💬", group: "owned",   color: "#7C3AED" },
     shopify:     { label: "Shopify",       icon: "🛍️", group: "owned",   color: "#96BF48" },
+    // Track B — Zernio organic social
+    fb_organic:  { label: "Facebook",      icon: "👍", group: "organic", color: "#1877F2" },
+    li_organic:  { label: "LinkedIn",      icon: "💼", group: "organic", color: "#0A66C2" },
+    tt_organic:  { label: "TikTok",        icon: "🎵", group: "organic", color: "#69C9D0" },
+    yt_organic:  { label: "YouTube",       icon: "▶️", group: "organic", color: "#FF0000" },
+    gmb:         { label: "Google Business",icon: "🗺️", group: "organic", color: "#EA4335" },
   };
 
   const CHANNEL_GROUPS = [
@@ -46,6 +52,13 @@
     gsc:        ["clicks","impressions","avg_ctr","avg_position"],
     klaviyo:    ["campaigns_sent","open_rate","click_rate","revenue","sends"],
     shopify:    ["orders","revenue","aov","unique_customers","net_revenue"],
+    // Track B — Zernio organic social (metric names from Zernio API)
+    fb_organic:  ["page_fans","page_impressions","page_engaged_users","page_post_engagements","page_reactions_total"],
+    ig_organic:  ["reach","impressions","accounts_engaged","total_interactions","follower_count"],
+    li_organic:  ["impressions","clicks","engagements","followers_gained","followers"],
+    tt_organic:  ["follower_count","likes_count","video_count","followers_gained","followers_lost"],
+    yt_organic:  ["views","estimatedMinutesWatched","subscribersGained","subscribersLost","averageViewDuration"],
+    gmb:         ["views","clicks","calls","directionRequests","photoViews"],
   };
 
   function fmtMetricLabel(key) {
@@ -60,6 +73,17 @@
       click_rate: "Click Rate", sends: "Sends",
       orders: "Orders", aov: "AOV", unique_customers: "Customers",
       net_revenue: "Net Revenue",
+      // Track B — Zernio organic social
+      reach: "Reach", accounts_engaged: "Engaged", total_interactions: "Interactions",
+      follower_count: "Followers", following_count: "Following", likes_count: "Likes",
+      video_count: "Videos", views: "Views", estimatedMinutesWatched: "Watch Min",
+      averageViewDuration: "Avg View", subscribersGained: "Subscribers +",
+      subscribersLost: "Subscribers -", followers_gained: "Followers +",
+      followers_lost: "Followers -", page_fans: "Page Fans",
+      page_impressions: "Impressions", page_engaged_users: "Engaged",
+      page_post_engagements: "Post Eng.", page_reactions_total: "Reactions",
+      engagements: "Engagements", calls: "Calls", directionRequests: "Directions",
+      photoViews: "Photo Views",
     };
     return labels[key] || key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
   }
@@ -69,11 +93,13 @@
     const curr = ["spend","cpc","cpm","revenue","conv_value","aov","net_revenue"].includes(key);
     const pct  = ["ctr","bounce_rate","engagement_rate","open_rate","click_rate","avg_ctr"].includes(key);
     const mult = ["roas"].includes(key);
-    const dur  = ["avg_session_dur"].includes(key);
+    const dur  = ["avg_session_dur","averageViewDuration"].includes(key);
+    const mins = ["estimatedMinutesWatched"].includes(key);
     if (curr)  return `$${Number(val).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     if (pct)   return `${(Number(val) * (val > 1 ? 1 : 100)).toFixed(1)}%`;
     if (mult)  return `${Number(val).toFixed(2)}×`;
     if (dur)   return `${Math.round(val)}s`;
+    if (mins)  return `${Math.round(val)}m`;
     if (Number.isInteger(val) || val > 100) return Number(Math.round(val)).toLocaleString("en-US");
     return Number(val).toFixed(2);
   }
@@ -126,7 +152,7 @@
     if (loading) return <Spinner />;
     if (!insights) return null;
 
-    // Derive top KPIs from snapshots
+    // Derive top KPIs from snapshots (legacy Composio + Zernio organic social)
     const kpis = [];
     const shop = snapshots.find(s => s.channel === "shopify");
     const meta = snapshots.find(s => s.channel === "meta_ads");
@@ -134,6 +160,11 @@
     const mail = snapshots.find(s => s.channel === "klaviyo");
     const web  = snapshots.find(s => s.channel === "ga4");
     const gsc  = snapshots.find(s => s.channel === "gsc");
+    // Track B — Zernio organic social highlights
+    const ig   = snapshots.find(s => s.channel === "ig_organic");
+    const tt   = snapshots.find(s => s.channel === "tt_organic");
+    const yt   = snapshots.find(s => s.channel === "yt_organic");
+    const li   = snapshots.find(s => s.channel === "li_organic");
 
     if (shop) kpis.push({ label: "Revenue",       value: fmtMetricValue("revenue",   shop.metrics?.revenue),          sub: "Shopify" });
     if (shop) kpis.push({ label: "Orders",        value: fmtMetricValue("orders",    shop.metrics?.orders),           sub: "Shopify" });
@@ -142,6 +173,10 @@
     if (mail) kpis.push({ label: "Open Rate",     value: fmtMetricValue("open_rate", mail.metrics?.open_rate),        sub: "Email" });
     if (web)  kpis.push({ label: "Sessions",      value: fmtMetricValue("sessions",  web.metrics?.sessions),          sub: "Web" });
     if (gsc)  kpis.push({ label: "Search Clicks", value: fmtMetricValue("clicks",    gsc.metrics?.clicks),            sub: "Search Console" });
+    if (ig)   kpis.push({ label: "Reach",         value: fmtMetricValue("reach",     resolveMetricValue(ig.metrics?.reach)),   sub: "Instagram" });
+    if (tt)   kpis.push({ label: "Followers",     value: fmtMetricValue("follower_count", resolveMetricValue(tt.metrics?.follower_count)), sub: "TikTok" });
+    if (yt)   kpis.push({ label: "Views",         value: fmtMetricValue("views",     resolveMetricValue(yt.metrics?.views)),   sub: "YouTube" });
+    if (li)   kpis.push({ label: "Impressions",   value: fmtMetricValue("impressions", resolveMetricValue(li.metrics?.impressions)), sub: "LinkedIn" });
 
     return (
       <section style={{ marginBottom: 28 }}>
@@ -289,10 +324,30 @@
 
   // ─── Data by Channel ──────────────────────────────────────────────────────────
 
+  // Extract a scalar value from Zernio's nested metric format { total, values, breakdowns }
+  // or fall back to plain number/string for legacy Composio data.
+  function resolveMetricValue(raw) {
+    if (raw === null || raw === undefined) return undefined;
+    if (typeof raw === "number" || typeof raw === "string") return raw;
+    if (typeof raw === "object") {
+      if (typeof raw.total === "number" || typeof raw.total === "string") return raw.total;
+      // If no total, return count of values array as a fallback
+      if (Array.isArray(raw.values)) return raw.values.length;
+      if (Array.isArray(raw.breakdowns)) return raw.breakdowns.length;
+    }
+    return undefined;
+  }
+
   function ChannelMetricTable({ snapshot }) {
     const meta   = CHANNEL_META[snapshot.channel] || { label: snapshot.channel, icon: "📊", color: "#666" };
-    const keys   = CHANNEL_KEY_METRICS[snapshot.channel] || Object.keys(snapshot.metrics).filter(k => k !== "period" && k !== "date_start" && k !== "date_end" && !Array.isArray(snapshot.metrics[k]));
-    const values = snapshot.metrics;
+    // Zernio payloads have metrics as objects; legacy Composio payloads are flat.
+    const isZernio = snapshot.endpoint && snapshot.endpoint !== "legacy";
+    const rawMetrics = snapshot.metrics || {};
+    // For Zernio data, prefer known keys; for legacy, use all flat keys
+    const keys = CHANNEL_KEY_METRICS[snapshot.channel]
+      || Object.keys(rawMetrics).filter(k => k !== "period" && k !== "date_start" && k !== "date_end" && !Array.isArray(rawMetrics[k]));
+    // Zernio responses often include a dateRange object inside metrics
+    const dateRange = rawMetrics.dateRange || {};
 
     return (
       <div style={{
@@ -307,28 +362,37 @@
         }}>
           <span style={{ fontSize: 16 }}>{meta.icon}</span>
           <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>{meta.label}</span>
-          {values.period && (
+          {isZernio && snapshot.endpoint && (
+            <span style={{ fontSize: 10, color: "var(--muted)", marginLeft: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              {snapshot.endpoint.replace(/_/g, " ")}
+            </span>
+          )}
+          {(rawMetrics.period || dateRange.since) && (
             <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: "auto" }}>
-              {values.date_start && values.date_end ? `${values.date_start} → ${values.date_end}` : values.period}
+              {dateRange.since && dateRange.until ? `${dateRange.since} → ${dateRange.until}` : rawMetrics.period}
             </span>
           )}
         </div>
         {/* Metric grid */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))" }}>
-          {keys.map((key) => (
-            <div key={key} style={{
-              padding: "10px 14px",
-              borderRight: "1px solid var(--rule)",
-              borderBottom: "1px solid var(--rule)",
-            }}>
-              <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                {fmtMetricLabel(key)}
+          {keys.map((key) => {
+            const rawVal = rawMetrics[key];
+            const val = isZernio ? resolveMetricValue(rawVal) : rawVal;
+            return (
+              <div key={key} style={{
+                padding: "10px 14px",
+                borderRight: "1px solid var(--rule)",
+                borderBottom: "1px solid var(--rule)",
+              }}>
+                <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  {fmtMetricLabel(key)}
+                </div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: "var(--ink)", fontFamily: "JetBrains Mono, monospace" }}>
+                  {fmtMetricValue(key, val)}
+                </div>
               </div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--ink)", fontFamily: "JetBrains Mono, monospace" }}>
-                {fmtMetricValue(key, values[key])}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
@@ -511,6 +575,64 @@
     );
   }
 
+  // ─── Cross-platform Primitives ───────────────────────────────────────────────
+
+  function PrimitivesSection({ primitives, loading }) {
+    if (loading) return null;
+    if (!primitives || primitives.length === 0) return null;
+
+    const PRIMITIVE_LABELS = {
+      best_time:         "Best Time to Post",
+      content_decay:     "Content Decay",
+      posting_frequency: "Posting Frequency",
+      post_timeline:     "Post Timeline",
+      daily_metrics:     "Daily Metrics",
+    };
+
+    return (
+      <section style={{ marginBottom: 28 }}>
+        <h3 style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 12px" }}>
+          Cross-Platform Primitives
+        </h3>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
+          {primitives.map((p, i) => {
+            const payload = p.payload || {};
+            const label = PRIMITIVE_LABELS[p.primitive] || p.primitive;
+            return (
+              <div key={i} style={{
+                background: "var(--paper)", border: "1px solid var(--rule)",
+                borderRadius: 8, padding: "14px 16px",
+              }}>
+                <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                  {label}
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--ink)", lineHeight: 1.6 }}>
+                  {typeof payload === "object" ? (
+                    Object.entries(payload).slice(0, 4).map(([k, v]) => (
+                      <div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                        <span style={{ color: "var(--muted)" }}>{k.replace(/_/g, " ")}</span>
+                        <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 500 }}>
+                          {typeof v === "number" ? v.toLocaleString() : String(v).slice(0, 24)}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <span>{String(payload).slice(0, 120)}</span>
+                  )}
+                </div>
+                {p.platform && (
+                  <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 6 }}>
+                    Platform: {p.platform}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
   // ─── Error state ─────────────────────────────────────────────────────────────
 
   function ErrorState({ onRetry, errorMsg }) {
@@ -572,6 +694,7 @@
     const tenantId   = state?.auth?.user?.id || state?.tenantId || null;
     const [period, setPeriod]           = useStateI("30d");
     const [snapshots, setSnapshots]     = useStateI([]);
+    const [primitives, setPrimitives]   = useStateI([]);
     const [insights, setInsights]       = useStateI(null);
     const [loading, setLoading]         = useStateI(false);
     const [refreshing, setRefreshing]   = useStateI(false);
@@ -586,11 +709,16 @@
       setLoading(true);
       setError(null);
       try {
-        const [snapRes, insRes] = await Promise.all([
+        const [snapRes, primRes, insRes] = await Promise.all([
           sb.from("analytics_snapshots")
             .select("*")
             .eq("tenant_id", tenantId)
             .eq("period", period),
+          sb.from("analytics_primitives")
+            .select("*")
+            .eq("tenant_id", tenantId)
+            .eq("period", period)
+            .order("captured_at", { ascending: false }),
           sb.from("analytics_insights")
             .select("*")
             .eq("tenant_id", tenantId)
@@ -600,14 +728,29 @@
         ]);
 
         if (snapRes.error) throw new Error(snapRes.error.message || "Snapshot fetch failed");
+        if (primRes.error) throw new Error(primRes.error.message || "Primitives fetch failed");
         if (insRes.error)  throw new Error(insRes.error.message  || "Insights fetch failed");
 
         if (Array.isArray(snapRes.data)) {
           const rows = snapRes.data;
-          setSnapshots(rows.map(r => ({ channel: r.channel, metrics: r.metrics, fetched_at: r.fetched_at })));
+          setSnapshots(rows.map(r => ({
+            channel: r.channel,
+            endpoint: r.endpoint,
+            metrics: r.metrics,
+            fetched_at: r.fetched_at,
+          })));
           if (rows.length > 0) {
             setLastUpdated(rows.slice().sort((a, b) => new Date(b.fetched_at) - new Date(a.fetched_at))[0].fetched_at);
           }
+        }
+
+        if (Array.isArray(primRes.data)) {
+          setPrimitives(primRes.data.map(r => ({
+            primitive: r.primitive,
+            platform: r.platform,
+            payload: r.payload,
+            captured_at: r.captured_at,
+          })));
         }
 
         if (Array.isArray(insRes.data) && insRes.data.length > 0) {
@@ -745,6 +888,7 @@
               <SummarySection insights={insights} snapshots={snapshots} loading={loading} />
               <RecommendedActions actions={insights?.recommended_actions} loading={loading} onNavigate={handleNavigate} />
               <InsightsGrid items={insights?.insights} loading={loading} onNavigate={handleNavigate} />
+              <PrimitivesSection primitives={primitives} loading={loading} />
               <DataByChannel snapshots={snapshots} loading={loading} />
               <AnalyticsChat tenantId={tenantId} snapshots={snapshots} insights={insights} period={period} />
             </>

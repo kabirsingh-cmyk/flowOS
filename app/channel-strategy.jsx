@@ -2,7 +2,7 @@
 // Synthesizes a strategy from: brand, industry signals, connected channels,
 // goals, and a stage (launch / growth / steady). Updates live as inputs change.
 
-const { useState: useStateCS, useMemo: useMemoCS, useEffect: useEffectCS } = React;
+const { useState: useStateCS, useMemo: useMemoCS, useEffect: useEffectCS, useCallback: useCallbackCS } = React;
 
 // ─── Strategy library (what the "LLM" knows) ───
 // Each channel has: discovery weight, retention weight, intent strength,
@@ -74,10 +74,23 @@ const STAGE_MULTIPLIERS = {
 };
 
 // ─── Core scorer ───
-function computeChannelStrategy({ industryKey, goal, stage, monthlyBudget, connectedChannels }) {
+function computeChannelStrategy({ industryKey, goal, stage, monthlyBudget, connectedChannels, channelPerf = {} }) {
   const profile = INDUSTRY_PROFILES[industryKey] || INDUSTRY_PROFILES["ayurvedic skincare"];
   const goalW = GOAL_WEIGHTS[goal] || GOAL_WEIGHTS.acquisition;
   const stageM = STAGE_MULTIPLIERS[stage] || STAGE_MULTIPLIERS.growth;
+
+  // Map ChannelStrategy names → analytics_snapshots channel keys
+  const PERF_MAP = {
+    "Instagram": "ig_organic",
+    "TikTok": "tt_organic",
+    "YouTube": "yt_organic",
+    "LinkedIn": "li_organic",
+    "Facebook": "fb_organic",
+    "Google Business": "gmb",
+    "Meta Ads": "meta_ads",
+    "Google Ads": "google_ads",
+    "Email": "klaviyo",
+  };
 
   const scores = {};
   for (const [name, ch] of Object.entries(CHANNEL_LIB)) {
@@ -90,9 +103,12 @@ function computeChannelStrategy({ industryKey, goal, stage, monthlyBudget, conne
     const stageMod = stageM[ch.type] || 1;
     // Connected bonus (ready-to-execute)
     const connBonus = connectedChannels.has(name) ? 1.15 : 1.0;
+    // Real performance bonus (channels with live data get a small lift)
+    const perfKey = PERF_MAP[name];
+    const perfScore = perfKey && channelPerf[perfKey] ? Math.min(1.12, 1 + (Math.log10(channelPerf[perfKey] + 1) / 50)) : 1.0;
     // Combine
-    const raw = (goalScore * 0.55 + fitScore * 0.45) * stageMod * connBonus;
-    scores[name] = { raw, goalScore, fitScore, stageMod, connBonus, type: ch.type, lib: ch };
+    const raw = (goalScore * 0.55 + fitScore * 0.45) * stageMod * connBonus * perfScore;
+    scores[name] = { raw, goalScore, fitScore, stageMod, connBonus, perfScore, type: ch.type, lib: ch };
   }
 
   // Take top channels (cut at 7)
@@ -149,6 +165,63 @@ function makeRationale(name, v, profile, goal, stage) {
 // ─── React component ───
 function ChannelStrategyCanvas({ state, actions }) {
   const brand = state.brand || { name: "MVEDA", category: "Ayurvedic skincare" };
+  const tenantId = state?.auth?.user?.id || state?.tenantId || null;
+  const sb = window.sb;
+
+  // Fetch connected channels from Supabase (Track B Zernio channels + legacy connectors)
+  const [dbChannels, setDbChannels] = useStateCS([]);
+  const [channelPerf, setChannelPerf] = useStateCS({});
+
+  const loadChannels = useCallbackCS(async () => {
+    if (!tenantId || !sb) return;
+    try {
+      const { data, error } = await sb.from("channels")
+        .select("platform")
+        .eq("user_id", tenantId)
+        .eq("status", "connected");
+      if (!error && Array.isArray(data)) {
+        setDbChannels(data.map(r => r.platform).filter(Boolean));
+      }
+    } catch (_) { /* ignore */ }
+  }, [tenantId, sb]);
+
+  const loadPerf = useCallbackCS(async () => {
+    if (!tenantId || !sb) return;
+    try {
+      const { data, error } = await sb.from("analytics_snapshots")
+        .select("channel, metrics")
+        .eq("tenant_id", tenantId)
+        .eq("period", "30d")
+        .order("fetched_at", { ascending: false });
+      if (!error && Array.isArray(data)) {
+        const perf = {};
+        for (const row of data) {
+          if (perf[row.channel]) continue; // keep newest per channel
+          const m = row.metrics || {};
+          // Extract a simple performance score from Zernio nested metrics
+          let score = 0;
+          const reach = typeof m.reach === "object" ? m.reach?.total : m.reach;
+          const impressions = typeof m.impressions === "object" ? m.impressions?.total : m.impressions;
+          const engagements = typeof m.engagements === "object" ? m.engagements?.total : m.engagements;
+          const views = typeof m.views === "object" ? m.views?.total : m.views;
+          const followers = typeof m.follower_count === "object" ? m.follower_count?.total : m.follower_count;
+          if (reach) score += Number(reach) * 0.5;
+          if (impressions) score += Number(impressions) * 0.3;
+          if (engagements) score += Number(engagements) * 1.0;
+          if (views) score += Number(views) * 0.4;
+          if (followers) score += Number(followers) * 0.2;
+          perf[row.channel] = score;
+        }
+        setChannelPerf(perf);
+      }
+    } catch (_) { /* ignore */ }
+  }, [tenantId, sb]);
+
+  useEffectCS(() => {
+    loadChannels();
+    loadPerf();
+  }, [loadChannels, loadPerf]);
+
   const connectedSet = useMemoCS(() => {
     const map = {
       ig: "Instagram", tt: "TikTok", fb: "Facebook", li: "LinkedIn", yt: "YouTube", pn: "Pinterest",
@@ -161,11 +234,20 @@ function ChannelStrategyCanvas({ state, actions }) {
       xads: "X Ads", redditads: "Reddit Ads", snapads: "Snap Ads",
     };
     const set = new Set();
+    // Legacy connectors
     Object.entries(state.connectors || {}).forEach(([id, c]) => {
       if (c.connected && map[id]) set.add(map[id]);
     });
+    // Track B — Zernio channels from DB
+    const dbMap = {
+      ig: "Instagram", tt: "TikTok", fb: "Facebook", li: "LinkedIn", yt: "YouTube",
+      gbusiness: "Google Business",
+    };
+    for (const plat of dbChannels) {
+      if (dbMap[plat]) set.add(dbMap[plat]);
+    }
     return set;
-  }, [state.connectors]);
+  }, [state.connectors, dbChannels]);
 
   const [goal, setGoal] = useStateCS(state.strategy?.goal || "acquisition");
   const [stage, setStage] = useStateCS(state.strategy?.stage || "growth");
@@ -177,8 +259,8 @@ function ChannelStrategyCanvas({ state, actions }) {
                     : "ayurvedic skincare";
 
   const strategy = useMemoCS(
-    () => computeChannelStrategy({ industryKey, goal, stage, monthlyBudget: budget, connectedChannels: connectedSet }),
-    [industryKey, goal, stage, budget, connectedSet]
+    () => computeChannelStrategy({ industryKey, goal, stage, monthlyBudget: budget, connectedChannels: connectedSet, channelPerf }),
+    [industryKey, goal, stage, budget, connectedSet, channelPerf]
   );
 
   const handleApply = () => {
