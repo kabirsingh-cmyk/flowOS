@@ -744,6 +744,7 @@ function CanvasBody({ canvas, state, actions, go }) {
       settings: SettingsHub,
       agents: AgentsWorkspace,
       spend: SpendDashboard,
+      ads: AdsWorkspace,
     }[canvas.target];
     if (!Comp) return <div style={{ padding: 40, color: "var(--muted)" }}>Unknown workspace</div>;
     return (

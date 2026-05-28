@@ -23,6 +23,7 @@ import './login.jsx'
 import './onboarding.jsx'
 import './agents.jsx'
 import './insights.jsx'
+import './ads-workspace.jsx'
 import './ai.jsx'
 
 // chat-app.jsx defines and exports ChatOS; mount it here rather than inside

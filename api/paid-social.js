@@ -5,14 +5,20 @@
  * Handles all five paid social platforms in a single route.
  * Required body field: platform (metaads | liads | ttads | xads | pinads)
  *
- * Actions (mirrors api/google-ads.js contract):
- *   list_campaigns   — campaigns + metrics for the connected ad account
- *   create_campaign  — create a new campaign (paused by default)
- *   update_budget    — change daily budget on a campaign
- *   enable_campaign  — set status → active
- *   pause_campaign   — set status → paused
- *   campaign_detail  — ads + aggregated metrics for a campaign
- *   generate_copy    — Claude-generated ad copy tailored to platform format
+ * Actions:
+ *   list_campaigns      — campaigns + metrics for the connected ad account
+ *   campaign_detail     — ads + aggregated metrics for a campaign
+ *   create_campaign     — create a new ad+campaign (paused by default)
+ *   update_budget       — change daily budget on a campaign
+ *   enable_campaign     — set status → active
+ *   pause_campaign      — set status → paused
+ *   generate_copy       — Claude-generated ad copy tailored to platform format
+ *   boost_post          — promote an existing post (all platforms via /v1/ads/boost)
+ *   create_ad_set       — update / pause / resume an ad set (PUT /v1/ads/ad-sets/{id})
+ *   create_ad           — attach a new ad to an existing ad set (POST /v1/ads/create with adSetId)
+ *   get_ad_tree         — campaign → ad-set → ad hierarchy with rolled-up metrics
+ *   campaign_duplicate  — duplicate a campaign (POST /v1/ads/campaigns/{id}/duplicate)
+ *   bulk_status         — pause / resume up to 50 campaigns in one call
  *
  * Response shape: { ok: true, data } | { ok: false, error }
  *
@@ -25,28 +31,10 @@
 import { requireAuth } from "./lib/auth.js";
 import { corsPreflightResponse, jsonResponse, errResponse } from "./lib/cors.js";
 import { getFastModel } from "./lib/anthropic.js";
+import { zernioFetch, requireZernioAccountId } from "./lib/zernioClient.js";
+import { resolveAdsPlatform, SUPPORTED_PAID_PLATFORMS } from "./lib/zernioMap.js";
 
 export const config = { runtime: "edge" };
-
-const ZERNIO_BASE = "https://zernio.com/api/v1";
-
-// ─── FlowOS ID → Zernio platform slug ────────────────────────────────────────
-// Zernio's ads endpoints accept the organic platform name (meta, linkedin, etc.)
-// rather than the ads-specific slug (metaads, linkedinads, etc.).
-
-const PLATFORM_SLUG = {
-  metaads: "meta",
-  liads:   "linkedin",
-  ttads:   "tiktok",
-  xads:    "twitter",
-  pinads:  "pinterest",
-};
-
-const SUPPORTED = new Set(Object.keys(PLATFORM_SLUG));
-
-function resolvePlatformSlug(platform) {
-  return PLATFORM_SLUG[platform?.toLowerCase()] || platform?.toLowerCase();
-}
 
 // ─── Copy format hints per platform ──────────────────────────────────────────
 
@@ -83,68 +71,111 @@ const COPY_FORMAT = {
   },
 };
 
-// ─── Zernio helpers ───────────────────────────────────────────────────────────
+// ─── Targeting normalization ─────────────────────────────────────────────────
+// Frontend passes a single normalized shape:
+//   targeting = {
+//     countries:    ["US", "CA"],
+//     regions:      [{ key, name? }],
+//     cities:       [{ key, name?, radius?, distance_unit? }],
+//     zips:         [{ key, name? }],
+//     metros:       [{ key, name? }],
+//     customLocations: [{ latitude, longitude, radius, distanceUnit }],
+//     ageMin:       18,
+//     ageMax:       65,
+//     interests:    [{ id, name }],
+//     advantageAudience: 0 | 1,             // Meta only
+//     // LinkedIn legacy shorthand still accepted (mapped through):
+//     geo, jobFunction, seniority, companySize
+//   }
+//
+// `mode` is "create" (fields go top-level on /v1/ads/create) or "boost"
+// (fields nest under `targeting:` on /v1/ads/boost).
 
-function zernioHeaders() {
-  const key = process.env.ZERNIO_API_KEY;
-  if (!key) throw new Error("ZERNIO_API_KEY env var not set");
-  return {
-    "Authorization": `Bearer ${key}`,
-    "Content-Type":  "application/json",
-  };
+function pickGeo(targeting) {
+  const t = targeting || {};
+  const out = {};
+  if (t.countries?.length)       out.countries       = [].concat(t.countries);
+  if (t.regions?.length)         out.regions         = t.regions;
+  if (t.cities?.length)          out.cities          = t.cities;
+  if (t.zips?.length)            out.zips            = t.zips;
+  if (t.metros?.length)          out.metros          = t.metros;
+  if (t.customLocations?.length) out.customLocations = t.customLocations;
+  return out;
 }
 
-async function zernioFetch(path, options = {}) {
-  const res = await fetch(`${ZERNIO_BASE}${path}`, {
-    ...options,
-    headers: { ...zernioHeaders(), ...(options.headers || {}) },
-  });
-  const text = await res.text();
-  let data;
-  try { data = JSON.parse(text); } catch { data = { raw: text }; }
-  if (!res.ok) {
-    const msg = data?.error || data?.message || `Zernio ${path} ${res.status}: ${text.slice(0, 300)}`;
-    throw Object.assign(new Error(msg), { status: res.status, zernioCode: data?.code });
+function pickAge(targeting) {
+  const t = targeting || {};
+  const out = {};
+  if (Number.isFinite(t.ageMin)) out.ageMin = t.ageMin;
+  if (Number.isFinite(t.ageMax)) out.ageMax = t.ageMax;
+  return out;
+}
+
+function pickInterests(targeting) {
+  const t = targeting || {};
+  return t.interests?.length ? { interests: t.interests } : {};
+}
+
+function pickLinkedInLegacy(targeting) {
+  const t = targeting || {};
+  const out = {};
+  if (t.geo)         out.geoLocations = [].concat(t.geo);
+  if (t.jobFunction) out.jobFunctions = [].concat(t.jobFunction);
+  if (t.seniority)   out.seniorities  = [].concat(t.seniority);
+  if (t.companySize) out.companySizes = [].concat(t.companySize);
+  return out;
+}
+
+function buildTargetingForCreate(platform, targeting) {
+  // /v1/ads/create takes geo/age/interests at the TOP LEVEL.
+  // LinkedIn-specific job/seniority/company-size still nest under `targeting`.
+  const out = { ...pickGeo(targeting), ...pickAge(targeting), ...pickInterests(targeting) };
+  if (platform === "metaads" && Number.isFinite(targeting?.advantageAudience)) {
+    out.advantage_audience = targeting.advantageAudience;
   }
-  return data;
+  if (platform === "liads") {
+    const li = pickLinkedInLegacy(targeting);
+    if (Object.keys(li).length) out.targeting = li;
+  }
+  return out;
 }
 
-// ─── Supabase helpers ─────────────────────────────────────────────────────────
-
-function sbHeaders() {
-  const key = process.env.SUPABASE_SERVICE_KEY;
-  return {
-    "apikey":        key,
-    "Authorization": `Bearer ${key}`,
-    "Content-Type":  "application/json",
-  };
+function buildTargetingForBoost(platform, targeting) {
+  // /v1/ads/boost nests targeting under `targeting:` with a narrower shape
+  // (ageMin/ageMax/countries/interests/advantage_audience).
+  if (!targeting) return {};
+  const out = {};
+  if (Number.isFinite(targeting.ageMin)) out.ageMin = targeting.ageMin;
+  if (Number.isFinite(targeting.ageMax)) out.ageMax = targeting.ageMax;
+  if (targeting.countries?.length)       out.countries = [].concat(targeting.countries);
+  if (targeting.interests?.length)       out.interests = targeting.interests;
+  if (platform === "metaads" && Number.isFinite(targeting.advantageAudience)) {
+    out.advantage_audience = targeting.advantageAudience;
+  }
+  return Object.keys(out).length ? { targeting: out } : {};
 }
 
-async function getZernioAccountId(tenantId, platform) {
-  const url = `${process.env.SUPABASE_URL}/rest/v1/channels` +
-    `?user_id=eq.${encodeURIComponent(tenantId)}&platform=eq.${encodeURIComponent(platform)}` +
-    `&select=composio_connection_id&limit=1`;
-  const res = await fetch(url, { headers: sbHeaders() });
-  if (!res.ok) return null;
-  const rows = await res.json();
-  return rows?.[0]?.composio_connection_id || null;
-}
-
-async function resolveAdAccountId(tenantId, platform) {
-  const accountId = await getZernioAccountId(tenantId, platform);
-  if (accountId) return accountId;
-  throw new Error(
-    `No ${platform} account connected. Connect it via Connections → Ads.`
-  );
+// Per Meta spec: LOWEST_COST_WITH_BID_CAP / COST_CAP need bidAmount;
+// LOWEST_COST_WITH_MIN_ROAS needs roasAverageFloor. We pass through whatever
+// the caller sent and let Zernio validate — but bail early if the obvious
+// combinations are wrong, so the error surfaces locally.
+function pickBidFields({ bidStrategy, bidAmount, roasAverageFloor }) {
+  const out = {};
+  if (bidStrategy)                       out.bidStrategy      = bidStrategy;
+  if (Number.isFinite(bidAmount))        out.bidAmount        = bidAmount;
+  if (Number.isFinite(roasAverageFloor)) out.roasAverageFloor = roasAverageFloor;
+  return out;
 }
 
 // ─── Action handlers ──────────────────────────────────────────────────────────
 
-async function listCampaigns({ tenantId, platform, adAccountId }) {
-  const socialAccountId   = await resolveAdAccountId(tenantId, platform);
-  const platformSlug      = resolvePlatformSlug(platform);
+async function listCampaigns({ tenantId, platform, adAccountId, fromDate, toDate }) {
+  const socialAccountId = await requireZernioAccountId(tenantId, platform);
+  const platformSlug    = resolveAdsPlatform(platform);
   const qs = new URLSearchParams({ platform: platformSlug, accountId: socialAccountId });
   if (adAccountId) qs.set("adAccountId", String(adAccountId));
+  if (fromDate)    qs.set("fromDate",    fromDate);
+  if (toDate)      qs.set("toDate",      toDate);
 
   const data = await zernioFetch(`/ads/campaigns?${qs}`, { method: "GET" });
   return (data.campaigns || []).map(c => ({
@@ -163,43 +194,61 @@ async function listCampaigns({ tenantId, platform, adAccountId }) {
   }));
 }
 
-async function getCampaignDetail({ tenantId, platform, campaignId, adAccountId }) {
+async function getCampaignDetail({ tenantId, platform, campaignId, adAccountId, fromDate, toDate }) {
   if (!campaignId) throw new Error("campaignId required");
-  const socialAccountId = await resolveAdAccountId(tenantId, platform);
-  const platformSlug    = resolvePlatformSlug(platform);
+  const socialAccountId = await requireZernioAccountId(tenantId, platform);
+  const platformSlug    = resolveAdsPlatform(platform);
   const qs = new URLSearchParams({ platform: platformSlug, accountId: socialAccountId, campaignId });
   if (adAccountId) qs.set("adAccountId", String(adAccountId));
+  if (fromDate)    qs.set("fromDate",    fromDate);
+  if (toDate)      qs.set("toDate",      toDate);
 
   const data = await zernioFetch(`/ads?${qs}`, { method: "GET" });
   const ads  = data.ads || [];
   return {
     ads: ads.map(ad => ({
       id:      ad.platformAdId || ad._id,
+      zernioId: ad._id,
+      adSetId: ad.platformAdSetId || ad.adSetId,
       name:    ad.name,
       status:  ad.status,
       type:    ad.adType,
       metrics: ad.metrics || {},
+      creative: ad.creative || null,
     })),
     metrics: aggregateMetrics(ads),
   };
 }
 
-async function createCampaign({ tenantId, platform, name, budgetDaily, linkUrl, headline, body, adAccountId, targeting }) {
-  if (!linkUrl) throw new Error("linkUrl is required to create a campaign.");
-  const socialAccountId = await resolveAdAccountId(tenantId, platform);
-  const platformSlug    = resolvePlatformSlug(platform);
-  const fmt             = COPY_FORMAT[platform] || {};
+async function getAdTree({ tenantId, platform, adAccountId, fromDate, toDate, status, limit, page, sort }) {
+  const socialAccountId = await requireZernioAccountId(tenantId, platform);
+  const platformSlug    = resolveAdsPlatform(platform);
+  const qs = new URLSearchParams({ platform: platformSlug, accountId: socialAccountId });
+  if (adAccountId) qs.set("adAccountId", String(adAccountId));
+  if (fromDate)    qs.set("fromDate",    fromDate);
+  if (toDate)      qs.set("toDate",      toDate);
+  if (status)      qs.set("status",      status);
+  if (limit)       qs.set("limit",       String(limit));
+  if (page)        qs.set("page",        String(page));
+  if (sort)        qs.set("sort",        sort);
 
-  // LinkedIn supports audience targeting by job function, seniority, company
-  // size, and geo. Other platforms ignore the targeting field.
-  const liTargeting = platform === "liads" && targeting ? {
-    targeting: {
-      ...(targeting.geo           ? { geoLocations:  [].concat(targeting.geo)           } : {}),
-      ...(targeting.jobFunction   ? { jobFunctions:  [].concat(targeting.jobFunction)   } : {}),
-      ...(targeting.seniority     ? { seniorities:   [].concat(targeting.seniority)     } : {}),
-      ...(targeting.companySize   ? { companySizes:  [].concat(targeting.companySize)   } : {}),
-    },
-  } : {};
+  return zernioFetch(`/ads/tree?${qs}`, { method: "GET" });
+}
+
+async function createCampaign({
+  tenantId, platform, name, budgetDaily, linkUrl, headline, body, adAccountId,
+  targeting, currency, schedule, leadGenFormId, imageUrl, video, organizationId,
+  bidStrategy, bidAmount, roasAverageFloor, dsaBeneficiary, dsaPayor, promotedObject,
+  callToAction, specialAdCategories,
+}) {
+  if (!linkUrl && !leadGenFormId) {
+    throw new Error("linkUrl or leadGenFormId is required to create a campaign.");
+  }
+  const socialAccountId = await requireZernioAccountId(tenantId, platform);
+  const platformSlug    = resolveAdsPlatform(platform);
+  const fmt             = COPY_FORMAT[platform] || {};
+  const targetingFields = buildTargetingForCreate(platform, targeting);
+  const bidFields       = pickBidFields({ bidStrategy, bidAmount, roasAverageFloor });
 
   const payload = {
     accountId:    socialAccountId,
@@ -210,8 +259,20 @@ async function createCampaign({ tenantId, platform, name, budgetDaily, linkUrl, 
     budgetType:   "daily",
     headline:     headline ? headline.slice(0, fmt.headline?.max || 100) : (name || "").slice(0, 40),
     body:         body     ? body.slice(0, fmt.body?.max || 500)         : "Discover what we have to offer.",
-    linkUrl,
-    ...liTargeting,
+    ...(linkUrl       ? { linkUrl }       : {}),
+    ...(currency      ? { currency }      : {}),
+    ...(callToAction  ? { callToAction }  : {}),
+    ...(specialAdCategories?.length ? { specialAdCategories } : {}),
+    ...(imageUrl      ? { imageUrl }      : {}),
+    ...(video         ? { video }         : {}),
+    ...(organizationId ? { organizationId } : {}),
+    ...(leadGenFormId  ? { leadGenFormId }  : {}),
+    ...(promotedObject ? { promotedObject } : {}),
+    ...(schedule       ? { schedule }       : {}),
+    ...(dsaBeneficiary ? { dsaBeneficiary } : {}),
+    ...(dsaPayor       ? { dsaPayor }       : {}),
+    ...targetingFields,
+    ...bidFields,
     ...(adAccountId ? { adAccountId: String(adAccountId) } : {}),
   };
 
@@ -233,74 +294,195 @@ async function createCampaign({ tenantId, platform, name, budgetDaily, linkUrl, 
   return { id: campaignId, name: payload.name, status: "paused" };
 }
 
-async function updateBudget({ tenantId, platform, campaignId, dailyBudget, adAccountId }) {
-  if (!campaignId)       throw new Error("campaignId required");
-  if (dailyBudget == null) throw new Error("dailyBudget required");
+async function updateBudget({ tenantId, platform, campaignId, dailyBudget, lifetimeBudget, bidStrategy, bidAmount, roasAverageFloor }) {
+  if (!campaignId) throw new Error("campaignId required");
+  const platformSlug = resolveAdsPlatform(platform);
 
-  const socialAccountId = await resolveAdAccountId(tenantId, platform);
-  const platformSlug    = resolvePlatformSlug(platform);
-  const qs = new URLSearchParams({ platform: platformSlug, accountId: socialAccountId, campaignId, limit: "1" });
-  if (adAccountId) qs.set("adAccountId", String(adAccountId));
+  // Try the campaign-level update first (CBO). If the campaign is ABO, Zernio
+  // returns 409 BUDGET_LEVEL_MISMATCH and we fall back to per-ad-set update
+  // via the legacy /ads/{adId} path used previously.
+  const updates = {
+    platform: platformSlug,
+    ...(dailyBudget    != null ? { budget: { amount: dailyBudget,    type: "daily" } } : {}),
+    ...(lifetimeBudget != null ? { budget: { amount: lifetimeBudget, type: "lifetime" } } : {}),
+    ...pickBidFields({ bidStrategy, bidAmount, roasAverageFloor }),
+  };
+  if (!updates.budget && !updates.bidStrategy && !Number.isFinite(updates.bidAmount) && !Number.isFinite(updates.roasAverageFloor)) {
+    throw new Error("Provide at least one of dailyBudget, lifetimeBudget, bidStrategy, bidAmount, roasAverageFloor.");
+  }
 
-  const list = await zernioFetch(`/ads?${qs}`, { method: "GET" });
-  const ad   = (list.ads || [])[0];
-  if (!ad) throw new Error("No ads found in this campaign; budget cannot be updated.");
-
-  return zernioFetch(`/ads/${encodeURIComponent(ad._id)}`, {
-    method: "PUT",
-    body:   JSON.stringify({ budget: { amount: dailyBudget, type: "daily" } }),
-  });
+  try {
+    return await zernioFetch(`/ads/campaigns/${encodeURIComponent(campaignId)}`, {
+      method: "PUT",
+      body:   JSON.stringify(updates),
+    });
+  } catch (e) {
+    // ABO fallback — fan out to the first ad in the campaign.
+    if (e.status !== 409) throw e;
+    const socialAccountId = await requireZernioAccountId(tenantId, platform);
+    const qs = new URLSearchParams({
+      platform: platformSlug, accountId: socialAccountId, campaignId, limit: "1",
+    });
+    const list = await zernioFetch(`/ads?${qs}`, { method: "GET" });
+    const ad   = (list.ads || [])[0];
+    if (!ad) throw new Error("No ads found in this campaign; budget cannot be updated.");
+    return zernioFetch(`/ads/${encodeURIComponent(ad._id)}`, {
+      method: "PUT",
+      body:   JSON.stringify(updates.budget ? { budget: updates.budget } : updates),
+    });
+  }
 }
 
-async function setCampaignStatus({ tenantId, platform, campaignId, status }) {
+async function setCampaignStatus({ platform, campaignId, status }) {
   if (!campaignId) throw new Error("campaignId required");
-  const platformSlug = resolvePlatformSlug(platform);
+  const platformSlug = resolveAdsPlatform(platform);
   return zernioFetch(`/ads/campaigns/${encodeURIComponent(campaignId)}/status`, {
     method: "PUT",
     body:   JSON.stringify({ status, platform: platformSlug }),
   });
 }
 
-// ─── LinkedIn only: promote an existing organic post as sponsored content ─────
-// postUrn: LinkedIn share URN ("urn:li:share:1234567890") from the published row.
-// Returns { id, name, status } for the new sponsored campaign.
+async function bulkStatus({ status, campaigns }) {
+  if (!status || !["active", "paused"].includes(status)) {
+    throw new Error("status must be 'active' or 'paused'");
+  }
+  if (!Array.isArray(campaigns) || campaigns.length === 0) {
+    throw new Error("campaigns[] required");
+  }
+  // Translate FlowOS platform ids in each row to Zernio slugs.
+  const normalized = campaigns.map(c => ({
+    platformCampaignId: c.platformCampaignId || c.campaignId || c.id,
+    platform:           resolveAdsPlatform(c.platform) || c.platform,
+  })).filter(c => c.platformCampaignId && c.platform);
+  if (normalized.length === 0) throw new Error("No valid campaigns to update");
 
-async function boostLinkedInPost({ tenantId, postUrn, budgetDaily, targeting, name, adAccountId }) {
-  if (![tenantId, postUrn].every(Boolean)) throw new Error("tenantId and postUrn are required");
-  const socialAccountId = await resolveAdAccountId(tenantId, "liads");
+  return zernioFetch(`/ads/campaigns/bulk-status`, {
+    method: "POST",
+    body:   JSON.stringify({ status, campaigns: normalized }),
+  });
+}
 
-  const liTargeting = targeting ? {
-    ...(targeting.geo         ? { geoLocations: [].concat(targeting.geo)         } : {}),
-    ...(targeting.jobFunction ? { jobFunctions: [].concat(targeting.jobFunction) } : {}),
-    ...(targeting.seniority   ? { seniorities:  [].concat(targeting.seniority)   } : {}),
-    ...(targeting.companySize ? { companySizes: [].concat(targeting.companySize) } : {}),
-  } : {};
+async function duplicateCampaign({ platform, campaignId, deepCopy, statusOption, startTime, endTime, renameStrategy, renamePrefix, renameSuffix, syncAfter }) {
+  if (!campaignId) throw new Error("campaignId required");
+  const platformSlug = resolveAdsPlatform(platform);
+  return zernioFetch(`/ads/campaigns/${encodeURIComponent(campaignId)}/duplicate`, {
+    method: "POST",
+    body:   JSON.stringify({
+      platform: platformSlug,
+      ...(deepCopy       != null ? { deepCopy }       : {}),
+      ...(statusOption   ?         { statusOption }   : {}),
+      ...(startTime      ?         { startTime }      : {}),
+      ...(endTime        ?         { endTime }        : {}),
+      ...(renameStrategy ?         { renameStrategy } : {}),
+      ...(renamePrefix   ?         { renamePrefix }   : {}),
+      ...(renameSuffix   ?         { renameSuffix }   : {}),
+      ...(syncAfter      != null ? { syncAfter }      : {}),
+    }),
+  });
+}
+
+// PUT /v1/ads/ad-sets/{adSetId} — budget / status / bid strategy updates.
+async function updateAdSet({ platform, adSetId, budget, status, bidStrategy, bidAmount, roasAverageFloor }) {
+  if (!adSetId) throw new Error("adSetId required");
+  const platformSlug = resolveAdsPlatform(platform);
+  const payload = {
+    platform: platformSlug,
+    ...(budget ? { budget } : {}),
+    ...(status ? { status } : {}),
+    ...pickBidFields({ bidStrategy, bidAmount, roasAverageFloor }),
+  };
+  if (Object.keys(payload).length === 1) {
+    throw new Error("Provide at least one of budget, status, bidStrategy, bidAmount, roasAverageFloor.");
+  }
+  return zernioFetch(`/ads/ad-sets/${encodeURIComponent(adSetId)}`, {
+    method: "PUT",
+    body:   JSON.stringify(payload),
+  });
+}
+
+// POST /v1/ads/create with adSetId — attach a new ad to an existing ad set.
+async function createAd({
+  tenantId, platform, adSetId, name, headline, body, linkUrl, callToAction,
+  imageUrl, video, adAccountId,
+}) {
+  if (!adSetId) throw new Error("adSetId required");
+  const socialAccountId = await requireZernioAccountId(tenantId, platform);
+  const platformSlug    = resolveAdsPlatform(platform);
+  const fmt             = COPY_FORMAT[platform] || {};
 
   const payload = {
-    accountId:    socialAccountId,
-    platform:     "linkedin",
-    adType:       "sponsored_content",
-    postUrn,
-    name:         name || `Boost · ${new Date().toISOString().slice(0, 10)}`,
-    goal:         "awareness",
-    budgetAmount: budgetDaily || 10,
-    budgetType:   "daily",
-    targeting:    liTargeting,
-    ...(adAccountId ? { adAccountId: String(adAccountId) } : {}),
+    accountId:   socialAccountId,
+    adAccountId: adAccountId ? String(adAccountId) : undefined,
+    platform:    platformSlug,
+    name:        name || `Ad · ${new Date().toISOString().slice(0, 10)}`,
+    adSetId,
+    headline:    headline ? headline.slice(0, fmt.headline?.max || 100) : undefined,
+    body:        body     ? body.slice(0, fmt.body?.max || 500)         : undefined,
+    ...(linkUrl      ? { linkUrl }      : {}),
+    ...(callToAction ? { callToAction } : {}),
+    ...(imageUrl     ? { imageUrl }     : {}),
+    ...(video        ? { video }        : {}),
   };
+  // Strip undefined values so Zernio doesn't see null fields.
+  for (const k of Object.keys(payload)) if (payload[k] === undefined) delete payload[k];
 
-  const data        = await zernioFetch("/ads/create", { method: "POST", body: JSON.stringify(payload) });
-  const ad          = data.ad || {};
-  const campaignId  = ad.platformCampaignId || ad._id;
+  return zernioFetch("/ads/create", { method: "POST", body: JSON.stringify(payload) });
+}
+
+// POST /v1/ads/boost — promote an existing post on ANY supported platform.
+async function boostPost({
+  tenantId, platform, postId, platformPostId, name, goal, budgetDaily, budgetLifetime,
+  currency, schedule, targeting, bidStrategy, bidAmount, roasAverageFloor,
+  tracking, specialAdCategories, dsaBeneficiary, dsaPayor, adAccountId,
+  // TikTok Spark Ads — wired here; UI exposure lands in PR 4c
+  sparkAuthCode, linkUrl, callToAction,
+}) {
+  if (!postId && !platformPostId) {
+    throw new Error("postId or platformPostId required");
+  }
+  const socialAccountId = await requireZernioAccountId(tenantId, platform);
+  const platformSlug    = resolveAdsPlatform(platform);
+
+  const budget = budgetLifetime != null
+    ? { amount: budgetLifetime, type: "lifetime" }
+    : { amount: budgetDaily || 10, type: "daily" };
+
+  const payload = {
+    accountId:   socialAccountId,
+    adAccountId: adAccountId ? String(adAccountId) : undefined,
+    name:        name || `Boost · ${new Date().toISOString().slice(0, 10)}`,
+    goal:        goal || "engagement",
+    budget,
+    ...(postId         ? { postId }         : {}),
+    ...(platformPostId ? { platformPostId } : {}),
+    ...(currency       ? { currency }       : {}),
+    ...(schedule       ? { schedule }       : {}),
+    ...(tracking       ? { tracking }       : {}),
+    ...(specialAdCategories?.length ? { specialAdCategories } : {}),
+    ...(dsaBeneficiary ? { dsaBeneficiary } : {}),
+    ...(dsaPayor       ? { dsaPayor }       : {}),
+    ...buildTargetingForBoost(platform, targeting),
+    ...pickBidFields({ bidStrategy, bidAmount, roasAverageFloor }),
+    // TikTok Spark Ad passthrough — Zernio ignores these on other platforms.
+    ...(sparkAuthCode ? { sparkAuthCode } : {}),
+    ...(linkUrl       ? { linkUrl }       : {}),
+    ...(callToAction  ? { callToAction }  : {}),
+    platform: platformSlug,
+  };
+  for (const k of Object.keys(payload)) if (payload[k] === undefined) delete payload[k];
+
+  const data = await zernioFetch("/ads/boost", { method: "POST", body: JSON.stringify(payload) });
+  const ad   = data.ad || {};
+  const campaignId = ad.platformCampaignId || ad._id;
   if (!campaignId) throw new Error("Zernio created the boost but returned no campaign ID.");
 
-  // Start paused — user enables explicitly
+  // Start paused — caller enables explicitly via enable_campaign.
   await zernioFetch(`/ads/campaigns/${encodeURIComponent(campaignId)}/status`, {
     method: "PUT",
-    body:   JSON.stringify({ status: "paused", platform: "linkedin" }),
+    body:   JSON.stringify({ status: "paused", platform: platformSlug }),
   });
 
-  return { id: campaignId, name: payload.name, status: "paused", postUrn };
+  return { id: campaignId, name: payload.name, status: "paused", postId, platformPostId };
 }
 
 async function generateAdCopy({ platform, brandName, productName, keywords, tone, url, voiceNote }) {
@@ -394,11 +576,10 @@ export default async function handler(req) {
   const { action, platform, ...params } = body;
 
   if (!platform) return errResponse("platform required (metaads | liads | ttads | xads | pinads)");
-  if (!SUPPORTED.has(platform.toLowerCase())) {
-    return errResponse(`Unsupported platform: ${platform}. Supported: ${[...SUPPORTED].join(", ")}`);
-  }
-
   const p = platform.toLowerCase();
+  if (!SUPPORTED_PAID_PLATFORMS.has(p)) {
+    return errResponse(`Unsupported platform: ${platform}. Supported: ${[...SUPPORTED_PAID_PLATFORMS].join(", ")}`);
+  }
 
   try {
     let result;
@@ -409,6 +590,9 @@ export default async function handler(req) {
       case "campaign_detail":
         result = await getCampaignDetail({ tenantId, platform: p, ...params });
         break;
+      case "get_ad_tree":
+        result = await getAdTree({ tenantId, platform: p, ...params });
+        break;
       case "create_campaign":
         result = await createCampaign({ tenantId, platform: p, ...params });
         break;
@@ -416,21 +600,35 @@ export default async function handler(req) {
         result = await updateBudget({ tenantId, platform: p, ...params });
         break;
       case "enable_campaign":
-        result = await setCampaignStatus({ tenantId, platform: p, ...params, status: "active" });
+        result = await setCampaignStatus({ platform: p, ...params, status: "active" });
         break;
       case "pause_campaign":
-        result = await setCampaignStatus({ tenantId, platform: p, ...params, status: "paused" });
+        result = await setCampaignStatus({ platform: p, ...params, status: "paused" });
+        break;
+      case "bulk_status":
+        result = await bulkStatus({ ...params });
+        break;
+      case "campaign_duplicate":
+        result = await duplicateCampaign({ platform: p, ...params });
+        break;
+      case "create_ad_set":
+        result = await updateAdSet({ platform: p, ...params });
+        break;
+      case "create_ad":
+        result = await createAd({ tenantId, platform: p, ...params });
         break;
       case "generate_copy":
         result = await generateAdCopy({ platform: p, ...params });
         break;
-      case "boost_post": {
-        if (p !== "liads") return errResponse("boost_post is only supported for liads (LinkedIn Ads)");
-        result = await boostLinkedInPost({ tenantId, ...params });
+      case "boost_post":
+        result = await boostPost({ tenantId, platform: p, ...params });
         break;
-      }
       default:
-        return errResponse(`Unknown action: ${action}. Supported: list_campaigns, campaign_detail, create_campaign, update_budget, enable_campaign, pause_campaign, generate_copy, boost_post`);
+        return errResponse(
+          `Unknown action: ${action}. Supported: list_campaigns, campaign_detail, get_ad_tree, ` +
+          `create_campaign, update_budget, enable_campaign, pause_campaign, bulk_status, ` +
+          `campaign_duplicate, create_ad_set, create_ad, generate_copy, boost_post`
+        );
     }
     return jsonResponse({ ok: true, data: result });
   } catch (e) {

@@ -4,6 +4,52 @@ Reverse-chronological record of notable changes. New entries on top.
 
 ---
 
+## 2026-05-28 · Track A · PR 4a — Paid ads targeting + hierarchy
+
+**Scope:** Phase 4 PR 1/3 — extend the paid-social route with full ad-tree CRUD and normalized cross-platform targeting; add a separate zernio-ads route for pre-flight primitives; ship a three-pane Ads workspace.
+
+### Changes
+
+- **[api/paid-social.js](api/paid-social.js)** — extended (existing actions preserved):
+  - Migrated to shared `api/lib/zernioClient.js` + `api/lib/zernioMap.js` — eliminated three duplicated helpers (`zernioFetch`, `sbHeaders`, `getZernioAccountId/resolveAdAccountId`) that pre-dated the shared lib.
+  - New `buildTargetingForCreate` / `buildTargetingForBoost` map a single normalized shape `{ countries, regions, cities, zips, metros, customLocations, ageMin/Max, interests, advantageAudience }` to `/v1/ads/create`'s top-level fields vs. `/v1/ads/boost`'s nested `targeting:`. LinkedIn-specific `jobFunction/seniority/companySize` still nest under `targeting:` on create.
+  - `create_campaign` now passes targeting for ALL platforms (was LinkedIn-only) and accepts `bidStrategy / bidAmount / roasAverageFloor`, schedule, currency, DSA fields, leadGenFormId, video, organizationId, promotedObject, specialAdCategories.
+  - `update_budget` now hits `PUT /v1/ads/campaigns/{id}` (CBO); falls back to per-ad-set update on 409 BUDGET_LEVEL_MISMATCH (ABO). Also accepts bid-strategy updates.
+  - New actions:
+    - `create_ad_set` — `PUT /v1/ads/ad-sets/{adSetId}` (budget / status / bidStrategy).
+    - `create_ad` — `POST /v1/ads/create` with `adSetId` (attach an ad to an existing ad set).
+    - `get_ad_tree` — `GET /v1/ads/tree` (campaign → ad-set → ad with rolled-up metrics).
+    - `campaign_duplicate` — `POST /v1/ads/campaigns/{id}/duplicate` (deepCopy on by default; paused).
+    - `bulk_status` — `POST /v1/ads/campaigns/bulk-status` (up to 50 in one call; per-row results).
+  - `boost_post` — dropped `liads`-only gate. Now uses `POST /v1/ads/boost` for ALL five platforms (previously `boostLinkedInPost` was calling `/ads/create` with `adType: sponsored_content`, which only matched LinkedIn). Accepts `postId` or `platformPostId`, full normalized targeting, bid passthrough, DSA fields, tracking, plus TikTok Spark Ad fields (`sparkAuthCode`, `linkUrl`, `callToAction`) — UI exposure for Spark Ads lands in PR 4c.
+
+- **[api/zernio-ads.js](api/zernio-ads.js)** — new edge route. Three actions:
+  - `targeting_search` — `GET /v1/ads/targeting/search` (geo / interest / behavior / income).
+  - `targeting_reach_estimate` — `POST /v1/ads/targeting/reach-estimate`.
+  - `ad_analytics` — `GET /v1/ads/{adId}/analytics`.
+  Auth: `requireAuth`; accountId resolved server-side from the tenant's connected channel — caller passes `platform` only.
+
+- **[app/ads-workspace.jsx](app/ads-workspace.jsx)** — new workspace. Three panes:
+  - **Left:** platform picker (Meta / LinkedIn / TikTok / X / Pinterest) + campaigns list (`list_campaigns`).
+  - **Center:** selected-campaign overview — 8-KPI grid (spend / impressions / clicks / CTR / CPC / CPM / conversions / ROAS).
+  - **Right:** detail panel — Pause / Enable / Duplicate buttons; daily-budget edit with Save; live hierarchy from `get_ad_tree` (ad sets + their ads).
+  - **New-campaign drawer:** name + headline + body + linkUrl + daily budget + bid-strategy picker (conditionally surfaces `bidAmount` or `roasAverageFloor` inputs) + targeting builder.
+  - **Targeting builder:** country toggles, age min/max, `targeting_search` interest autocomplete (280ms debounce), live reach estimate via `targeting_reach_estimate` (380ms debounce) — shows lower/upper bounds, or a "not available on this platform" message for TikTok/Google.
+  - Hook aliases `useStateAds / useMemoAds / useEffectAds / useRefAds`.
+
+- **[app/main.jsx](app/main.jsx)** — one line: `import './ads-workspace.jsx'` immediately before `chat-app.jsx`.
+- **[app/chat-app.jsx](app/chat-app.jsx)** — one line: `ads: AdsWorkspace,` in the CanvasBody `Comp` map. To open the workspace: `openWorkspace("ads")` or `OPEN_CANVAS { kind: "workspace", target: "ads" }`.
+
+### Deliberately not in this PR
+
+- **Audiences sub-tab + customer-list CSV upload** — PR 4b.
+- **TikTok Spark Ads UI** (`sparkAuthCode` field, Boost dialog) — PR 4c. The API already accepts the field; the UI just doesn't surface it yet.
+- **Lead forms sub-tab + conversions** — PR 4c.
+- **Local DB cache of ad-tree state** — Zernio's `/ads/tree` is fast enough to fetch on demand; no migration needed yet. Re-evaluate if the workspace starts paginating heavily.
+- **No edits to `api/zernio.js`, `api/lib/zernioMap.js`, `api/lib/zernioClient.js`** — they're frozen per Track A boundary.
+
+---
+
 ## 2026-05-27 · Track A · PR 1 chunk 3 — Validators + Smart slots
 
 **Scope:** Eight read-only Zernio tool endpoints surfaced as actions, plus live char-count validation and a Smart-slots schedule picker in the edit drawer.
