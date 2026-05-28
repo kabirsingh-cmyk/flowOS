@@ -50,6 +50,31 @@ Reverse-chronological record of notable changes. New entries on top.
 
 ---
 
+## 2026-05-27 · Track B Phase 3 — GMB workspace (PR 1)
+
+**Scope:** New Google Business Profile workspace with Posts + Reviews panes. Backend route for GMB-specific Zernio actions.
+
+### Changes
+- `api/zernio-platform.js` (NEW) — `POST /api/zernio-platform` with actions:
+  - `list_reviews` — wraps Zernio GET `/accounts/{id}/gmb-reviews`
+  - `reply_to_review` — wraps Zernio POST `/accounts/{id}/gmb-reviews/{reviewId}/reply`
+  - `create_post` — wraps Zernio POST `/v1/posts` with `platform: "googlebusiness"`, supports STANDARD/EVENT/OFFER topic types, CTA buttons, event schedule, offer coupon codes
+  - `list_posts` — wraps Zernio GET `/v1/posts` filtered by platform
+- `app/gmb-workspace.jsx` (NEW) — Two-tab workspace:
+  - Posts tab: list view with topic type chip, status, text, CTA. Create Post side drawer with full form.
+  - Reviews tab: average rating summary, star ratings per review, review text, owner reply display, Reply/Edit Reply side drawer.
+  - Connection check: reads Supabase `channels` table for `platform='gbusiness'` + `status='connected'`.
+- `app/main.jsx` — adds `import './gmb-workspace.jsx'`
+- `app/chat-app.jsx` — adds `gmb: GmbWorkspace` to `CanvasBody` Comp map
+
+### Deliberately not done
+- Q&A pane — Zernio API has no GBP Q&A endpoint in the OpenAPI spec. Scoped out.
+- GMB location selector — assumes single connected location per tenant. Multi-location businesses would need a location picker + `locationId` passthrough on every call.
+- Post analytics — Google deprecated per-post analytics for GBP. Location-level metrics already available via `api/zernio-analytics` `gmb_performance`.
+- No dedicated GMB migration — reuses existing `channels` table schema.
+
+---
+
 ## 2026-05-27 · Track A · PR 1 chunk 3 — Validators + Smart slots
 
 **Scope:** Eight read-only Zernio tool endpoints surfaced as actions, plus live char-count validation and a Smart-slots schedule picker in the edit drawer.
