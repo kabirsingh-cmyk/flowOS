@@ -16,54 +16,74 @@ Two seed brands in `seed.jsx`: **MVEDA** (Ayurvedic skincare, DTC) and **Erickso
 
 ## Critical architecture facts
 
-### No build step — Babel CDN at runtime
+### Build: Vite, but everything still talks via window globals
 
 ```html
-<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
-<script type="text/babel" src="app/chat-app.jsx"></script>
+<!-- index.html -->
+<script type="module" src="/app/main.jsx"></script>
 ```
 
-JSX is compiled in the browser by Babel standalone. There is no Webpack, Vite, or bundler. No `import`/`export` in frontend files (they're not modules). Everything communicates via `window` globals.
+[app/main.jsx](app/main.jsx) is the Vite entry point. It imports every other frontend file in dependency order (see next section), then mounts `<ChatOS/>` via `ReactDOM.createRoot`.
 
-### Script load order matters — it is the dependency graph
+This is a hybrid layout from a Babel-CDN→Vite migration (`76ee67c Vite migration + security fixes + CI`):
 
-`index.html` loads scripts in this exact order:
+- **Two files are real ES modules:** [app/setup-globals.jsx](app/setup-globals.jsx) (assigns `globalThis.React` + `globalThis.ReactDOM`) and [app/main.jsx](app/main.jsx) itself.
+- **Two more files are non-IIFE modules with side effects:** [app/supabase.jsx](app/supabase.jsx) (imports `createClient` from `@supabase/supabase-js`, exposes `sb` / `flowAuth` / `apiFetch` on `window`) and a few others that may follow. Top-level `import` is fine in these.
+- **Every other app/*.jsx file is still IIFE-wrapped legacy code** — destructures hooks from `React`, defines components inside, ends with `Object.assign(window, { … })`. Top-level `import` in these will silently move the IIFE's window-assignments into module scope and break legacy consumers — `scripts/health-check.mjs` Check 4 catches this.
+
+There is no `<script type="text/babel">` and no in-browser JSX compile. Vite handles JSX transformation; the IIFE files just happen to look like legacy code, but they run inside Vite's module graph.
+
+### Script load order matters — it's encoded in `app/main.jsx`
+
+The dependency graph that used to live in `index.html` now lives as a sequence of `import './X.jsx'` statements in `app/main.jsx`. Current order:
 
 ```
-supabase.jsx      → exposes: sb (Supabase client)
-seed.jsx          → exposes: SEED
-ui.jsx            → exposes: Btn, Icon, Chip, Dot, statusChip, ...
-store.jsx         → exposes: useMvedaStore
-workspaces1.jsx   → exposes: CommandCenter, BrandMemory
-workspaces2.jsx   → exposes: CampaignPlanner, ContentStudio
-workspaces3.jsx   → exposes: PublishingQueue, InboxEscalation, AutonomySettings
-workspaces4.jsx   → exposes: Connections, BrandImportModal, ConnectorIcon
-chat-data.jsx     → exposes: SPECIALISTS, CHANNELS, BRIEFING, TEAM_THREAD, PERSONAL_HISTORY, SUGGESTIONS
-chat-ui.jsx       → exposes: SpecialistAvatar, UserAvatar, ArtifactCard, Message, BriefingCard, Composer
+setup-globals.jsx → defines globalThis.React + globalThis.ReactDOM (must be first)
+supabase.jsx     → exposes: sb (Supabase client), window.flowAuth, window.apiFetch
+seed.jsx         → exposes: SEED
+ui.jsx           → exposes: Btn, Icon, Chip, Dot, statusChip, ...
+ui2.jsx          → exposes: additional primitives (useStateUI2 aliases)
+store.jsx        → exposes: useMvedaStore
+workspaces1.jsx  → exposes: CommandCenter, BrandMemory
+workspaces2.jsx  → exposes: CampaignPlanner, ContentStudio
+workspaces3.jsx  → exposes: PublishingQueue, InboxEscalation, AutonomySettings
+workspaces4.jsx  → exposes: Connections, BrandImportModal, ConnectorIcon
+chat-data.jsx    → exposes: SPECIALISTS, CHANNELS, BRIEFING, TEAM_THREAD, PERSONAL_HISTORY, SUGGESTIONS
+chat-ui.jsx      → exposes: SpecialistAvatar, UserAvatar, ArtifactCard, Message, BriefingCard, Composer
 channel-strategy.jsx → exposes: ChannelStrategyCanvas, computeChannelStrategy
-features.jsx      → exposes: OrganicSocialStudio, SmsCenter, SeoStudio, AffiliateProgram, ...
-studio.jsx        → exposes: StudioHub, EmailStudio, SearchStudio, SettingsHub
-login.jsx         → exposes: LoginScreen
-onboarding.jsx    → exposes: OnboardingWizard, applyPalette, BRAND_PALETTES
-agents.jsx        → exposes: AgentsWorkspace
-insights.jsx      → exposes: InsightsCenter
-ai.jsx            → exposes: sendAIMessage
-chat-app.jsx      → mounts ReactDOM.createRoot → <ChatOS/>
+features.jsx     → exposes: OrganicSocialStudio, SmsCenter, SeoStudio, AffiliateProgram, ...
+studio.jsx       → exposes: StudioHub, EmailStudio, SearchStudio, SettingsHub, SpendDashboard
+login.jsx        → exposes: LoginScreen
+onboarding.jsx   → exposes: OnboardingWizard, applyPalette, BRAND_PALETTES
+agents.jsx       → exposes: AgentsWorkspace
+insights.jsx     → exposes: InsightsCenter
+ads-workspace.jsx → exposes: AdsWorkspace
+gmb-workspace.jsx → exposes: GmbWorkspace
+ai.jsx           → exposes: sendAIMessage
+chat-app.jsx     → exports ChatOS (consumed by main.jsx and mounted via ReactDOM.createRoot)
 ```
 
-A file can only use globals defined by files loaded before it. If you add a new component, put it in the right file or add a new file before `chat-app.jsx` in `index.html`.
+A file can only use globals defined by files imported before it. If you add a new component, put it in the right file or add a new `import './newfile.jsx'` line in `main.jsx` above the `chat-app.jsx` import.
 
-### All files use IIFE wrapping except the last two
+Hard invariants enforced by `scripts/health-check.mjs`:
+1. `setup-globals.jsx` is the first import in `main.jsx`.
+2. `supabase.jsx`, `seed.jsx`, `ui.jsx`, `ui2.jsx`, `store.jsx` all come before any `workspaces*.jsx`.
+3. `chat-app.jsx` is the last import in `main.jsx`.
+
+### IIFE pattern — required for legacy files, banned for Vite-native files
 
 ```js
 (function () {
-  // workspaces1/2/3/4, features, studio, etc.
+  const { useState: useStateF, useMemo: useMemoF } = React;
+  // workspaces1/2/3/4, features, studio, ads-workspace, gmb-workspace, etc.
   // Components defined here, then exported at the bottom:
   Object.assign(window, { MyComponent, anotherThing });
 })();
 ```
 
-`chat-app.jsx` does NOT use an IIFE — it runs at top level and calls `ReactDOM.createRoot`.
+`chat-app.jsx` does NOT use an IIFE — it `export`s `ChatOS` for `main.jsx` to mount.
+`main.jsx` and `setup-globals.jsx` are real modules with top-level `import`.
+**Everything else is IIFE-wrapped.** Adding a top-level `import` to an IIFE file forces Vite to treat it as a module, which moves the window-assignments out of global scope and breaks every legacy consumer that reads them. The health-check script will flag this.
 
 ### Hook aliases — one set per file
 
@@ -86,8 +106,10 @@ Every file aliases React hooks to avoid collisions across the global scope:
 | `agents.jsx` | useStateA | — | useEffectA | — | — | useCallbackA |
 | `channel-strategy.jsx` | useStateCS | useMemoCS | useEffectCS | — | — | — |
 | `insights.jsx` | useStateI | — | useEffectI | useRefI | — | useCallbackI |
+| `ads-workspace.jsx` | useStateAds | useMemoAds | useEffectAds | useRefAds | — | — |
+| `gmb-workspace.jsx` | useStateGmb | — | useEffectGmb | — | — | — |
 
-**Always use the alias for the file you're editing.** Never use bare `useState` unless you're in `ui.jsx`.
+**Always use the alias for the file you're editing.** Never use bare `useState` unless you're in `ui.jsx`. New workspace files should declare their own aliases (e.g. `useStateXxx`) at the top of the IIFE.
 
 ---
 
@@ -203,6 +225,9 @@ const Comp = {
   abtests: AbTestLab,         team: TeamSeats,
   discounts: DiscountOps,     mobile: MobileShell,
   settings: SettingsHub,      agents: AgentsWorkspace,
+  spend: SpendDashboard,      // defined in studio.jsx
+  ads: AdsWorkspace,          // Track A · Phase 4 — paid-social workspace
+  gmb: GmbWorkspace,          // Track B · Phase 3 — Google Business Profile
 }[canvas.target];
 ```
 
@@ -413,7 +438,7 @@ All in `/api/`. All use `export const config = { runtime: "edge" }`.
 | `POST /api/threads` | Threads posting — thin proxy to `/api/zernio`. Action: `publish_now`. |
 | `POST /api/bluesky` | Bluesky posting — thin proxy to `/api/zernio`. Action: `publish_now`. |
 | `POST /api/youtube` | YouTube posting — thin proxy to `/api/zernio`. Action: `publish_now`. |
-| `POST /api/klaviyo` | Klaviyo push via Composio. Actions: `create_draft_campaign` (email — template + campaign + assign), `create_draft_sms` (SMS — single campaign with inline message body, ≤160 chars, no template), `list_audiences`. Audience resolution shared (fuzzy name match → fallback to largest list). Writes land in `state.outbound.{emails,sms}` and surface in EmailStudio / SmsCenter `ChatDraftsToKlaviyo*` strips. |
+| `POST /api/klaviyo` | Klaviyo push via Composio. Actions: `create_draft_campaign` (email — template + campaign + assign), `create_draft_sms` (SMS — single campaign with inline message body, ≤160 chars, no template), `list_audiences`, `subscribe_lead` (Phase 4 PR 4c — wraps `KLAVIYO_CREATE_PROFILE` + optional `KLAVIYO_SUBSCRIBE_PROFILE_TO_MARKETING`; handles 409 already-exists; used by Ads workspace Lead-forms tab "Push to Klaviyo"). Audience resolution shared (fuzzy name match → fallback to largest list). Writes land in `state.outbound.{emails,sms}` and surface in EmailStudio / SmsCenter `ChatDraftsToKlaviyo*` strips. |
 | `GET/POST/PATCH /api/proactive-emails` | Flavor #1 (Proactive) for email. POST reads latest `analytics_insights` for tenant, classifies `recommended_actions` into 5 rules (R1 win-back · R2 replenish · R3 rescue · R4 cart aging · R5 VIP quiet, max 2/run), Claude-generates subject/preheader/body using brand voice, persists to `proactive_emails`. Idempotent by `(tenant, rule, source_insight_id)`. Demo fallback emits 1 seeded draft if no insights row exists. GET hydrates `state.outbound.proactiveEmails`. PATCH updates status/Klaviyo IDs after client push. |
 | `GET/POST/PATCH /api/proactive-sms` | Flavor #1 (Proactive) for SMS. POST reads latest `analytics_insights`, classifies into 4 rules (S1 win-back · S2 replenish · S3 cart-recovery · S4 VIP, max 2/run), Claude-generates body ≤160 chars, persists to `proactive_sms`. Idempotent by `(tenant, rule, source_insight_id)`. Demo fallback (S1 win-back) when no insights row. GET hydrates `state.outbound.proactiveSms`. PATCH updates status/Klaviyo IDs. Auth: `requireAuthOrCron`. |
 | `POST /api/scheduled-posts` | Platform-agnostic schedule queue. Actions: `create` (writes a `scheduled_posts` row with snapshot payload + UTC fire_at), `list` (returns tenant's open rows + last-7-day published for `PublishingQueue` hydration), `cancel` (flips `pending` → `cancelled`). Frontend writes here from `handleSchedule` in `workspaces3.jsx`. |
@@ -422,7 +447,11 @@ All in `/api/`. All use `export const config = { runtime: "edge" }`.
 | `GET  /api/cron/proactive-sms` | Vercel Cron (08:00 UTC) — iterates tenants and POSTs to /api/proactive-sms. 30 min after proactive-emails. |
 | `GET  /api/cron/fire-scheduled` | Vercel Cron (`* * * * *` — **requires Pro** for guaranteed 1-min execution; Hobby cron schedules will be rejected at deploy). Calls Supabase RPC `claim_due_scheduled_posts(20)` which atomically picks due `pending` rows via `FOR UPDATE SKIP LOCKED`, transitions them to `publishing`, then POSTs `${origin}/api/<platform>` with the row's snapshot payload. PATCHes the row to `published`/`failed`. Idempotent by construction — same row can never be claimed twice concurrently. |
 | `POST /api/google-ads` | **Zernio-backed** Google Ads wrapper (migrated from Composio 2026-05-24). Actions: `list_customer_ids`, `list_campaigns`, `create_campaign`, `update_budget`, `enable_campaign`, `pause_campaign`, `keyword_ideas`, `campaign_detail`, `generate_copy`. Frontend contract unchanged (`{ ok, data }`). Uses `ZERNIO_API_KEY`; resolves Zernio `accountId` via the tenant's Zernio profile. Pass `customerId` (Google Ads account number) in params; if omitted, uses the first connected account. |
-| `POST /api/paid-social` | **Zernio-backed** paid social ads for all five platforms in a single route (added 2026-05-26). Required body field: `platform` (metaads \| liads \| ttads \| xads \| pinads). Actions: `list_campaigns`, `campaign_detail`, `create_campaign`, `update_budget`, `enable_campaign`, `pause_campaign`, `generate_copy`. Response: `{ ok, data }`. `generate_copy` uses Claude (fast model) with platform-specific copy format rules. `create_campaign` always starts paused. |
+| `POST /api/paid-social` | **Zernio-backed** paid social ads for all five platforms in a single route (added 2026-05-26, extended in Phase 4 PR 4a). Required body field: `platform` (metaads \| liads \| ttads \| xads \| pinads). Actions: `list_campaigns`, `campaign_detail`, `get_ad_tree`, `create_campaign`, `update_budget`, `enable_campaign`, `pause_campaign`, `bulk_status`, `campaign_duplicate`, `create_ad_set`, `create_ad`, `generate_copy`, `boost_post`. Response: `{ ok, data }`. Cross-platform targeting normalized in `buildTargetingForCreate` / `buildTargetingForBoost`. Bid passthrough: `bidStrategy` / `bidAmount` / `roasAverageFloor`. `boost_post` accepts TikTok Spark Ad fields (`sparkAuthCode`, `linkUrl`, `callToAction`). `create_campaign` and `boost_post` always start paused. |
+| `POST /api/zernio-ads` | **Phase 4 ads primitives** (PR 4a–4c). Actions: `targeting_search` (GET `/v1/ads/targeting/search` — geo / interest / behavior / income), `targeting_reach_estimate` (POST `/v1/ads/targeting/reach-estimate`), `ad_analytics` (GET `/v1/ads/{adId}/analytics`), `audiences_list/create/get/delete/add_users` (Zernio hashes member data server-side; website + lookalike audience types gated to Meta locally), `lead_forms_list/get/create` (Meta-only), `leads_list` (cross-form via `/v1/ads/leads` or single-form via `/v1/ads/lead-forms/{id}/leads` when `formId` is passed), `send_conversions` (Meta + Google + LinkedIn CAPI). Auth: `requireAuth`. |
+| `POST /api/zernio-publish` | **Track A Phase 1 publishing actions** for already-published posts. Actions: `edit_post`, `unpublish_post`, `retry_post`, `update_metadata`, `bulk_upload`, plus 8 validators (`validate_post_length`, `validate_post`, `validate_media`, `validate_subreddit`, `queue_slots`, `queue_next_slot`, `queue_preview`). |
+| `POST /api/zernio-analytics` | **Track B analytics** — per-platform + primitive Zernio analytics actions. Kimi-owned. |
+| `POST /api/zernio-platform` | **Track B Phase 3 — Google Business Profile**. Actions: `list_reviews`, `reply_to_review`, `create_post` (STANDARD / EVENT / OFFER), `list_posts`. Kimi-owned. |
 | `POST /api/replicate` `POST /api/higgsfield` | Direct-API connector routes (provider: "direct" in seed.jsx). Actions: `initiate_connection` (validates apiKey against the provider's REST API, persists to `connector_credentials`, flips `channels` to connected), `disconnect`. Shared persistence helper in [api/lib/directCredentials.js](api/lib/directCredentials.js). `/api/luma` and `/api/audiostack` exist as tombstones (connectors removed from catalog 2026-05-24). |
 | `GET/POST /api/google-ads-auth` | **REMOVED — 410 Gone tombstone.** Returns `{ error: "Google Ads OAuth has moved to Composio…", code: "GONE_USE_COMPOSIO" }`. Connect flow now goes through `/api/composio` like every other OAuth connector. The old `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET` env vars are no longer read at runtime. |
 
@@ -615,21 +644,24 @@ Frontend uses the Supabase anon key baked into `supabase.jsx` (public — safe).
 
 ## Key anti-patterns — don't do these
 
-- **Don't use bare `useState`** in workspace files — use the aliased version for that file
-- **Don't `import` anything** in frontend `.jsx` files — no modules, globals only
-- **Don't add `type="module"`** to script tags in `index.html` — breaks Babel standalone
+- **Don't use bare `useState`** in workspace files — use the aliased version for that file (see hook-alias table)
+- **Don't add `import` to an IIFE-wrapped file.** Vite will silently flip it into module mode and the IIFE's `Object.assign(window, …)` will run too late or never. `scripts/health-check.mjs` Check 4 flags this. The only files that can safely have ES imports are `main.jsx`, `setup-globals.jsx`, and the non-IIFE side-effect modules like `supabase.jsx` / `seed.jsx`
+- **Don't add a second `<script>` tag to `index.html`** — `app/main.jsx` is the single Vite entry. Any new dependency goes via an `import` line in `main.jsx`, not a new script tag
 - **Don't write new components in `chat-app.jsx`** — it's the shell only. Components belong in the appropriate workspace or UI file
 - **Don't use hex colours in component styles** — use OKLCH or CSS custom properties
 - **Don't forget the second tenant** (Erickson) when updating seed connector state
-- **Don't call `actions.addDraft` from a new file** without confirming `useMvedaStore` is loaded before it in `index.html`
+- **Don't call `actions.addDraft` from a new file** without confirming the new file is imported AFTER `store.jsx` in `app/main.jsx`
+- **Don't reach for `window.supabase`** — it doesn't exist anymore. The Supabase CDN script was removed during the Vite migration. Import `createClient` from `@supabase/supabase-js` if you need a client; `window.sb` is already wired by `supabase.jsx`
+- **Don't edit shared append-only files heavy-handedly.** `app/main.jsx` (imports), `app/chat-app.jsx` (`Comp` map), `app/store.jsx` (Track A / Track B blocks), `WORKLOG.md` — all expect ONE-line additions, never modifications to existing entries. Cross-track conflicts on these files always resolve as "keep both"
 
 ---
 
 ## Deployment
 
 - **Git remote**: `github.com/kabirsingh-cmyk/flowOS` — `main` branch
-- **Vercel**: auto-deploys on push to `main`. `outputDirectory: "."` (no build step).
-- **Cron**: `/api/cron/daily-analytics` at `0 6 * * *` — requires Vercel Pro for guaranteed execution.
+- **Vercel**: auto-deploys on push to `main`. Vite build (`npm run build`) emits to `dist/`; serve config lives in `vercel.json`. Project is `flow-os-v2`; the legacy `flow-os` project was disconnected 2026-05-28 and is no longer wired to this repo
+- **Required status checks on `main`**: Health Check + Unit Tests (GitHub Actions) and Vercel deploy (`flow-os-v2`). The pre-Vite `Vercel — flow-os` check was disconnected 2026-05-28
+- **Cron**: `/api/cron/daily-analytics` at `0 6 * * *` — requires Vercel Pro for guaranteed execution. `/api/cron/fire-scheduled` runs `* * * * *` (per-minute, Pro only — Hobby silently rejects sub-hourly schedules)
 
 ---
 
