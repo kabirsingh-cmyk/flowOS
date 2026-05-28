@@ -633,6 +633,82 @@
     );
   }
 
+  // ─── Cohorts / Demographics ───────────────────────────────────────────────────
+
+  const COHORT_LABELS = {
+    age: "Age", gender: "Gender", country: "Country", city: "City", device: "Device",
+  };
+
+  function CohortsSection({ cohorts, loading }) {
+    if (loading) return null;
+    if (!cohorts || cohorts.length === 0) return null;
+
+    // Group by channel for display
+    const byChannel = {};
+    cohorts.forEach(c => {
+      if (!byChannel[c.channel]) byChannel[c.channel] = [];
+      byChannel[c.channel].push(c);
+    });
+
+    return (
+      <section style={{ marginBottom: 28 }}>
+        <h3 style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 12px" }}>
+          Audience Breakdowns
+        </h3>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
+          {Object.entries(byChannel).map(([channel, items]) => {
+            const meta = CHANNEL_META[channel] || { label: channel, icon: "📊", color: "#666" };
+            return items.map((c, i) => (
+              <CohortCard key={`${channel}-${c.cohort_type}-${i}`} channelMeta={meta} cohort={c} />
+            ));
+          })}
+        </div>
+      </section>
+    );
+  }
+
+  function CohortCard({ channelMeta, cohort }) {
+    const breakdowns = (cohort.breakdowns || []).slice(0, 6);
+    const maxPct = breakdowns.length > 0 ? Math.max(...breakdowns.map(b => b.pct || 0)) : 0;
+
+    return (
+      <div style={{
+        background: "var(--paper)", border: "1px solid var(--rule)",
+        borderRadius: 8, padding: "14px 16px",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <span style={{ fontSize: 16 }}>{channelMeta.icon}</span>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink)" }}>
+            {channelMeta.label}
+          </span>
+          <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: "auto", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            {COHORT_LABELS[cohort.cohort_type] || cohort.cohort_type}
+          </span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          {breakdowns.map((b, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 70, fontSize: 11.5, color: "var(--muted)", textAlign: "right", flexShrink: 0 }}>
+                {b.label}
+              </div>
+              <div style={{ flex: 1, height: 10, background: "var(--paper-2)", borderRadius: 5, overflow: "hidden" }}>
+                <div style={{
+                  width: `${maxPct > 0 ? (b.pct / maxPct * 100) : 0}%`,
+                  height: "100%", background: channelMeta.color,
+                  borderRadius: 5, opacity: 0.85,
+                  transition: "width 0.4s ease",
+                }} />
+              </div>
+              <div style={{ width: 45, fontSize: 11.5, color: "var(--ink)", fontWeight: 500, textAlign: "right", flexShrink: 0, fontFamily: "JetBrains Mono, monospace" }}>
+                {typeof b.pct === "number" ? `${b.pct}%` : fmtMetricValue(cohort.cohort_type, b.value)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   // ─── Error state ─────────────────────────────────────────────────────────────
 
   function ErrorState({ onRetry, errorMsg }) {
@@ -688,6 +764,174 @@
     );
   }
 
+  // ─── Comparison View ──────────────────────────────────────────────────────────
+
+  const HIGHER_IS_BETTER = new Set([
+    "roas","ctr","engagement_rate","open_rate","click_rate","revenue","conv_value",
+    "conversions","impressions","clicks","reach","sessions","active_users","orders",
+    "aov","unique_customers","net_revenue","page_fans","page_impressions",
+    "page_engaged_users","page_post_engagements","page_reactions_total",
+    "accounts_engaged","total_interactions","follower_count","following_count",
+    "likes_count","video_count","views","estimatedMinutesWatched","subscribersGained",
+    "followers_gained","engagements","calls","directionRequests","photoViews","sends","campaigns_sent",
+  ]);
+  const LOWER_IS_BETTER = new Set([
+    "bounce_rate","cpc","cpm","avg_position","subscribersLost","followers_lost",
+  ]);
+
+  function ComparisonView({ snapshots, selection, onToggle }) {
+    const available = snapshots.filter(s => CHANNEL_META[s.channel]);
+
+    if (available.length < 2) {
+      return (
+        <div style={{ textAlign: "center", padding: "60px 24px", color: "var(--muted)", fontSize: 14 }}>
+          Connect at least two platforms to use comparison mode.
+        </div>
+      );
+    }
+
+    const selectedSnaps = selection.map(key => available.find(s => s.channel === key)).filter(Boolean);
+
+    return (
+      <section style={{ marginBottom: 28 }}>
+        <h3 style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 12px" }}>
+          Compare Channels
+        </h3>
+
+        {/* Channel picker */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
+          {available.map(s => {
+            const meta = CHANNEL_META[s.channel];
+            const selected = selection.includes(s.channel);
+            return (
+              <button
+                key={s.channel}
+                onClick={() => onToggle(s.channel)}
+                style={{
+                  padding: "6px 12px", borderRadius: 6,
+                  border: selected ? `1.5px solid ${meta.color}` : "1px solid var(--rule)",
+                  background: selected ? `${meta.color}15` : "var(--paper)",
+                  color: selected ? meta.color : "var(--muted)",
+                  fontSize: 12.5, fontWeight: selected ? 600 : 400,
+                  cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
+                }}
+              >
+                <span>{meta.icon}</span>
+                <span>{meta.label}</span>
+                {selected && <span style={{ fontSize: 11, marginLeft: 2 }}>✓</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        {selection.length < 2 && (
+          <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>
+            Select 2–4 channels to compare side-by-side.
+          </div>
+        )}
+
+        {selectedSnaps.length >= 2 && (
+          <ComparisonTable snaps={selectedSnaps} />
+        )}
+      </section>
+    );
+  }
+
+  function ComparisonTable({ snaps }) {
+    // Gather all metric keys that appear in at least 2 selected channels
+    const keyCounts = {};
+    snaps.forEach(s => {
+      const keys = Object.keys(s.metrics || {}).filter(k => k !== "period" && k !== "dateRange" && k !== "date_start" && k !== "date_end" && !Array.isArray(s.metrics[k]));
+      keys.forEach(k => { keyCounts[k] = (keyCounts[k] || 0) + 1; });
+    });
+    const sharedKeys = Object.keys(keyCounts).filter(k => keyCounts[k] >= 2);
+    // Prefer known key order; append any extras alphabetically
+    const orderedKnown = [];
+    const allKnown = new Set();
+    snaps.forEach(s => {
+      (CHANNEL_KEY_METRICS[s.channel] || []).forEach(k => allKnown.add(k));
+    });
+    allKnown.forEach(k => { if (sharedKeys.includes(k)) orderedKnown.push(k); });
+    const extras = sharedKeys.filter(k => !allKnown.has(k)).sort();
+    const metricKeys = [...orderedKnown, ...extras];
+
+    if (metricKeys.length === 0) {
+      return (
+        <div style={{ fontSize: 13, color: "var(--muted)", padding: "20px 0" }}>
+          No overlapping metrics across the selected channels.
+        </div>
+      );
+    }
+
+    const getVal = (snap, key) => {
+      const raw = snap.metrics?.[key];
+      return snap.endpoint && snap.endpoint !== "legacy" ? resolveMetricValue(raw) : raw;
+    };
+
+    const cellStyle = {
+      padding: "10px 14px", borderBottom: "1px solid var(--rule)", borderRight: "1px solid var(--rule)",
+      fontSize: 13.5, color: "var(--ink)", fontFamily: "JetBrains Mono, monospace",
+    };
+    const headerCell = {
+      padding: "10px 14px", borderBottom: "1px solid var(--rule)", borderRight: "1px solid var(--rule)",
+      background: "var(--paper-2)", fontSize: 12, fontWeight: 600, color: "var(--ink)",
+      whiteSpace: "nowrap",
+    };
+
+    return (
+      <div style={{
+        background: "var(--paper)", border: "1px solid var(--rule)", borderRadius: 8, overflow: "hidden",
+        overflowX: "auto",
+      }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 400 }}>
+          <thead>
+            <tr>
+              <th style={{ ...headerCell, textAlign: "left", position: "sticky", left: 0, zIndex: 1 }}>Metric</th>
+              {snaps.map(s => {
+                const meta = CHANNEL_META[s.channel];
+                return (
+                  <th key={s.channel} style={{ ...headerCell, textAlign: "right" }}>
+                    <span style={{ marginRight: 6 }}>{meta.icon}</span>
+                    {meta.label}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {metricKeys.map(key => {
+              const vals = snaps.map(s => ({ snap: s, val: getVal(s, key) }));
+              const numeric = vals.filter(v => typeof v.val === "number" && !isNaN(v.val));
+              let bestVal = null;
+              if (numeric.length > 0) {
+                if (LOWER_IS_BETTER.has(key)) {
+                  bestVal = Math.min(...numeric.map(v => v.val));
+                } else if (HIGHER_IS_BETTER.has(key)) {
+                  bestVal = Math.max(...numeric.map(v => v.val));
+                }
+              }
+              return (
+                <tr key={key}>
+                  <td style={{ ...cellStyle, textAlign: "left", position: "sticky", left: 0, background: "var(--paper)", zIndex: 1, fontFamily: "inherit", fontWeight: 500 }}>
+                    {fmtMetricLabel(key)}
+                  </td>
+                  {vals.map(({ snap, val }) => {
+                    const isBest = bestVal !== null && typeof val === "number" && val === bestVal;
+                    return (
+                      <td key={snap.channel} style={{ ...cellStyle, textAlign: "right", background: isBest ? "rgba(34,197,94,0.08)" : "transparent", color: isBest ? "#16A34A" : "var(--ink)", fontWeight: isBest ? 600 : 400 }}>
+                        {fmtMetricValue(key, val)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
   // ─── Main InsightsCenter component ────────────────────────────────────────────
 
   function InsightsCenter({ state }) {
@@ -700,6 +944,9 @@
     const [refreshing, setRefreshing]   = useStateI(false);
     const [lastUpdated, setLastUpdated] = useStateI(null);
     const [error, setError]             = useStateI(null);
+    const [compareMode, setCompareMode] = useStateI(false);
+    const [compareSelection, setCompareSelection] = useStateI([]);
+    const [cohorts, setCohorts] = useStateI([]);
 
     const sb = window.sb;
 
@@ -709,7 +956,7 @@
       setLoading(true);
       setError(null);
       try {
-        const [snapRes, primRes, insRes] = await Promise.all([
+        const [snapRes, primRes, insRes, cohortRes] = await Promise.all([
           sb.from("analytics_snapshots")
             .select("*")
             .eq("tenant_id", tenantId)
@@ -725,11 +972,17 @@
             .eq("period", period)
             .order("generated_at", { ascending: false })
             .limit(1),
+          sb.from("analytics_cohorts")
+            .select("*")
+            .eq("tenant_id", tenantId)
+            .eq("period", period)
+            .order("fetched_at", { ascending: false }),
         ]);
 
         if (snapRes.error) throw new Error(snapRes.error.message || "Snapshot fetch failed");
         if (primRes.error) throw new Error(primRes.error.message || "Primitives fetch failed");
         if (insRes.error)  throw new Error(insRes.error.message  || "Insights fetch failed");
+        if (cohortRes.error) throw new Error(cohortRes.error.message || "Cohorts fetch failed");
 
         if (Array.isArray(snapRes.data)) {
           const rows = snapRes.data;
@@ -760,6 +1013,16 @@
             insights:            row.insights || [],
             recommended_actions: row.recommended_actions || [],
           });
+        }
+
+        if (Array.isArray(cohortRes.data)) {
+          setCohorts(cohortRes.data.map(r => ({
+            channel: r.channel,
+            cohort_type: r.cohort_type,
+            breakdowns: r.breakdowns,
+            meta: r.meta,
+            fetched_at: r.fetched_at,
+          })));
         }
       } catch (e) {
         setError(e.message || "Failed to load analytics data");
@@ -796,6 +1059,14 @@
 
     function handleNavigate(workspace) {
       window.dispatchEvent(new CustomEvent("flowos:navigate", { detail: { workspace } }));
+    }
+
+    function toggleCompareChannel(key) {
+      setCompareSelection(prev => {
+        if (prev.includes(key)) return prev.filter(k => k !== key);
+        if (prev.length >= 4) return prev; // max 4
+        return [...prev, key];
+      });
     }
 
     const hasData = snapshots.length > 0 || insights;
@@ -837,6 +1108,23 @@
                 </button>
               ))}
             </div>
+
+            {/* Compare toggle */}
+            <button
+              onClick={() => {
+                setCompareMode(v => !v);
+                if (compareMode) setCompareSelection([]);
+              }}
+              style={{
+                padding: "6px 14px", borderRadius: 7,
+                background: compareMode ? "var(--ink)" : "var(--paper-2)",
+                color: compareMode ? "#fff" : "var(--muted)",
+                border: "1px solid var(--rule)",
+                fontSize: 12.5, fontWeight: 500, cursor: "pointer",
+              }}
+            >
+              {compareMode ? "Exit Compare" : "⊕ Compare"}
+            </button>
 
             {/* Refresh button */}
             <button
@@ -885,12 +1173,23 @@
             <EmptyState onRefresh={handleRefresh} loading={refreshing} />
           ) : (
             <>
-              <SummarySection insights={insights} snapshots={snapshots} loading={loading} />
-              <RecommendedActions actions={insights?.recommended_actions} loading={loading} onNavigate={handleNavigate} />
-              <InsightsGrid items={insights?.insights} loading={loading} onNavigate={handleNavigate} />
-              <PrimitivesSection primitives={primitives} loading={loading} />
-              <DataByChannel snapshots={snapshots} loading={loading} />
-              <AnalyticsChat tenantId={tenantId} snapshots={snapshots} insights={insights} period={period} />
+              {compareMode ? (
+                <ComparisonView
+                  snapshots={snapshots}
+                  selection={compareSelection}
+                  onToggle={toggleCompareChannel}
+                />
+              ) : (
+                <>
+                  <SummarySection insights={insights} snapshots={snapshots} loading={loading} />
+                  <RecommendedActions actions={insights?.recommended_actions} loading={loading} onNavigate={handleNavigate} />
+                  <InsightsGrid items={insights?.insights} loading={loading} onNavigate={handleNavigate} />
+                  <PrimitivesSection primitives={primitives} loading={loading} />
+                  <CohortsSection cohorts={cohorts} loading={loading} />
+                  <DataByChannel snapshots={snapshots} loading={loading} />
+                  <AnalyticsChat tenantId={tenantId} snapshots={snapshots} insights={insights} period={period} />
+                </>
+              )}
             </>
           )}
         </div>

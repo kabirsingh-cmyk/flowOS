@@ -18,6 +18,9 @@
  * Cross-platform primitives:
  *   best_time, content_decay, posting_frequency,
  *   post_timeline, daily_metrics
+ *
+ * Drill-down actions:
+ *   post_analytics, ad_analytics, linkedin_personal_aggregate
  */
 
 import { requireAuthOrCron } from "./lib/auth.js";
@@ -53,9 +56,27 @@ const PRIMITIVES = {
   daily_metrics:     { path: "/analytics/daily-metrics",     needsPostId: false },
 };
 
+const DRILL_DOWNS = {
+  post_analytics: {
+    path: "/analytics",
+    params: ["postId","platform","profileId","accountId","source","fromDate","toDate","limit","page","sortBy","order"],
+  },
+  ad_analytics: {
+    path: (adId) => `/ads/${encodeURIComponent(adId)}/analytics`,
+    needsAdId: true,
+    params: ["fromDate","toDate","breakdowns"],
+  },
+  linkedin_personal_aggregate: {
+    path: (accountId) => `/accounts/${encodeURIComponent(accountId)}/linkedin-aggregate-analytics`,
+    needsAccountId: true,
+    params: ["aggregation","startDate","endDate","metrics"],
+  },
+};
+
 const VALID_ACTIONS = [
   ...Object.keys(PLATFORM_ANALYTICS),
   ...Object.keys(PRIMITIVES),
+  ...Object.keys(DRILL_DOWNS),
 ];
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
@@ -82,7 +103,10 @@ export default async function handler(req) {
     if (PLATFORM_ANALYTICS[action]) {
       return await handlePlatform(body, PLATFORM_ANALYTICS[action]);
     }
-    return await handlePrimitive(body, PRIMITIVES[action]);
+    if (PRIMITIVES[action]) {
+      return await handlePrimitive(body, PRIMITIVES[action]);
+    }
+    return await handleDrillDown(body, DRILL_DOWNS[action]);
   } catch (e) {
     console.error("[zernio-analytics]", e);
     const status = e.status && e.status >= 400 && e.status < 600 ? e.status : 502;
@@ -159,5 +183,56 @@ async function handlePrimitive(body, meta) {
 
   const qs = params.toString();
   const data = await zernioFetch(`${meta.path}${qs ? "?" + qs : ""}`, { method: "GET" });
+  return jsonResponse({ ok: true, data });
+}
+
+// ─── Drill-down analytics ─────────────────────────────────────────────────────
+
+async function handleDrillDown(body, meta) {
+  const {
+    adId, accountId: drillAccountId,
+    postId, platform, profileId, accountId, source,
+    fromDate, toDate, since, until,
+    limit, page, sortBy, order,
+    breakdowns, aggregation, metrics,
+    startDate, endDate,
+  } = body;
+
+  if (meta.needsAdId && !adId) return errResponse("adId required", 400);
+  if (meta.needsAccountId && !drillAccountId) return errResponse("accountId required", 400);
+
+  const path = typeof meta.path === "function"
+    ? meta.path(meta.needsAdId ? adId : drillAccountId)
+    : meta.path;
+
+  const params = new URLSearchParams();
+
+  const setIf = (key, val) => { if (val !== undefined && val !== null && val !== "") params.set(key, String(val)); };
+
+  for (const key of meta.params) {
+    switch (key) {
+      case "postId":      setIf("postId", postId); break;
+      case "platform":    setIf("platform", platform); break;
+      case "profileId":   setIf("profileId", profileId); break;
+      case "accountId":   setIf("accountId", accountId); break;
+      case "source":      setIf("source", source); break;
+      case "fromDate":    setIf("fromDate", fromDate); break;
+      case "toDate":      setIf("toDate", toDate); break;
+      case "since":       setIf("since", since); break;
+      case "until":       setIf("until", until); break;
+      case "limit":       setIf("limit", limit); break;
+      case "page":        setIf("page", page); break;
+      case "sortBy":      setIf("sortBy", sortBy); break;
+      case "order":       setIf("order", order); break;
+      case "breakdowns":  setIf("breakdowns", breakdowns); break;
+      case "aggregation": setIf("aggregation", aggregation); break;
+      case "metrics":     setIf("metrics", metrics); break;
+      case "startDate":   setIf("startDate", startDate); break;
+      case "endDate":     setIf("endDate", endDate); break;
+    }
+  }
+
+  const qs = params.toString();
+  const data = await zernioFetch(`${path}${qs ? "?" + qs : ""}`, { method: "GET" });
   return jsonResponse({ ok: true, data });
 }

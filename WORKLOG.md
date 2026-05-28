@@ -4,6 +4,90 @@ Reverse-chronological record of notable changes. New entries on top.
 
 ---
 
+## 2026-05-28 · Track B · Phase 4 PR B.3 — Cohort drill-downs (demographics)
+
+**Scope:** Persist and surface demographic breakdowns from Instagram and YouTube analytics. New `analytics_cohorts` table, cron extraction, and audience-breakdown UI cards.
+
+### Changes
+- **[db/migrations/2026-06-02-analytics-cohorts.sql](db/migrations/2026-06-02-analytics-cohorts.sql)** — new table:
+  - `analytics_cohorts` — one row per `(tenant, channel, cohort_type, period)`
+  - Columns: `tenant_id`, `channel`, `cohort_type` (age/gender/country/city/...), `period`, `breakdowns` (jsonb array of `{ label, value, pct }`), `meta` (extra context like metric/timeframe/dateRange), `fetched_at`
+  - Unique constraint on `(tenant_id, channel, cohort_type, period)`
+  - RLS policies matching `analytics_snapshots` / `analytics_primitives`
+
+- **[api/cron/daily-analytics.js](api/cron/daily-analytics.js)** — extended:
+  - Added `youtube_demographics` to `PLATFORM_ENDPOINTS` for YouTube (was missing; Instagram already had it)
+  - New `cohortRows` accumulator in `processTenant`
+  - `extractCohorts(snap)` helper — parses `metrics.demographics` from Instagram/YouTube responses, normalizes `{ dimension, value }` items into `{ label, value, pct }`, computes percentages per cohort type
+  - `persistCohorts()` helper — upserts into `analytics_cohorts` with `resolution=merge-duplicates`
+  - Cron summary now reports `cohorts: cohortRows.length`
+
+- **[app/insights.jsx](app/insights.jsx)** — added cohort UI:
+  - New state `cohorts` + fetch from `analytics_cohorts` in `loadCached()`
+  - `CohortsSection` — grid of cards grouped by channel, one card per `(channel, cohort_type)`
+  - `CohortCard` — horizontal bar chart with channel color, top 6 segments, percentage labels. Bars are relative to the max segment so small differences remain visible.
+  - Placed between Primitives and Data by Channel in the normal (non-compare) view
+
+### Why not ad_analytics breakdowns
+The `ad_analytics` drill-down (PR B.1) supports Meta/TikTok demographic breakdowns, but requires a specific `adId`. The cron doesn't have a campaign/ad inventory to iterate over. Ad-level cohorts belong in the Ads workspace (Track A) or a future report builder that queries specific ads.
+
+### Verification
+- `node --check api/cron/daily-analytics.js` → OK
+- `esbuild app/insights.jsx --loader=jsx --format=iife --bundle` → OK
+
+---
+
+## 2026-05-28 · Track B · Phase 4 PR B.2 — Comparison views in Insights
+
+**Scope:** Side-by-side channel comparison UI in `app/insights.jsx`. Pure frontend enhancement using existing snapshot data.
+
+### Changes
+- **[app/insights.jsx](app/insights.jsx)** — added comparison mode:
+  - New state: `compareMode`, `compareSelection` (max 4 channels)
+  - Top bar: "⊕ Compare" / "Exit Compare" toggle button next to period selector
+  - `ComparisonView` component: channel picker (icon + label chips, color-coded by channel), prompts to select 2–4 channels
+  - `ComparisonTable` component: sticky-header table with metrics as rows and selected channels as columns
+    - Only shows metrics that appear in at least 2 selected channels
+    - Uses existing `resolveMetricValue` + `fmtMetricValue` for consistent formatting
+    - Highlights best value per row: green background + bold for higher-is-better metrics (impressions, revenue, ROAS, etc.); same for lower-is-better (CPC, CPM, bounce rate, etc.)
+    - Sticky first column (`Metric`) so it stays visible on horizontal scroll
+  - When compare mode is active, the regular sections (Summary, Insights, Primitives, Data by Channel, Analytics Chat) are hidden to reduce noise
+
+### Deliberately not done
+- No new backend calls — comparison uses cached `analytics_snapshots` rows already loaded for the current period. Drill-down endpoints from PR B.1 will be consumed in PR B.3 (cohort drill-downs).
+- No campaign-level comparison — `ad_analytics` drill-down needs a specific `adId`; campaign comparison belongs in the Ads workspace (Track A) or a future dedicated report builder.
+- No persistence of comparison selection — selection resets when toggling compare mode off.
+
+### Verification
+- `esbuild app/insights.jsx --loader=jsx --format=iife --bundle` → OK
+
+---
+
+## 2026-05-28 · Track B · Phase 4 PR B.1 — Drill-down analytics actions
+
+**Scope:** Wire three unwired Zernio analytics endpoints into the existing `api/zernio-analytics.js` proxy as a new "drill-down" action category.
+
+### Changes
+- **[api/zernio-analytics.js](api/zernio-analytics.js)** — added `DRILL_DOWNS` registry + `handleDrillDown` handler:
+  - `post_analytics` — `GET /v1/analytics`. Single-post lookup (`postId`) or paginated list with overview stats. Query passthrough: `platform`, `profileId`, `accountId`, `source`, `fromDate`, `toDate`, `limit`, `page`, `sortBy`, `order`.
+  - `ad_analytics` — `GET /v1/ads/{adId}/analytics`. Per-ad/campaign performance with optional demographic `breakdowns` (Meta/TikTok). Requires `adId`.
+  - `linkedin_personal_aggregate` — `GET /v1/accounts/{accountId}/linkedin-aggregate-analytics`. Personal LinkedIn account-level aggregates (not org pages). Supports `aggregation: TOTAL | DAILY`, `startDate`, `endDate`, comma-separated `metrics`.
+  - All three reuse existing auth (`requireAuthOrCron`) and error handling (Zernio status passthrough). Path params are `encodeURIComponent`-escaped.
+
+### Why these endpoints
+- `post_analytics` closes the loop on per-post metrics that the current per-platform endpoints don't surface (e.g. "how did this specific Reel perform across all its placements?").
+- `ad_analytics` is distinct from Track A's `api/zernio-ads.js` `ad_analytics` — this one is raw Zernio passthrough for the same endpoint; Track A's version resolves the ad account server-side from the tenant's connected channel. Keeping both lets InsightsCenter call this directly without needing to know the tenant's ad-account mapping.
+- `linkedin_personal_aggregate` fills the gap between `linkedin_org_aggregate` (org pages) and `linkedin_post_analytics` (single post) — personal profiles need their own endpoint per LinkedIn API limitations.
+
+### Deliberately not done
+- No UI consumption yet — `app/insights.jsx` will call these in PR B.2 (comparison views) and PR B.3 (cohort drill-downs).
+- No new DB migrations — these are pure proxy actions; persistence decisions deferred until the frontend needs cached drill-down data.
+
+### Verification
+- `node --check api/zernio-analytics.js` → OK
+
+---
+
 ## 2026-05-28 · Track A · PR 4b — Ads audiences + customer-list CSV upload
 
 **Scope:** Phase 4 PR 2/3 — audiences CRUD on the API side, a new Audiences sub-tab in the Ads workspace, and CSV upload for customer-list audiences (the headline acceptance criterion: "Upload a 500-email CSV to a Meta customer_list audience → audience populated").
