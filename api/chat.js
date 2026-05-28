@@ -19,6 +19,14 @@ export const config = { runtime: "edge" };
 
 const ANTHROPIC_BASE = "https://api.anthropic.com/v1";
 
+// Publishable platform slugs for the drafter.
+// Mirrors the allowlist in api/scheduled-posts.js (PR B1) and the core organic
+// set in api/lib/zernioMap.js. Keep in sync.
+const PUBLISHABLE_PLATFORM_SLUGS = [
+  "instagram", "tiktok", "linkedin", "facebook", "x",
+  "youtube", "pinterest", "threads", "bluesky", "reddit",
+];
+
 // ─── Brand voice block (appended to supervisor + drafter prompts) ─────────────
 
 function buildBrandVoiceBlock(brand) {
@@ -274,13 +282,18 @@ TOOL CHOICE
 PUBLISH PATHS
 These platforms publish directly from the queue (user clicks Schedule or Publish Now):
   LinkedIn, Facebook, X, Instagram, Reddit, TikTok, Pinterest, Threads, Bluesky,
-  YouTube, Snapchat, Google Business, Telegram, WhatsApp, Discord.
+  YouTube.
+
+For platforms outside this list (Snapchat, Google Business, Telegram, WhatsApp, Discord,
+blog posts, podcast scripts, print ads, press releases, or any other non-social format),
+use create_unpublishable_draft instead of create_draft. The user will see a "Copy text"
+button so they can post manually.
 
 These formats go to the queue as copy-only — the user exports and posts manually:
   Blog posts, podcast scripts, print ads, press releases, and any other non-social format.
 
 When writing for a copy-only format, add one sentence at the end of your response noting
-that the draft will land in the queue ready to copy — no automated publishing.
+that the draft will land as copy ready to paste — no automated publishing.
 
 Formats:
 - Social post: caption + relevant hashtags. Under 300 chars unless the platform supports long-form.
@@ -782,12 +795,26 @@ const INTERNAL_TOOLS = [
   },
   {
     name: "create_draft",
-    description: "Create a publishable content draft and surface it inline in the chat thread with a 'Send to queue' action. Call this whenever the user asks you to write, draft, or create content for a specific platform or format.",
+    description: "Create a publishable content draft and surface it inline in the chat thread with a 'Send to queue' action. Call this whenever the user asks you to write, draft, or create content for a publishable platform.",
     input_schema: {
       type: "object",
       properties: {
-        platform:    { type: "string", description: "Target platform slug: instagram, tiktok, linkedin, facebook, x, youtube, pinterest, threads, bluesky, reddit, snapchat, discord, telegram, whatsapp, gbusiness, email, sms" },
-        contentType: { type: "string", description: "Content format: Post, Reel, Carousel, Story, Email, SMS, Video, Short, Pin, Thread, Article, Ad" },
+        platform:    { type: "string", enum: PUBLISHABLE_PLATFORM_SLUGS, description: "Target platform slug. Must be one of the publishable platforms." },
+        contentType: { type: "string", description: "Content format: Post, Reel, Carousel, Story, Video, Short, Pin, Thread, Article, Ad" },
+        copy:        { type: "string", description: "The full draft copy — body text, caption, or script. Write in the brand voice. No preamble." },
+        imagePrompt: { type: "string", description: "Optional Runware image-generation prompt if a visual is needed for this format. Describe the scene, not the brand." },
+      },
+      required: ["platform", "contentType", "copy"],
+    },
+  },
+  {
+    name: "create_unpublishable_draft",
+    description: "Create a copy-only content draft for a platform FlowOS does not yet publish to (Snapchat, Google Business, Telegram, WhatsApp, Discord, blog, podcast, press release, print ad, or any other non-social format). Surfaces a 'Copy text' button so the user can post manually. Always use this instead of create_draft when the requested platform is outside the publishable list.",
+    input_schema: {
+      type: "object",
+      properties: {
+        platform:    { type: "string", description: "Target platform or format name (e.g. snapchat, googlebusiness, telegram, whatsapp, discord, blog, podcast, press_release, print_ad)." },
+        contentType: { type: "string", description: "Content format: Post, Reel, Carousel, Story, Video, Short, Pin, Thread, Article, Ad, Blog, Podcast, PressRelease" },
         copy:        { type: "string", description: "The full draft copy — body text, caption, email body, or script. Write in the brand voice. No preamble." },
         imagePrompt: { type: "string", description: "Optional Runware image-generation prompt if a visual is needed for this format. Describe the scene, not the brand." },
       },
@@ -1143,7 +1170,7 @@ INTERNAL_TOOLS.push({
 });
 
 // Tools available to the Drafter specialist
-const DRAFTER_TOOLS = INTERNAL_TOOLS.filter(t => t.name === "create_draft" || t.name === "create_email_draft" || t.name === "create_sms_draft" || t.name === "create_email_sequence");
+const DRAFTER_TOOLS = INTERNAL_TOOLS.filter(t => t.name === "create_draft" || t.name === "create_unpublishable_draft" || t.name === "create_email_draft" || t.name === "create_sms_draft" || t.name === "create_email_sequence");
 
 // Tools available to the Campaign Planner specialist
 const PLANNER_TOOLS = INTERNAL_TOOLS.filter(t => t.name === "create_campaign_plan" || t.name === "open_workspace");
@@ -1288,7 +1315,7 @@ ${banned.length ? `- Banned phrases must NOT appear in copy: ${banned.join(", ")
 - X/Twitter copy: ≤240 chars
 - SMS copy: ≤160 chars (GSM-7)
 - Email subject lines: ≤60 chars
-- Draft must use a tool call (create_draft, create_email_draft, or create_sms_draft) — plain conversational text is not a valid draft
+- Draft must use a tool call (create_draft, create_unpublishable_draft, create_email_draft, or create_sms_draft) — plain conversational text is not a valid draft
 - No AI meta-commentary openers: "Certainly!", "Of course!", "Great question!", "Happy to help!", "Sure!", etc.
 
 Approved → { "approved": true, "violations": [], "corrections": "" }

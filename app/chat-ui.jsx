@@ -59,12 +59,23 @@ const PLATFORM_ACCENT = {
 
 function DraftCreatedCard({ artifact, onOpen }) {
   const [queued, setQueued] = useStateChat(false);
+  const [copied, setCopied] = useStateChat(false);
   const accent = PLATFORM_ACCENT[(artifact.platform || "").toLowerCase()] || "var(--accent)";
   const platformLabel = (artifact.platform || "").charAt(0).toUpperCase() + (artifact.platform || "").slice(1);
 
   const handleSendToQueue = () => {
     onOpen({ kind: "queue_draft", data: artifact });
     setQueued(true);
+  };
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(artifact.copy);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API may be unavailable — silently fail
+    }
   };
 
   return (
@@ -122,7 +133,16 @@ function DraftCreatedCard({ artifact, onOpen }) {
         borderTop: "1px solid var(--rule)",
         display: "flex", gap: 8, alignItems: "center",
       }}>
-        {!queued ? (
+        {artifact.nonPublishable ? (
+          <>
+            <Btn size="sm" variant="primary" onClick={handleCopy}>
+              {copied ? "Copied!" : "Copy text"}
+            </Btn>
+            <span style={{ fontSize: 11, color: "var(--muted)" }}>
+              FlowOS doesn't publish to {platformLabel} yet — copy and post manually.
+            </span>
+          </>
+        ) : !queued ? (
           <Btn size="sm" variant="primary" data-testid="send-to-queue" onClick={handleSendToQueue}>
             <Icon name="check" size={11}/> Send to queue
           </Btn>
