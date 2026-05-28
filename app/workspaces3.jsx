@@ -80,6 +80,14 @@ function PublishingQueue({ state, actions }) {
   const [csvSubmitting, setCsvSubmitting] = useState3(false);
   const [csvResult,     setCsvResult]     = useState3(null);  // { total, valid, invalid, results, warnings, dryRun }
 
+  // Live char-count validation (Track A — PR 1.3). null until first response.
+  // Shape: { count: number, limit: number, valid: boolean }.
+  const [liveValidation, setLiveValidation] = useState3(null);
+
+  // Smart slots — next N recommended schedule times from Zernio's default queue.
+  // Array of ISO date strings; empty when no queue is configured yet.
+  const [smartSlots, setSmartSlots] = useState3([]);
+
   const resetCsv = () => {
     setCsvFileName(""); setCsvHeader([]); setCsvRows([]);
     setCsvMapping({ platform: "", content: "", scheduled_for: "", media_urls: "" });
@@ -224,6 +232,43 @@ function PublishingQueue({ state, actions }) {
       setEditDraft(null);
     }
   }, [editItem?.id]);
+
+  // Live char-count validation — debounced POST to /api/zernio-publish.
+  // Updates liveValidation whenever editDraft.body changes for the active item.
+  useEffect3(() => {
+    if (!editItem || !editDraft) { setLiveValidation(null); return; }
+    const platform = (editItem.platform || editItem.channel || "").toLowerCase();
+    if (!platform) { setLiveValidation(null); return; }
+    const text = editDraft.body || "";
+    let cancelled = false;
+    const t = setTimeout(() => {
+      window.apiFetch("/api/zernio-publish", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ action: "validate_post_length", text, platform }),
+      })
+        .then(r => r.json())
+        .then(data => { if (!cancelled && data?.ok && data.forPlatform) setLiveValidation(data.forPlatform); })
+        .catch(() => { /* fall back silently to CHAR_LIMIT */ });
+    }, 300);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [editItem?.id, editDraft?.body]);
+
+  // Smart slots — load Zernio's recommended next slots when the drawer opens
+  // for a draft. Best-effort: if no queue is configured the chip row is empty.
+  useEffect3(() => {
+    if (!editItem || editItem.status !== "draft") { setSmartSlots([]); return; }
+    let cancelled = false;
+    window.apiFetch("/api/zernio-publish", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ action: "queue_preview", count: 8 }),
+    })
+      .then(r => r.json())
+      .then(data => { if (!cancelled && data?.ok) setSmartSlots(data.slots || []); })
+      .catch(() => { if (!cancelled) setSmartSlots([]); });
+    return () => { cancelled = true; };
+  }, [editItem?.id, editItem?.status]);
 
   // ── Per-platform publishing dispatch ─────────────────────────────────────
   // Each entry describes what the drawer needs to do for that platform:
@@ -829,9 +874,13 @@ function PublishingQueue({ state, actions }) {
       {editItem && editDraft && (() => {
         const isDraft     = editItem.status === "draft";
         const platformKey = (editItem.platform || editItem.channel || "").toLowerCase();
-        const charLimit   = CHAR_LIMIT[platformKey] || null;
-        const charCount   = (editDraft.body || "").length;
-        const overLimit   = charLimit && charCount > charLimit;
+        // Prefer Zernio's live validation (weighted counts on X/Twitter) and
+        // fall back to the hardcoded CHAR_LIMIT map until the first response.
+        const charLimit   = liveValidation?.limit ?? CHAR_LIMIT[platformKey] ?? null;
+        const charCount   = liveValidation?.count ?? (editDraft.body || "").length;
+        const overLimit   = liveValidation
+          ? liveValidation.valid === false
+          : (charLimit != null && charCount > charLimit);
         const platformLabel = editItem.platform
           ? editItem.platform.charAt(0).toUpperCase() + editItem.platform.slice(1)
           : editItem.channel;
@@ -1466,6 +1515,38 @@ function PublishingQueue({ state, actions }) {
 
               {/* Schedule section — absolute date + time. Stored UTC at submit. */}
               <FormRow label="Schedule" hint="Fires at this date/time in your local zone (stored as UTC)">
+                {isDraft && smartSlots.length > 0 && (
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                      <Icon name="zap" size={10}/> Smart slots — Zernio's next recommended times
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {smartSlots.slice(0, 6).map((iso) => {
+                        const d   = new Date(iso);
+                        const dt  = d.toLocaleDateString(undefined, { month: "short", day: "numeric", weekday: "short" });
+                        const tm  = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+                        const pad = (n) => String(n).padStart(2, "0");
+                        const localDate = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+                        const localTime = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                        const selected = editDraft.scheduledDate === localDate && editDraft.scheduledAt === localTime;
+                        return (
+                          <button key={iso} type="button"
+                            onClick={() => setEditDraft(s => ({ ...s, scheduledDate: localDate, scheduledAt: localTime }))}
+                            style={{
+                              padding: "4px 9px", borderRadius: 4, fontSize: 11, cursor: "pointer",
+                              border: "1px solid " + (selected ? "var(--accent)" : "var(--rule)"),
+                              background: selected ? "var(--accent-wash)" : "var(--paper)",
+                              color: selected ? "var(--accent-ink)" : "var(--ink)",
+                              fontFamily: "var(--font-sans)", display: "inline-flex", alignItems: "center", gap: 5,
+                            }}>
+                            <span className="mono" style={{ fontSize: 10, opacity: 0.7 }}>{dt}</span>
+                            <span style={{ fontWeight: 500 }}>{tm}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   <div>
                     <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 4 }}>Date</div>

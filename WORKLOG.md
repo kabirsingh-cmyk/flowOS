@@ -4,6 +4,38 @@ Reverse-chronological record of notable changes. New entries on top.
 
 ---
 
+## 2026-05-27 · Track A · PR 1 chunk 3 — Validators + Smart slots
+
+**Scope:** Eight read-only Zernio tool endpoints surfaced as actions, plus live char-count validation and a Smart-slots schedule picker in the edit drawer.
+
+### Changes
+- **[api/zernio-publish.js](api/zernio-publish.js)** — new actions:
+  - `validate_post_length` — POST `/v1/tools/validate/post-length`. Returns the full per-platform map; if the caller passes `platform`, also returns a `forPlatform` slice (`{ count, limit, valid }`) for the most common UI use.
+  - `validate_post` — POST `/v1/tools/validate/post`. Normalises body into the spec's `{ content, platforms: [{ platform }] }` shape; flattens errors/warnings.
+  - `validate_media` — POST `/v1/tools/validate/media`. Endpoint validates one URL at a time; fanned out client-side so the frontend can ask "are all my URLs ok?" in a single call.
+  - `validate_subreddit` — GET `/v1/tools/validate/subreddit`.
+  - `queue_slots`, `queue_next_slot`, `queue_preview` — GET endpoints. All read the tenant's `profileId` via `getOrCreateZernioProfile` so the frontend doesn't have to pass it.
+  - `update_metadata` — POST `/v1/posts/{postId}/update-metadata`. YouTube-only on Zernio's side today; we accept a free-form `metadata` object and forward it.
+- **[app/workspaces3.jsx](app/workspaces3.jsx)**
+  - Two new component-scoped hooks: `liveValidation` (debounced 300ms `validate_post_length` result per platform; falls back to the hardcoded `CHAR_LIMIT` map until the first response) and `smartSlots` (Zernio queue preview, up to 8 ISO slot strings).
+  - Drawer textarea: `charLimit / charCount / overLimit` now read from `liveValidation` when present — X / Twitter benefit from Zernio's weighted character count (URLs = 23 chars, emojis = 2 chars). Red-border + counter behaviour unchanged.
+  - Schedule section: when editing a draft and the tenant has a configured queue, a "Smart slots" chip row appears above the date/time inputs. Clicking a chip writes the local `YYYY-MM-DD` / `HH:MM` into `editDraft` so the existing publish/schedule flow picks it up without further changes.
+
+### Worktree note
+Track A work is now done from a dedicated git worktree at `~/Desktop/flowOS-track-a` (branch `feat/track-a-phase-1`) so it can run in parallel with Track B in the main worktree without `git checkout` collisions. Both worktrees share the same `.git` and remote.
+
+### Deliberately not done
+- **No UI surface for `validate_post`, `validate_media`, `validate_subreddit`, or `update_metadata`.** Endpoints are wired so future work can pull them in (e.g. Reddit subreddit field could call `validate_subreddit` on blur, IG media could pre-flight `validate_media`).
+- **No queue configuration UI.** The Smart-slots picker only reads. If the tenant has no default queue yet, the chip row is empty. Configuring queues from FlowOS would need PUT `/v1/queue/slots` — out of scope for Phase 1.
+- **No reducer state for `liveValidation` / `smartSlots`** — display-only, drawer-scoped, shouldn't survive drawer close.
+
+### Verification
+- `node --check api/zernio-publish.js` → OK
+- `@babel/standalone` transform of `app/workspaces3.jsx` → OK
+- End-to-end smoke: open a draft with `platform: "x"`, type `Visit https://example.com 🎉 — this is a long tweet…` past 280 plain chars but under Zernio's weighted limit, expect no red border (URL collapses to 23). Pick a Smart slot chip, hit Schedule, expect the row to fire at the chosen time.
+
+---
+
 ## 2026-05-27 · Track A · PR 1 chunk 2 — Bulk upload + CSV import drawer
 
 **Scope:** `bulk_upload` action on the new Zernio publish route + an in-app CSV import drawer with column mapping, dry-run, and per-row results.

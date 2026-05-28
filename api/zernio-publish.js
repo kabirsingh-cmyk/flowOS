@@ -22,8 +22,6 @@
  *   queue_next_slot        — GET    /v1/queue/next-slot
  *   queue_preview          — GET    /v1/queue/preview
  *
- * PR 1 of this branch only ships edit_post / unpublish_post / retry_post.
- * Subsequent PRs in this branch add bulk_upload, validators, and queue.
  */
 
 import { requireAuth } from "./lib/auth.js";
@@ -224,6 +222,138 @@ async function handleBulkUpload(body) {
   });
 }
 
+async function handleUpdateMetadata(body) {
+  const { postId, platform, metadata } = body;
+  if (!postId)   return errResponse("postId required (use \"_\" for direct video-id mode)");
+  if (!platform) return errResponse("platform required");
+  if (!metadata || typeof metadata !== "object") return errResponse("metadata object required");
+
+  const slug = resolvePlatform(platform);
+  const data = await zernioFetch(
+    `/posts/${encodeURIComponent(postId)}/update-metadata`,
+    {
+      method: "POST",
+      body:   JSON.stringify({ platform: slug, ...metadata }),
+    },
+  );
+  return jsonResponse({ ok: true, raw: data });
+}
+
+async function handleValidatePostLength(body) {
+  const { text, platform } = body;
+  if (typeof text !== "string") return errResponse("text required");
+  const data = await zernioFetch("/tools/validate/post-length", {
+    method: "POST",
+    body:   JSON.stringify({ text }),
+  });
+  let forPlatform = null;
+  if (platform) {
+    const slug = resolvePlatform(platform);
+    forPlatform = data.platforms?.[slug] || null;
+  }
+  return jsonResponse({ ok: true, platforms: data.platforms || {}, forPlatform });
+}
+
+async function handleValidatePost(body) {
+  const { platform, content, mediaUrls } = body;
+  if (!platform) return errResponse("platform required");
+  if (typeof content !== "string") return errResponse("content required");
+
+  const slug = resolvePlatform(platform);
+  const payload = {
+    content,
+    platforms:  [{ platform: slug }],
+    ...(Array.isArray(mediaUrls) && mediaUrls.length
+      ? { mediaItems: mediaUrls.map(url => ({ url })) }
+      : {}),
+  };
+  const data = await zernioFetch("/tools/validate/post", {
+    method: "POST",
+    body:   JSON.stringify(payload),
+  });
+  return jsonResponse({
+    ok:       true,
+    valid:    !!data.valid,
+    errors:   data.errors   || [],
+    warnings: data.warnings || [],
+    raw:      data,
+  });
+}
+
+async function handleValidateMedia(body) {
+  const { platform, mediaUrls } = body;
+  if (!Array.isArray(mediaUrls) || mediaUrls.length === 0) {
+    return errResponse("mediaUrls[] required");
+  }
+  // Zernio's endpoint validates one URL at a time; fan out client-side here
+  // so the frontend can ask "are all my URLs ok?" in one call.
+  const results = await Promise.all(mediaUrls.map(async (url) => {
+    try {
+      const data = await zernioFetch("/tools/validate/media", {
+        method: "POST",
+        body:   JSON.stringify({ url }),
+      });
+      const slug = platform ? resolvePlatform(platform) : null;
+      return {
+        url,
+        valid:        !!data.valid,
+        error:        data.error || null,
+        contentType:  data.contentType || null,
+        size:         data.size || null,
+        type:         data.type || null,
+        forPlatform:  slug ? (data.platformLimits?.[slug] || null) : null,
+        raw:          data,
+      };
+    } catch (e) {
+      return { url, valid: false, error: e.message };
+    }
+  }));
+  return jsonResponse({ ok: true, results });
+}
+
+async function handleValidateSubreddit(body) {
+  const { subreddit, accountId } = body;
+  if (!subreddit) return errResponse("subreddit required");
+  const qs = new URLSearchParams({ name: subreddit });
+  if (accountId) qs.set("accountId", accountId);
+  const data = await zernioFetch(`/tools/validate/subreddit?${qs}`, { method: "GET" });
+  return jsonResponse({
+    ok:        true,
+    exists:    !!data.exists,
+    subreddit: data.subreddit || null,
+    error:     data.error || null,
+  });
+}
+
+async function handleQueueSlots(body) {
+  const { tenantId, queueId, all } = body;
+  const profileId = await getOrCreateZernioProfile(tenantId);
+  const qs = new URLSearchParams({ profileId });
+  if (queueId) qs.set("queueId", queueId);
+  if (all)     qs.set("all", "true");
+  const data = await zernioFetch(`/queue/slots?${qs}`, { method: "GET" });
+  return jsonResponse({ ok: true, ...data });
+}
+
+async function handleQueueNextSlot(body) {
+  const { tenantId, queueId } = body;
+  const profileId = await getOrCreateZernioProfile(tenantId);
+  const qs = new URLSearchParams({ profileId });
+  if (queueId) qs.set("queueId", queueId);
+  const data = await zernioFetch(`/queue/next-slot?${qs}`, { method: "GET" });
+  return jsonResponse({ ok: true, ...data });
+}
+
+async function handleQueuePreview(body) {
+  const { tenantId, queueId, count } = body;
+  const profileId = await getOrCreateZernioProfile(tenantId);
+  const qs = new URLSearchParams({ profileId });
+  if (queueId) qs.set("queueId", queueId);
+  if (count)   qs.set("count", String(Math.min(100, Math.max(1, Number(count) || 10))));
+  const data = await zernioFetch(`/queue/preview?${qs}`, { method: "GET" });
+  return jsonResponse({ ok: true, profileId: data.profileId, count: data.count, slots: data.slots || [] });
+}
+
 async function handleRetryPost(body) {
   const { postId } = body;
   if (!postId) return errResponse("postId required");
@@ -255,7 +385,12 @@ export default async function handler(req) {
   let body;
   try { body = await req.json(); } catch { return errResponse("Invalid JSON body", 400); }
 
-  const VALID_ACTIONS = ["edit_post", "unpublish_post", "retry_post", "bulk_upload"];
+  const VALID_ACTIONS = [
+    "edit_post", "unpublish_post", "retry_post", "update_metadata",
+    "bulk_upload",
+    "validate_post_length", "validate_post", "validate_media", "validate_subreddit",
+    "queue_slots", "queue_next_slot", "queue_preview",
+  ];
   if (!VALID_ACTIONS.includes(body.action)) {
     return errResponse(`Invalid action. Supported: ${VALID_ACTIONS.join(", ")}`, 400);
   }
@@ -276,6 +411,14 @@ export default async function handler(req) {
       case "unpublish_post": return await handleUnpublishPost(body);
       case "retry_post":     return await handleRetryPost(body);
       case "bulk_upload":    return await handleBulkUpload(body);
+      case "update_metadata":     return await handleUpdateMetadata(body);
+      case "validate_post_length":return await handleValidatePostLength(body);
+      case "validate_post":       return await handleValidatePost(body);
+      case "validate_media":      return await handleValidateMedia(body);
+      case "validate_subreddit":  return await handleValidateSubreddit(body);
+      case "queue_slots":         return await handleQueueSlots(body);
+      case "queue_next_slot":     return await handleQueueNextSlot(body);
+      case "queue_preview":       return await handleQueuePreview(body);
       default:
         return errResponse(`Unknown action "${body.action}"`);
     }
