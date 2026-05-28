@@ -445,6 +445,7 @@ function NavRail({ active, onOpen, state, actions, seedMode }) {
       items: [
         { icon: "chart",    label: "Insights",        t: "insights" },
         { icon: "inbox",    label: "Inbox",           t: "inbox"    },
+        { icon: "pin",      label: "Google Business", t: "gmb"      },
       ],
     },
     {
