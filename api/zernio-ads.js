@@ -7,9 +7,18 @@
  * ads-workspace targeting builder and the per-ad analytics drawer.
  *
  * Actions (PR 4a):
- *   targeting_search          — GET /v1/ads/targeting/search
+ *   targeting_search          — GET  /v1/ads/targeting/search
  *   targeting_reach_estimate  — POST /v1/ads/targeting/reach-estimate
- *   ad_analytics              — GET /v1/ads/{adId}/analytics
+ *   ad_analytics              — GET  /v1/ads/{adId}/analytics
+ *
+ * Actions (PR 4b):
+ *   audiences_list            — GET    /v1/ads/audiences
+ *   audiences_create          — POST   /v1/ads/audiences
+ *   audiences_get             — GET    /v1/ads/audiences/{audienceId}
+ *   audiences_delete          — DELETE /v1/ads/audiences/{audienceId}
+ *   audiences_add_users       — POST   /v1/ads/audiences/{audienceId}/users
+ *                                (Zernio hashes server-side; we forward raw
+ *                                 {email, phone} objects.)
  *
  * Response shape: { ok: true, data } | { ok: false, error }
  *
@@ -80,6 +89,110 @@ async function reachEstimate({ tenantId, platform, spec, optimizationGoal }) {
   });
 }
 
+// ─── audiences ───────────────────────────────────────────────────────────────
+// Per Zernio:
+//   - customer_list is supported on Meta, Google, X, LinkedIn, TikTok, Pinterest
+//   - website + lookalike are Meta-only
+//   - saved_targeting stores a reusable TargetingSpec; no member upload
+// We enforce the website/lookalike gate locally to fail fast with a clear
+// message rather than waiting for Zernio's 400.
+
+const META_ONLY_AUDIENCE_TYPES = new Set(["website", "lookalike"]);
+
+function assertMetaForAudienceType(platform, type) {
+  if (META_ONLY_AUDIENCE_TYPES.has(type) && platform !== "metaads") {
+    throw Object.assign(
+      new Error(`${type} audiences are Meta-only. Supported platforms: metaads.`),
+      { status: 400 }
+    );
+  }
+}
+
+async function audiencesList({ tenantId, platform, adAccountId, type }) {
+  if (!adAccountId) throw new Error("adAccountId required");
+  const accountId    = await resolveAccountId(tenantId, platform);
+  const platformSlug = resolveAdsPlatform(platform);
+  const qs = new URLSearchParams({ accountId, adAccountId: String(adAccountId), platform: platformSlug });
+  if (type) qs.set("type", type);
+  const data = await zernioFetch(`/ads/audiences?${qs}`, { method: "GET" });
+  return { audiences: data.audiences || [] };
+}
+
+async function audiencesCreate({
+  tenantId, platform, adAccountId, name, description, type,
+  pixelId, retentionDays, sourceAudienceId, country, ratio, rule, customerFileSource,
+  spec,
+}) {
+  if (!type) throw new Error("type required (customer_list | website | lookalike | saved_targeting)");
+  assertMetaForAudienceType(platform, type);
+
+  const accountId = await resolveAccountId(tenantId, platform);
+
+  let payload;
+  if (type === "saved_targeting") {
+    if (!spec) throw new Error("spec required for saved_targeting audiences");
+    payload = { accountId, name, description, type, spec };
+  } else {
+    if (!adAccountId) throw new Error("adAccountId required for uploaded/derived audiences");
+    if (!name)        throw new Error("name required");
+    if (type === "website") {
+      if (!pixelId)       throw new Error("pixelId required for website audiences");
+      if (!retentionDays) throw new Error("retentionDays required for website audiences");
+    }
+    if (type === "lookalike") {
+      if (!sourceAudienceId) throw new Error("sourceAudienceId required for lookalike audiences");
+      if (!country)          throw new Error("country required for lookalike audiences");
+      if (!Number.isFinite(ratio)) throw new Error("ratio required for lookalike audiences");
+    }
+    payload = {
+      accountId,
+      adAccountId: String(adAccountId),
+      name,
+      type,
+      ...(description        ? { description }        : {}),
+      ...(pixelId            ? { pixelId }            : {}),
+      ...(retentionDays      ? { retentionDays }      : {}),
+      ...(sourceAudienceId   ? { sourceAudienceId }   : {}),
+      ...(country            ? { country }            : {}),
+      ...(Number.isFinite(ratio) ? { ratio }          : {}),
+      ...(rule               ? { rule }               : {}),
+      ...(customerFileSource ? { customerFileSource } : {}),
+    };
+  }
+
+  return zernioFetch(`/ads/audiences`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+async function audiencesGet({ audienceId }) {
+  if (!audienceId) throw new Error("audienceId required");
+  return zernioFetch(`/ads/audiences/${encodeURIComponent(audienceId)}`, { method: "GET" });
+}
+
+async function audiencesDelete({ audienceId }) {
+  if (!audienceId) throw new Error("audienceId required");
+  return zernioFetch(`/ads/audiences/${encodeURIComponent(audienceId)}`, { method: "DELETE" });
+}
+
+async function audiencesAddUsers({ audienceId, users }) {
+  if (!audienceId) throw new Error("audienceId required");
+  if (!Array.isArray(users) || users.length === 0) throw new Error("users[] required");
+  if (users.length > 10000) throw new Error("Max 10000 users per request — split into chunks.");
+  // Each user must have at least email or phone.
+  const clean = users
+    .map(u => {
+      const out = {};
+      if (u?.email) out.email = String(u.email).trim().toLowerCase();
+      if (u?.phone) out.phone = String(u.phone).trim();
+      return out;
+    })
+    .filter(u => u.email || u.phone);
+  if (clean.length === 0) throw new Error("No users with email or phone after cleaning.");
+  return zernioFetch(`/ads/audiences/${encodeURIComponent(audienceId)}/users`, {
+    method: "POST",
+    body:   JSON.stringify({ users: clean }),
+  });
+}
+
 // ─── ad_analytics ────────────────────────────────────────────────────────────
 
 async function adAnalytics({ adId, fromDate, toDate, breakdowns }) {
@@ -123,8 +236,26 @@ export default async function handler(req) {
         // above so unauthenticated clients can't fan out arbitrary adId reads.
         result = await adAnalytics(params);
         break;
+      case "audiences_list":
+        result = await audiencesList({ tenantId, ...params });
+        break;
+      case "audiences_create":
+        result = await audiencesCreate({ tenantId, ...params });
+        break;
+      case "audiences_get":
+        result = await audiencesGet(params);
+        break;
+      case "audiences_delete":
+        result = await audiencesDelete(params);
+        break;
+      case "audiences_add_users":
+        result = await audiencesAddUsers(params);
+        break;
       default:
-        return errResponse(`Unknown action: ${action}. Supported: targeting_search, targeting_reach_estimate, ad_analytics`);
+        return errResponse(
+          `Unknown action: ${action}. Supported: targeting_search, targeting_reach_estimate, ` +
+          `ad_analytics, audiences_list, audiences_create, audiences_get, audiences_delete, audiences_add_users`
+        );
     }
     return jsonResponse({ ok: true, data: result });
   } catch (e) {

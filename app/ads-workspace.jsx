@@ -421,10 +421,415 @@ function CampaignDetail({ platform, campaign, tree, onRefresh }) {
   );
 }
 
+// ─── Audiences sub-tab (PR 4b) ───────────────────────────────────────────────
+
+const AUDIENCE_TYPES = [
+  { id: "customer_list",   label: "Customer list",  metaOnly: false, note: "Upload emails / phones." },
+  { id: "website",         label: "Website",        metaOnly: true,  note: "Pixel-based retargeting. Meta only." },
+  { id: "lookalike",       label: "Lookalike",      metaOnly: true,  note: "Derived from a source audience. Meta only." },
+  { id: "saved_targeting", label: "Saved targeting",metaOnly: false, note: "Reusable TargetingSpec — no upload step." },
+];
+
+// Tiny RFC4180-ish CSV parser scoped to email/phone extraction. Doesn't depend
+// on workspaces3.jsx's parseCsv (that's IIFE-private).
+function parseCsvForUsers(text) {
+  const rows = [];
+  let row = [], field = "", inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false; }
+      else { field += c; }
+    } else {
+      if      (c === '"')  inQuotes = true;
+      else if (c === ",")  { row.push(field); field = ""; }
+      else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+      else if (c === "\r") { /* swallow */ }
+      else field += c;
+    }
+  }
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+  if (rows.length === 0) return [];
+
+  // Detect a header row by looking for the word "email" or "phone" (case
+  // insensitive). If absent, treat the file as plain email-per-line.
+  const first = rows[0].map(s => String(s || "").trim().toLowerCase());
+  const hasHeader = first.some(c => c === "email" || c === "phone" || c.includes("e-mail"));
+  let emailIdx = -1, phoneIdx = -1;
+  if (hasHeader) {
+    emailIdx = first.findIndex(c => c === "email" || c === "e-mail" || c.includes("email"));
+    phoneIdx = first.findIndex(c => c === "phone" || c.includes("phone") || c.includes("tel"));
+    rows.shift();
+  } else {
+    // Single-column or no header: assume column 0 is email.
+    emailIdx = 0;
+  }
+
+  const out = [];
+  for (const r of rows) {
+    const u = {};
+    if (emailIdx >= 0 && r[emailIdx]) u.email = String(r[emailIdx]).trim();
+    if (phoneIdx >= 0 && r[phoneIdx]) u.phone = String(r[phoneIdx]).trim();
+    if (u.email || u.phone) out.push(u);
+  }
+  return out;
+}
+
+function NewAudienceDrawer({ open, onClose, platform, adAccountId, onCreated }) {
+  const [type,        setType]        = useStateAds("customer_list");
+  const [name,        setName]        = useStateAds("");
+  const [description, setDescription] = useStateAds("");
+  const [pixelId,     setPixelId]     = useStateAds("");
+  const [retention,   setRetention]   = useStateAds(30);
+  const [sourceAud,   setSourceAud]   = useStateAds("");
+  const [country,     setCountry]     = useStateAds("US");
+  const [ratio,       setRatio]       = useStateAds(0.01);
+  const [csvUsers,    setCsvUsers]    = useStateAds([]);
+  const [csvName,     setCsvName]     = useStateAds("");
+  const [csvError,    setCsvError]    = useStateAds("");
+  const [submitting,  setSubmitting]  = useStateAds(false);
+  const [progress,    setProgress]    = useStateAds("");
+  const [error,       setError]       = useStateAds("");
+
+  const cfg = AUDIENCE_TYPES.find(t => t.id === type) || AUDIENCE_TYPES[0];
+  const metaOnly = cfg.metaOnly && platform !== "metaads";
+
+  const onCsvFile = async (file) => {
+    if (!file) return;
+    setCsvError("");
+    setCsvName(file.name);
+    try {
+      const text = await file.text();
+      const users = parseCsvForUsers(text);
+      if (users.length === 0) {
+        setCsvError("No email or phone rows found in this file.");
+        setCsvUsers([]);
+        return;
+      }
+      setCsvUsers(users);
+    } catch (e) {
+      setCsvError(e.message);
+      setCsvUsers([]);
+    }
+  };
+
+  const submit = async () => {
+    setError(""); setProgress("");
+    if (metaOnly) { setError(`${type} audiences require a Meta ad account.`); return; }
+    if (!name)    { setError("Name required.");                                 return; }
+    if (type !== "saved_targeting" && !adAccountId) {
+      setError("Set the platform ad account ID at the top of the audiences view first.");
+      return;
+    }
+    try {
+      setSubmitting(true);
+      const created = await callAds("audiences_create", {
+        platform, adAccountId, name, description, type,
+        ...(type === "website"   ? { pixelId, retentionDays: Number(retention) } : {}),
+        ...(type === "lookalike" ? { sourceAudienceId: sourceAud, country, ratio: Number(ratio) } : {}),
+      });
+      const audienceId = created.audience?.id || created.audience?._id || created.audience?.platformAudienceId;
+
+      // Chunk-upload the CSV after create (customer_list only).
+      if (type === "customer_list" && csvUsers.length > 0) {
+        if (!audienceId) throw new Error("Audience created but no ID returned — cannot upload members.");
+        const CHUNK = 10000;
+        for (let i = 0; i < csvUsers.length; i += CHUNK) {
+          setProgress(`Uploading ${i + 1}–${Math.min(i + CHUNK, csvUsers.length)} of ${csvUsers.length}…`);
+          await callAds("audiences_add_users", { audienceId, users: csvUsers.slice(i, i + CHUNK) });
+        }
+        setProgress(`Uploaded ${csvUsers.length} rows.`);
+      }
+      onCreated?.(created);
+      onClose();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Drawer open={open} onClose={onClose} title="New audience" width={560}
+      actions={
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn variant="ghost" onClick={onClose} disabled={submitting}>Cancel</Btn>
+          <Btn variant="primary" onClick={submit} disabled={submitting || metaOnly}>
+            {submitting ? "Creating…" : "Create"}
+          </Btn>
+        </div>
+      }>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <FormRow label="Type">
+          <select value={type} onChange={e => setType(e.target.value)} style={{ ...inputCSS, width: "100%" }}>
+            {AUDIENCE_TYPES.map(t => (
+              <option key={t.id} value={t.id} disabled={t.metaOnly && platform !== "metaads"}>
+                {t.label}{t.metaOnly && platform !== "metaads" ? " (Meta only)" : ""}
+              </option>
+            ))}
+          </select>
+          <div style={{ color: "var(--muted)", fontSize: 11, marginTop: 4 }}>{cfg.note}</div>
+        </FormRow>
+
+        <FormRow label="Name"><Input value={name} onChange={e => setName(e.target.value)}/></FormRow>
+        <FormRow label="Description (optional)">
+          <Input value={description} onChange={e => setDescription(e.target.value)}/>
+        </FormRow>
+
+        {type === "website" && (
+          <>
+            <FormRow label="Pixel ID"><Input value={pixelId} onChange={e => setPixelId(e.target.value)}/></FormRow>
+            <FormRow label="Retention (days)" hint="1 – 180">
+              <Input type="number" min={1} max={180} value={retention}
+                onChange={e => setRetention(Math.max(1, Math.min(180, Number(e.target.value) || 30)))}
+                style={{ width: 100 }}/>
+            </FormRow>
+          </>
+        )}
+
+        {type === "lookalike" && (
+          <>
+            <FormRow label="Source audience ID"><Input value={sourceAud} onChange={e => setSourceAud(e.target.value)}/></FormRow>
+            <FormRow label="Country" hint="2-letter ISO code.">
+              <Input value={country} onChange={e => setCountry(e.target.value.toUpperCase().slice(0, 2))} style={{ width: 80 }}/>
+            </FormRow>
+            <FormRow label="Ratio" hint="0.01 – 0.20 (1% – 20% similarity)">
+              <Input type="number" min={0.01} max={0.2} step="0.01" value={ratio}
+                onChange={e => setRatio(Math.max(0.01, Math.min(0.2, Number(e.target.value) || 0.01)))}
+                style={{ width: 100 }}/>
+            </FormRow>
+          </>
+        )}
+
+        {type === "customer_list" && (
+          <FormRow label="CSV upload (optional)" hint="Headers email / phone, or one email per line.">
+            <input type="file" accept=".csv,text/csv,text/plain"
+              onChange={e => onCsvFile(e.target.files?.[0])}/>
+            {csvName ? <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 4 }}>{csvName} · {csvUsers.length} valid rows</div> : null}
+            {csvError ? <div style={{ fontSize: 11, color: "var(--accent-ink)", marginTop: 4 }}>{csvError}</div> : null}
+          </FormRow>
+        )}
+
+        {progress ? <div style={{ fontSize: 12, color: "var(--ink-2)" }}>{progress}</div> : null}
+        {error    ? <div style={{ fontSize: 12, color: "var(--accent-ink)" }}>{error}</div> : null}
+      </div>
+    </Drawer>
+  );
+}
+
+function AudienceDetail({ audience, onDelete, onAppend, platform }) {
+  const [busy,     setBusy]     = useStateAds("");
+  const [csvUsers, setCsvUsers] = useStateAds([]);
+  const [csvName,  setCsvName]  = useStateAds("");
+  const [csvError, setCsvError] = useStateAds("");
+  const [progress, setProgress] = useStateAds("");
+
+  const audienceId = audience.id || audience._id || audience.platformAudienceId;
+  const canAddUsers = audience.type === "customer_list";
+
+  const onCsvFile = async (file) => {
+    if (!file) return;
+    setCsvError(""); setCsvName(file.name);
+    try {
+      const users = parseCsvForUsers(await file.text());
+      if (users.length === 0) { setCsvError("No email/phone rows."); setCsvUsers([]); return; }
+      setCsvUsers(users);
+    } catch (e) { setCsvError(e.message); setCsvUsers([]); }
+  };
+
+  const doUpload = async () => {
+    if (!audienceId)      { alert("Audience has no ID — cannot upload."); return; }
+    if (csvUsers.length === 0) return;
+    try {
+      setBusy("upload");
+      const CHUNK = 10000;
+      for (let i = 0; i < csvUsers.length; i += CHUNK) {
+        setProgress(`Uploading ${i + 1}–${Math.min(i + CHUNK, csvUsers.length)} of ${csvUsers.length}…`);
+        await callAds("audiences_add_users", { audienceId, users: csvUsers.slice(i, i + CHUNK) });
+      }
+      setProgress(`Uploaded ${csvUsers.length} rows.`);
+      onAppend?.();
+    } catch (e) { alert(e.message); }
+    finally    { setBusy(""); }
+  };
+
+  const doDelete = async () => {
+    if (!audienceId) return;
+    if (!confirm(`Delete audience "${audience.name}"? This cannot be undone.`)) return;
+    try {
+      setBusy("delete");
+      await callAds("audiences_delete", { audienceId });
+      onDelete?.();
+    } catch (e) { alert(e.message); }
+    finally    { setBusy(""); }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: 16 }}>
+      <div>
+        <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>
+          {audience.type || "audience"}
+        </div>
+        <div style={{ fontSize: 18, fontWeight: 600, marginTop: 4 }}>{audience.name || "Untitled audience"}</div>
+        <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+          {audience.status ? <Chip>{audience.status}</Chip> : null}
+          {audience.size != null ? <Chip>{fmtInt(audience.size)} members</Chip> : null}
+        </div>
+        {audience.description ? <div style={{ marginTop: 8, fontSize: 12, color: "var(--ink-2)" }}>{audience.description}</div> : null}
+      </div>
+
+      {canAddUsers && (
+        <FormRow label="Add members from CSV" hint="email / phone columns; chunked at 10 000 rows per request.">
+          <input type="file" accept=".csv,text/csv,text/plain"
+            onChange={e => onCsvFile(e.target.files?.[0])}/>
+          {csvName ? <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 4 }}>{csvName} · {csvUsers.length} rows</div> : null}
+          {csvError ? <div style={{ fontSize: 11, color: "var(--accent-ink)", marginTop: 4 }}>{csvError}</div> : null}
+          {csvUsers.length > 0 && (
+            <Btn size="sm" variant="primary" onClick={doUpload} disabled={!!busy} style={{ marginTop: 8 }}>
+              {busy === "upload" ? "Uploading…" : `Upload ${csvUsers.length} rows`}
+            </Btn>
+          )}
+          {progress ? <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 4 }}>{progress}</div> : null}
+        </FormRow>
+      )}
+
+      <div style={{ display: "flex", gap: 6, marginTop: "auto" }}>
+        <Btn size="sm" onClick={doDelete} disabled={!!busy}>
+          {busy === "delete" ? "Deleting…" : "Delete audience"}
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+function AudiencesPane({ platform, adAccountId, setAdAccountId }) {
+  const [audiences,  setAudiences]  = useStateAds([]);
+  const [selectedId, setSelectedId] = useStateAds(null);
+  const [filter,     setFilter]     = useStateAds("");          // "" = all
+  const [loading,    setLoading]    = useStateAds(false);
+  const [error,      setError]      = useStateAds("");
+  const [drawerOpen, setDrawerOpen] = useStateAds(false);
+
+  const idOf = (a) => a.id || a._id || a.platformAudienceId;
+  const selected = useMemoAds(
+    () => audiences.find(a => idOf(a) === selectedId) || audiences[0] || null,
+    [audiences, selectedId]
+  );
+
+  const load = async () => {
+    if (!adAccountId) { setAudiences([]); return; }
+    try {
+      setLoading(true); setError("");
+      const data = await callAds("audiences_list", { platform, adAccountId, ...(filter ? { type: filter } : {}) });
+      setAudiences(data.audiences || []);
+      if (!data.audiences?.some(a => idOf(a) === selectedId)) setSelectedId(idOf(data.audiences?.[0]) || null);
+    } catch (e) {
+      setError(e.message); setAudiences([]);
+    } finally { setLoading(false); }
+  };
+
+  useEffectAds(() => { load(); /* eslint-disable-next-line */ }, [platform, adAccountId, filter]);
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "320px 1fr 360px", height: "100%", minHeight: 0 }}>
+      {/* LEFT: list + filter + ad account */}
+      <div style={{ borderRight: "1px solid var(--rule)", display: "flex", flexDirection: "column", minHeight: 0, background: "var(--paper)" }}>
+        <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--rule)" }}>
+          <FormRow label="Platform ad account ID" hint="e.g. act_123456 for Meta. Stored locally per platform.">
+            <Input value={adAccountId} onChange={e => setAdAccountId(e.target.value)} placeholder="act_…"/>
+          </FormRow>
+        </div>
+
+        <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--rule)", display: "flex", gap: 4, flexWrap: "wrap" }}>
+          {[
+            { id: "",               label: "All" },
+            { id: "customer_list",  label: "Customer" },
+            { id: "website",        label: "Website" },
+            { id: "lookalike",      label: "Lookalike" },
+            { id: "saved_targeting",label: "Saved" },
+          ].map(f => (
+            <button key={f.id || "all"} type="button" onClick={() => setFilter(f.id)} style={{
+              fontSize: 11, padding: "3px 8px", borderRadius: 999, cursor: "pointer",
+              border: "1px solid var(--rule)",
+              background: filter === f.id ? "var(--accent-wash)" : "var(--paper-2)",
+              color:      filter === f.id ? "var(--accent-ink)" : "var(--ink-2)",
+            }}>{f.label}</button>
+          ))}
+        </div>
+
+        <div style={{ padding: 12, borderBottom: "1px solid var(--rule)" }}>
+          <Btn size="sm" variant="primary" disabled={!adAccountId} onClick={() => setDrawerOpen(true)} style={{ width: "100%" }}>
+            + New audience
+          </Btn>
+        </div>
+
+        <div style={{ overflowY: "auto", flex: 1, minHeight: 0 }}>
+          {!adAccountId ? (
+            <div style={{ padding: 16, color: "var(--muted)", fontSize: 12 }}>
+              Enter your platform ad account ID above to see audiences.
+            </div>
+          ) : loading ? (
+            <div style={{ padding: 16, color: "var(--muted)", fontSize: 12 }}>Loading…</div>
+          ) : error ? (
+            <div style={{ padding: 16, color: "var(--accent-ink)", fontSize: 12 }}>{error}</div>
+          ) : audiences.length === 0 ? (
+            <div style={{ padding: 16, color: "var(--muted)", fontSize: 12 }}>
+              No audiences yet. Create one above.
+            </div>
+          ) : audiences.map(a => (
+            <button key={idOf(a)} type="button" onClick={() => setSelectedId(idOf(a))} style={{
+              display: "block", width: "100%", textAlign: "left",
+              padding: "10px 14px", border: 0, cursor: "pointer",
+              background: idOf(a) === idOf(selected || {}) ? "var(--accent-wash)" : "transparent",
+              borderBottom: "1px solid var(--rule)",
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>{a.name || "Untitled audience"}</div>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2, display: "flex", gap: 8 }}>
+                <span>{a.type || "—"}</span>
+                {a.size != null ? <span>{fmtInt(a.size)} members</span> : null}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* CENTER: nothing fancy yet — audience-level analytics is post-4b */}
+      <div style={{ padding: 24, overflowY: "auto", minHeight: 0 }}>
+        {!selected ? (
+          <div style={{ color: "var(--muted)" }}>Pick an audience to see details and manage members.</div>
+        ) : (
+          <div>
+            <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 6 }}>
+              {platform.toUpperCase()} · {selected.type}
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 600 }}>{selected.name}</div>
+            {selected.spec ? (
+              <pre style={{
+                marginTop: 18, fontSize: 11, fontFamily: "var(--font-mono)",
+                background: "var(--paper-2)", border: "1px solid var(--rule)",
+                borderRadius: 8, padding: 12, overflowX: "auto", maxHeight: 400,
+              }}>{JSON.stringify(selected.spec, null, 2)}</pre>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      {/* RIGHT: detail/actions */}
+      <div style={{ borderLeft: "1px solid var(--rule)", overflowY: "auto", minHeight: 0, background: "var(--paper)" }}>
+        {selected
+          ? <AudienceDetail audience={selected} platform={platform} onDelete={load} onAppend={load}/>
+          : <div style={{ padding: 16, color: "var(--muted)", fontSize: 12 }}>No selection.</div>}
+      </div>
+
+      <NewAudienceDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}
+        platform={platform} adAccountId={adAccountId} onCreated={load}/>
+    </div>
+  );
+}
+
 // ─── Main shell ──────────────────────────────────────────────────────────────
 
-function AdsWorkspace() {
-  const [platform,    setPlatform]    = useStateAds("metaads");
+function CampaignsPane({ platform }) {
   const [campaigns,   setCampaigns]   = useStateAds([]);
   const [selectedId,  setSelectedId]  = useStateAds(null);
   const [listLoading, setListLoading] = useStateAds(false);
@@ -480,20 +885,6 @@ function AdsWorkspace() {
         borderRight: "1px solid var(--rule)", display: "flex", flexDirection: "column",
         minHeight: 0, background: "var(--paper)",
       }}>
-        <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--rule)" }}>
-          <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>Platform</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 8 }}>
-            {PLATFORMS.map(p => (
-              <button key={p.id} type="button" onClick={() => setPlatform(p.id)} style={{
-                fontSize: 11, fontFamily: "var(--font-mono)", padding: "4px 8px", borderRadius: 6,
-                cursor: "pointer", border: "1px solid var(--rule)",
-                background: p.id === platform ? "var(--accent-wash)" : "var(--paper-2)",
-                color:      p.id === platform ? "var(--accent-ink)" : "var(--ink-2)",
-              }} title={p.hint}>{p.label}</button>
-            ))}
-          </div>
-        </div>
-
         <div style={{ padding: 12, borderBottom: "1px solid var(--rule)" }}>
           <Btn size="sm" variant="primary" onClick={() => setDrawerOpen(true)} style={{ width: "100%" }}>
             + New campaign
@@ -559,6 +950,71 @@ function AdsWorkspace() {
 
       <NewCampaignDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}
         platform={platform} onCreated={refresh}/>
+    </div>
+  );
+}
+
+function AdsWorkspace() {
+  const [platform, setPlatform] = useStateAds("metaads");
+  const [view,     setView]     = useStateAds("campaigns"); // "campaigns" | "audiences"
+
+  // Per-platform adAccountId is sticky in localStorage so it survives reload.
+  // Audiences need the platform-side ad account ID (e.g. act_xxx for Meta);
+  // the campaigns view currently uses Zernio's first connected account so it
+  // doesn't need this — but PR 4c will start needing it for boosts too.
+  const lsKey = `flowos.ads.adAccountId.${platform}`;
+  const [adAccountId, setAdAccountIdRaw] = useStateAds(() => {
+    try { return window.localStorage.getItem(lsKey) || ""; } catch { return ""; }
+  });
+  useEffectAds(() => {
+    try { setAdAccountIdRaw(window.localStorage.getItem(lsKey) || ""); } catch { setAdAccountIdRaw(""); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [platform]);
+  const setAdAccountId = (v) => {
+    setAdAccountIdRaw(v);
+    try { window.localStorage.setItem(lsKey, v); } catch { /* ignore quota */ }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+      {/* Topbar: platform picker + view tabs ───────────────────────────────── */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "10px 16px", borderBottom: "1px solid var(--rule)",
+        background: "var(--paper)", gap: 12,
+      }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          {PLATFORMS.map(p => (
+            <button key={p.id} type="button" onClick={() => setPlatform(p.id)} style={{
+              fontSize: 11, fontFamily: "var(--font-mono)", padding: "4px 10px", borderRadius: 6,
+              cursor: "pointer", border: "1px solid var(--rule)",
+              background: p.id === platform ? "var(--accent-wash)" : "var(--paper-2)",
+              color:      p.id === platform ? "var(--accent-ink)" : "var(--ink-2)",
+            }} title={p.hint}>{p.label}</button>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: 4 }}>
+          {[
+            { id: "campaigns", label: "Campaigns" },
+            { id: "audiences", label: "Audiences" },
+          ].map(v => (
+            <button key={v.id} type="button" onClick={() => setView(v.id)} style={{
+              fontSize: 12, padding: "5px 14px", borderRadius: 6, cursor: "pointer",
+              border: "1px solid var(--rule)",
+              background: view === v.id ? "var(--accent)"      : "var(--paper-2)",
+              color:      view === v.id ? "var(--accent-ink)"  : "var(--ink-2)",
+              fontWeight: view === v.id ? 600 : 400,
+            }}>{v.label}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ flex: 1, minHeight: 0 }}>
+        {view === "campaigns"
+          ? <CampaignsPane platform={platform}/>
+          : <AudiencesPane platform={platform} adAccountId={adAccountId} setAdAccountId={setAdAccountId}/>}
+      </div>
     </div>
   );
 }
