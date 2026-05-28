@@ -69,7 +69,7 @@ async function callAds(action, payload) {
 // Two autocompletes (countries + interests) plus an age range. Wires a
 // debounced reach-estimate call whenever the spec changes meaningfully.
 
-function TargetingBuilder({ platform, value, onChange, reach, reachLoading }) {
+function TargetingBuilder({ platform, value, onChange, reach, reachLoading, showReach = true }) {
   const [interestQuery, setInterestQuery] = useStateAds("");
   const [interestHits,  setInterestHits]  = useStateAds([]);
   const [searching,     setSearching]     = useStateAds(false);
@@ -189,19 +189,21 @@ function TargetingBuilder({ platform, value, onChange, reach, reachLoading }) {
         {searching ? <div style={{ color: "var(--muted)", fontSize: 11, marginTop: 6 }}>Searching…</div> : null}
       </FormRow>
 
-      <div style={{
-        padding: "10px 12px", borderRadius: 8, background: "var(--paper-2)",
-        border: "1px solid var(--rule)", fontSize: 12,
-      }}>
-        <div style={{ color: "var(--muted)", marginBottom: 4 }}>Estimated reach</div>
-        {reachLoading
-          ? <div style={{ color: "var(--ink-2)" }}>Calculating…</div>
-          : reach?.available === false
-            ? <div style={{ color: "var(--ink-2)" }}>Pre-flight estimate not available on this platform.</div>
-            : reach?.lower != null
-              ? <div style={{ fontWeight: 600 }}>{fmtInt(reach.lower)} – {fmtInt(reach.upper)} people</div>
-              : <div style={{ color: "var(--muted-2)" }}>Add targeting to see an estimate.</div>}
-      </div>
+      {showReach && (
+        <div style={{
+          padding: "10px 12px", borderRadius: 8, background: "var(--paper-2)",
+          border: "1px solid var(--rule)", fontSize: 12,
+        }}>
+          <div style={{ color: "var(--muted)", marginBottom: 4 }}>Estimated reach</div>
+          {reachLoading
+            ? <div style={{ color: "var(--ink-2)" }}>Calculating…</div>
+            : reach?.available === false
+              ? <div style={{ color: "var(--ink-2)" }}>Pre-flight estimate not available on this platform.</div>
+              : reach?.lower != null
+                ? <div style={{ fontWeight: 600 }}>{fmtInt(reach.lower)} – {fmtInt(reach.upper)} people</div>
+                : <div style={{ color: "var(--muted-2)" }}>Add targeting to see an estimate.</div>}
+        </div>
+      )}
     </div>
   );
 }
@@ -318,6 +320,137 @@ function NewCampaignDrawer({ open, onClose, platform, onCreated }) {
         )}
 
         {error ? <div style={{ color: "var(--accent-ink)", fontSize: 12 }}>{error}</div> : null}
+      </div>
+    </Drawer>
+  );
+}
+
+// ─── Boost-post drawer (PR 4c) ───────────────────────────────────────────────
+// Promote an existing published post as a paid ad on any platform.
+// TikTok exposes Spark Ad fields (sparkAuthCode / linkUrl / callToAction) —
+// other platforms hide them. The API already accepts the fields (PR 4a);
+// this drawer is the user-facing surface.
+
+const TIKTOK_CTAS = [
+  "LEARN_MORE", "SHOP_NOW", "DOWNLOAD_NOW", "SIGN_UP", "WATCH_NOW",
+  "GET_QUOTE", "BOOK_NOW", "CONTACT_US", "APPLY_NOW", "ORDER_NOW",
+];
+
+const BOOST_GOALS = [
+  { id: "engagement",      label: "Engagement" },
+  { id: "traffic",         label: "Traffic" },
+  { id: "awareness",       label: "Awareness" },
+  { id: "video_views",     label: "Video views" },
+  { id: "lead_generation", label: "Lead generation" },
+  { id: "conversions",     label: "Conversions" },
+  { id: "app_promotion",   label: "App promotion" },
+];
+
+function BoostDrawer({ open, onClose, platform, onCreated }) {
+  const [postId,          setPostId]          = useStateAds("");
+  const [usePlatformPost, setUsePlatformPost] = useStateAds(false);
+  const [name,            setName]            = useStateAds("");
+  const [goal,            setGoal]            = useStateAds("engagement");
+  const [budget,          setBudget]          = useStateAds(20);
+  const [targeting,       setTargeting]       = useStateAds({ countries: ["US"], ageMin: 18, ageMax: 65, interests: [] });
+  // TikTok-only Spark Ad fields. Stay in state across platforms so a quick
+  // switch back to TikTok keeps the user's input — minor convenience.
+  const [sparkAuthCode,   setSparkAuthCode]   = useStateAds("");
+  const [linkUrl,         setLinkUrl]         = useStateAds("");
+  const [callToAction,    setCallToAction]    = useStateAds("LEARN_MORE");
+  const [submitting,      setSubmitting]      = useStateAds(false);
+  const [error,           setError]           = useStateAds("");
+
+  const isTikTok = platform === "ttads";
+
+  const submit = async () => {
+    setError("");
+    if (!postId) { setError("Post ID required."); return; }
+    if (isTikTok && goal !== "engagement" && goal !== "awareness" && goal !== "video_views" && !linkUrl) {
+      setError("TikTok Spark Ads with traffic/conversion goals require a destination URL.");
+      return;
+    }
+    try {
+      setSubmitting(true);
+      const body = {
+        platform,
+        ...(usePlatformPost ? { platformPostId: postId } : { postId }),
+        name, goal, budgetDaily: Number(budget) || 10,
+        targeting,
+        ...(isTikTok && sparkAuthCode ? { sparkAuthCode } : {}),
+        ...(isTikTok && linkUrl       ? { linkUrl }       : {}),
+        ...(isTikTok && callToAction  ? { callToAction }  : {}),
+      };
+      const created = await callPaidSocial("boost_post", body);
+      onCreated?.(created);
+      onClose();
+    } catch (e) { setError(e.message); }
+    finally   { setSubmitting(false); }
+  };
+
+  return (
+    <Drawer open={open} onClose={onClose}
+      title={`Boost ${PLATFORMS.find(p => p.id === platform)?.label || ""} post`} width={580}
+      actions={
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn variant="ghost" onClick={onClose} disabled={submitting}>Cancel</Btn>
+          <Btn variant="primary" onClick={submit} disabled={submitting}>
+            {submitting ? "Boosting…" : "Create (paused)"}
+          </Btn>
+        </div>
+      }>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <FormRow label={usePlatformPost ? "Platform post ID" : "Zernio post ID"}
+          hint={usePlatformPost ? "The post ID as it exists on the platform (Meta/TikTok/etc.)" : "Zernio's internal post _id."}>
+          <Input value={postId} onChange={e => setPostId(e.target.value)} placeholder={usePlatformPost ? "1234567890" : "p_abc123…"}/>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--ink-2)", marginTop: 6, cursor: "pointer" }}>
+            <input type="checkbox" checked={usePlatformPost} onChange={e => setUsePlatformPost(e.target.checked)}/>
+            Use platform-native post ID instead
+          </label>
+        </FormRow>
+
+        <FormRow label="Name (optional)">
+          <Input value={name} onChange={e => setName(e.target.value)} placeholder="Boost · creator collab · Q3"/>
+        </FormRow>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <FormRow label="Goal">
+            <select value={goal} onChange={e => setGoal(e.target.value)} style={{ ...inputCSS, width: "100%" }}>
+              {BOOST_GOALS.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
+            </select>
+          </FormRow>
+          <FormRow label="Daily budget (USD)">
+            <Input type="number" min={1} value={budget} onChange={e => setBudget(e.target.value)}/>
+          </FormRow>
+        </div>
+
+        {isTikTok && (
+          <>
+            <div style={{ height: 1, background: "var(--rule)", margin: "6px 0" }}/>
+            <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>
+              TikTok Spark Ads
+            </div>
+            <FormRow label="Spark auth code (optional)"
+              hint="Creator's auth_code from TikTok app → Promote settings. Required only when boosting another creator's video.">
+              <Input value={sparkAuthCode} onChange={e => setSparkAuthCode(e.target.value)} placeholder="Creator's Spark code"/>
+            </FormRow>
+            <FormRow label="Destination URL"
+              hint="Spark Ads have no clickable destination by default. Required for traffic / conversion goals.">
+              <Input value={linkUrl} onChange={e => setLinkUrl(e.target.value)} placeholder="https://…"/>
+            </FormRow>
+            <FormRow label="Call to action">
+              <select value={callToAction} onChange={e => setCallToAction(e.target.value)} style={{ ...inputCSS, width: "100%" }}>
+                {TIKTOK_CTAS.map(c => <option key={c} value={c}>{c.replace(/_/g, " ").toLowerCase()}</option>)}
+              </select>
+            </FormRow>
+          </>
+        )}
+
+        <div style={{ height: 1, background: "var(--rule)", margin: "6px 0" }}/>
+        <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>Targeting</div>
+        <TargetingBuilder platform={platform} value={targeting} onChange={setTargeting} showReach={false}/>
+
+        {error ? <div style={{ fontSize: 12, color: "var(--accent-ink)" }}>{error}</div> : null}
       </div>
     </Drawer>
   );
@@ -827,6 +960,320 @@ function AudiencesPane({ platform, adAccountId, setAdAccountId }) {
   );
 }
 
+// ─── Lead forms sub-tab (PR 4c) ──────────────────────────────────────────────
+// Meta Lead Gen forms are Page-owned and Meta-only. On other platforms we
+// render a polite "not available" panel and skip the API calls.
+
+function PushToKlaviyoButton({ lead, onPushed }) {
+  const [busy, setBusy] = useStateAds(false);
+  const [msg,  setMsg]  = useStateAds("");
+
+  // Pull email/phone from the normalized `fields` map first, fall back to
+  // raw `fieldData`. Both shapes are returned by Zernio.
+  const fieldOf = (key) => {
+    if (lead.fields?.[key]) return lead.fields[key];
+    const raw = (lead.fieldData || []).find(f => String(f?.name || "").toLowerCase().includes(key));
+    return raw?.values?.[0] || null;
+  };
+  const email      = fieldOf("email");
+  const phone      = fieldOf("phone");
+  const firstName  = fieldOf("first_name") || fieldOf("first name") || fieldOf("full_name")?.split(" ")[0];
+  const lastName   = fieldOf("last_name")  || fieldOf("last name")  || fieldOf("full_name")?.split(" ").slice(1).join(" ");
+
+  const push = async () => {
+    if (!email && !phone) { alert("This lead has no email or phone — nothing to push."); return; }
+    setBusy(true); setMsg("");
+    try {
+      const res  = await window.apiFetch("/api/klaviyo", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          action: "subscribe_lead",
+          email, phone, firstName, lastName,
+          properties: {
+            source:           "Meta Lead Ad",
+            zernio_lead_id:   lead.id,
+            zernio_form_id:   lead.formId,
+            campaign_id:      lead.campaignId || null,
+            ad_id:            lead.adId       || null,
+          },
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json.error || `Klaviyo push failed (${res.status})`);
+      setMsg(`Pushed${json.subscribed ? " + subscribed" : ""}.`);
+      onPushed?.(json);
+    } catch (e) {
+      setMsg(e.message);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <Btn size="sm" variant="primary" onClick={push} disabled={busy || (!email && !phone)}>
+        {busy ? "Pushing…" : "Push to Klaviyo"}
+      </Btn>
+      {msg ? <span style={{ fontSize: 11, color: msg.startsWith("Pushed") ? "var(--ink-2)" : "var(--accent-ink)" }}>{msg}</span> : null}
+    </div>
+  );
+}
+
+function NewLeadFormDrawer({ open, onClose, platform, onCreated }) {
+  const [name,           setName]           = useStateAds("");
+  const [privacyUrl,     setPrivacyUrl]     = useStateAds("");
+  const [thankYouTitle,  setThankYouTitle]  = useStateAds("Thanks!");
+  const [thankYouBody,   setThankYouBody]   = useStateAds("We'll be in touch soon.");
+  const [questions,      setQuestions]      = useStateAds([
+    { type: "EMAIL" }, { type: "FULL_NAME" },
+  ]);
+  const [submitting,     setSubmitting]     = useStateAds(false);
+  const [error,          setError]          = useStateAds("");
+
+  const PREFILLED_TYPES = ["EMAIL", "PHONE", "FULL_NAME", "FIRST_NAME", "LAST_NAME", "CITY", "STATE", "COUNTRY"];
+
+  const addQ = () => setQuestions(qs => [...qs, { type: "EMAIL" }]);
+  const setQ = (i, patch) => setQuestions(qs => qs.map((q, j) => j === i ? { ...q, ...patch } : q));
+  const rmQ  = (i) => setQuestions(qs => qs.filter((_, j) => j !== i));
+
+  const submit = async () => {
+    setError("");
+    if (!name)       { setError("Form name required.");           return; }
+    if (!privacyUrl) { setError("Privacy policy URL required."); return; }
+    if (questions.length === 0) { setError("At least one question required."); return; }
+    try {
+      setSubmitting(true);
+      await callAds("lead_forms_create", {
+        platform, name, privacyPolicyUrl: privacyUrl,
+        thankYouTitle, thankYouBody,
+        questions: questions.map(q => {
+          const isCustom = !PREFILLED_TYPES.includes(q.type);
+          return isCustom
+            ? { type: "CUSTOM", key: q.key || q.label?.toLowerCase().replace(/\s+/g, "_"), label: q.label || "" }
+            : { type: q.type };
+        }),
+      });
+      onCreated?.();
+      onClose();
+    } catch (e) { setError(e.message); }
+    finally   { setSubmitting(false); }
+  };
+
+  return (
+    <Drawer open={open} onClose={onClose} title="New Lead Gen form" width={580}
+      actions={
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn variant="ghost" onClick={onClose} disabled={submitting}>Cancel</Btn>
+          <Btn variant="primary" onClick={submit} disabled={submitting}>
+            {submitting ? "Creating…" : "Create form"}
+          </Btn>
+        </div>
+      }>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <FormRow label="Form name"><Input value={name} onChange={e => setName(e.target.value)}/></FormRow>
+        <FormRow label="Privacy policy URL" hint="Required by Meta for every Lead Gen form.">
+          <Input value={privacyUrl} onChange={e => setPrivacyUrl(e.target.value)} placeholder="https://…/privacy"/>
+        </FormRow>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <FormRow label="Thank-you title"><Input value={thankYouTitle} onChange={e => setThankYouTitle(e.target.value)}/></FormRow>
+          <FormRow label="Thank-you body"><Input value={thankYouBody} onChange={e => setThankYouBody(e.target.value)}/></FormRow>
+        </div>
+
+        <FormRow label="Questions">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {questions.map((q, i) => (
+              <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <select value={q.type} onChange={e => setQ(i, { type: e.target.value })} style={{ ...inputCSS, width: 160 }}>
+                  {PREFILLED_TYPES.map(t => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}
+                  <option value="CUSTOM">Custom…</option>
+                </select>
+                {q.type === "CUSTOM" && (
+                  <Input value={q.label || ""} onChange={e => setQ(i, { label: e.target.value })} placeholder="Question label" style={{ flex: 1 }}/>
+                )}
+                <Btn size="sm" variant="ghost" onClick={() => rmQ(i)}>×</Btn>
+              </div>
+            ))}
+            <Btn size="sm" onClick={addQ}>+ Add question</Btn>
+          </div>
+        </FormRow>
+
+        {error ? <div style={{ fontSize: 12, color: "var(--accent-ink)" }}>{error}</div> : null}
+      </div>
+    </Drawer>
+  );
+}
+
+function LeadFormsPane({ platform }) {
+  const [forms,        setForms]        = useStateAds([]);
+  const [selectedFormId, setSelectedFormId] = useStateAds(null);
+  const [leads,        setLeads]        = useStateAds([]);
+  const [selectedLeadId, setSelectedLeadId] = useStateAds(null);
+  const [loadingForms, setLoadingForms] = useStateAds(false);
+  const [loadingLeads, setLoadingLeads] = useStateAds(false);
+  const [error,        setError]        = useStateAds("");
+  const [drawerOpen,   setDrawerOpen]   = useStateAds(false);
+
+  const isMeta = platform === "metaads";
+
+  const loadForms = async () => {
+    if (!isMeta) { setForms([]); return; }
+    try {
+      setLoadingForms(true); setError("");
+      const data = await callAds("lead_forms_list", { platform: "metaads", limit: 100 });
+      setForms(data.forms || []);
+      if (!data.forms?.some(f => f.id === selectedFormId)) {
+        setSelectedFormId(data.forms?.[0]?.id || null);
+      }
+    } catch (e) { setError(e.message); setForms([]); }
+    finally    { setLoadingForms(false); }
+  };
+
+  const loadLeads = async () => {
+    if (!isMeta || !selectedFormId) { setLeads([]); return; }
+    try {
+      setLoadingLeads(true);
+      const data = await callAds("leads_list", { platform: "metaads", formId: selectedFormId, limit: 100 });
+      setLeads(data.leads || []);
+      if (!data.leads?.some(l => l.id === selectedLeadId)) {
+        setSelectedLeadId(data.leads?.[0]?.id || null);
+      }
+    } catch (e) { setError(e.message); setLeads([]); }
+    finally    { setLoadingLeads(false); }
+  };
+
+  useEffectAds(() => { loadForms(); /* eslint-disable-next-line */ }, [platform]);
+  useEffectAds(() => { loadLeads(); /* eslint-disable-next-line */ }, [selectedFormId]);
+
+  if (!isMeta) {
+    return (
+      <div style={{ padding: 40, color: "var(--muted)", maxWidth: 540 }}>
+        <div style={{ fontSize: 14, fontWeight: 500, color: "var(--ink)", marginBottom: 6 }}>
+          Lead forms are Meta-only.
+        </div>
+        Switch the platform tab to <strong>Meta</strong> at the top to manage Lead Gen forms and their leads.
+        Other platforms don't expose a public Lead Gen API — use their native ad-platform UI to create leads,
+        and the Audiences tab + customer-list CSV upload to retarget.
+      </div>
+    );
+  }
+
+  const selectedForm = forms.find(f => f.id === selectedFormId) || forms[0] || null;
+  const selectedLead = leads.find(l => l.id === selectedLeadId) || leads[0] || null;
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "300px 1fr 420px", height: "100%", minHeight: 0 }}>
+      {/* LEFT — forms list */}
+      <div style={{ borderRight: "1px solid var(--rule)", display: "flex", flexDirection: "column", minHeight: 0, background: "var(--paper)" }}>
+        <div style={{ padding: 12, borderBottom: "1px solid var(--rule)" }}>
+          <Btn size="sm" variant="primary" onClick={() => setDrawerOpen(true)} style={{ width: "100%" }}>
+            + New form
+          </Btn>
+        </div>
+        <div style={{ overflowY: "auto", flex: 1, minHeight: 0 }}>
+          {loadingForms ? (
+            <div style={{ padding: 16, color: "var(--muted)", fontSize: 12 }}>Loading…</div>
+          ) : error ? (
+            <div style={{ padding: 16, color: "var(--accent-ink)", fontSize: 12 }}>{error}</div>
+          ) : forms.length === 0 ? (
+            <div style={{ padding: 16, color: "var(--muted)", fontSize: 12 }}>
+              No lead forms yet on the connected Facebook Page.
+            </div>
+          ) : forms.map(f => (
+            <button key={f.id} type="button" onClick={() => setSelectedFormId(f.id)} style={{
+              display: "block", width: "100%", textAlign: "left",
+              padding: "10px 14px", border: 0, cursor: "pointer",
+              background: f.id === selectedForm?.id ? "var(--accent-wash)" : "transparent",
+              borderBottom: "1px solid var(--rule)",
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>{f.name || "Untitled form"}</div>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+                {f.status || "—"}{f.leads_count != null ? ` · ${fmtInt(f.leads_count)} leads` : ""}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* CENTER — leads list for selected form */}
+      <div style={{ overflowY: "auto", padding: 16, minHeight: 0 }}>
+        {!selectedForm ? (
+          <div style={{ color: "var(--muted)" }}>Pick a form on the left to see leads.</div>
+        ) : (
+          <div>
+            <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 6 }}>Lead form</div>
+            <div style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>{selectedForm.name}</div>
+
+            {loadingLeads ? (
+              <div style={{ color: "var(--muted)", fontSize: 12 }}>Loading leads…</div>
+            ) : leads.length === 0 ? (
+              <div style={{ color: "var(--muted)", fontSize: 12 }}>
+                No leads yet. Leads land here in real time via Zernio's leadgen webhook.
+              </div>
+            ) : (
+              <div style={{ border: "1px solid var(--rule)", borderRadius: 8, overflow: "hidden" }}>
+                {leads.map(l => {
+                  const email = l.fields?.email || (l.fieldData || []).find(f => /email/i.test(f.name || ""))?.values?.[0];
+                  const name  = l.fields?.full_name || l.fields?.first_name ||
+                                (l.fieldData || []).find(f => /name/i.test(f.name || ""))?.values?.[0];
+                  return (
+                    <button key={l.id} type="button" onClick={() => setSelectedLeadId(l.id)} style={{
+                      display: "block", width: "100%", textAlign: "left",
+                      padding: "10px 14px", border: 0, cursor: "pointer",
+                      background: l.id === selectedLead?.id ? "var(--accent-wash)" : "var(--paper)",
+                      borderBottom: "1px solid var(--rule)",
+                    }}>
+                      <div style={{ fontSize: 13, color: "var(--ink)" }}>
+                        {name || email || "Unnamed lead"}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+                        {email || "—"}{l.createdTime ? ` · ${new Date(l.createdTime).toLocaleString()}` : ""}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* RIGHT — selected lead detail + push to Klaviyo */}
+      <div style={{ borderLeft: "1px solid var(--rule)", overflowY: "auto", minHeight: 0, background: "var(--paper)" }}>
+        {!selectedLead ? (
+          <div style={{ padding: 16, color: "var(--muted)", fontSize: 12 }}>No lead selected.</div>
+        ) : (
+          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+            <div>
+              <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>Lead</div>
+              <div style={{ fontSize: 16, fontWeight: 600, marginTop: 4 }}>
+                {selectedLead.fields?.full_name || selectedLead.fields?.first_name || "—"}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+                {selectedLead.createdTime ? new Date(selectedLead.createdTime).toLocaleString() : "no timestamp"}
+                {selectedLead.adId ? ` · ad ${selectedLead.adId.slice(-8)}` : ""}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
+              {Object.entries(selectedLead.fields || {}).map(([k, v]) => (
+                <div key={k} style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 8 }}>
+                  <div style={{ color: "var(--muted)" }}>{k.replace(/_/g, " ")}</div>
+                  <div style={{ color: "var(--ink)" }}>{String(v)}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ height: 1, background: "var(--rule)" }}/>
+            <PushToKlaviyoButton lead={selectedLead}/>
+          </div>
+        )}
+      </div>
+
+      <NewLeadFormDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}
+        platform={platform} onCreated={loadForms}/>
+    </div>
+  );
+}
+
 // ─── Main shell ──────────────────────────────────────────────────────────────
 
 function CampaignsPane({ platform }) {
@@ -836,6 +1283,7 @@ function CampaignsPane({ platform }) {
   const [listError,   setListError]   = useStateAds("");
   const [tree,        setTree]        = useStateAds({});
   const [drawerOpen,  setDrawerOpen]  = useStateAds(false);
+  const [boostOpen,   setBoostOpen]   = useStateAds(false);
 
   const selected = useMemoAds(
     () => campaigns.find(c => c.id === selectedId) || campaigns[0] || null,
@@ -885,9 +1333,12 @@ function CampaignsPane({ platform }) {
         borderRight: "1px solid var(--rule)", display: "flex", flexDirection: "column",
         minHeight: 0, background: "var(--paper)",
       }}>
-        <div style={{ padding: 12, borderBottom: "1px solid var(--rule)" }}>
+        <div style={{ padding: 12, borderBottom: "1px solid var(--rule)", display: "flex", flexDirection: "column", gap: 6 }}>
           <Btn size="sm" variant="primary" onClick={() => setDrawerOpen(true)} style={{ width: "100%" }}>
             + New campaign
+          </Btn>
+          <Btn size="sm" onClick={() => setBoostOpen(true)} style={{ width: "100%" }}>
+            Boost existing post
           </Btn>
         </div>
 
@@ -950,13 +1401,15 @@ function CampaignsPane({ platform }) {
 
       <NewCampaignDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}
         platform={platform} onCreated={refresh}/>
+      <BoostDrawer open={boostOpen} onClose={() => setBoostOpen(false)}
+        platform={platform} onCreated={refresh}/>
     </div>
   );
 }
 
 function AdsWorkspace() {
   const [platform, setPlatform] = useStateAds("metaads");
-  const [view,     setView]     = useStateAds("campaigns"); // "campaigns" | "audiences"
+  const [view,     setView]     = useStateAds("campaigns"); // "campaigns" | "audiences" | "leadforms"
 
   // Per-platform adAccountId is sticky in localStorage so it survives reload.
   // Audiences need the platform-side ad account ID (e.g. act_xxx for Meta);
@@ -998,6 +1451,7 @@ function AdsWorkspace() {
           {[
             { id: "campaigns", label: "Campaigns" },
             { id: "audiences", label: "Audiences" },
+            { id: "leadforms", label: "Lead forms" },
           ].map(v => (
             <button key={v.id} type="button" onClick={() => setView(v.id)} style={{
               fontSize: 12, padding: "5px 14px", borderRadius: 6, cursor: "pointer",
@@ -1011,9 +1465,9 @@ function AdsWorkspace() {
       </div>
 
       <div style={{ flex: 1, minHeight: 0 }}>
-        {view === "campaigns"
-          ? <CampaignsPane platform={platform}/>
-          : <AudiencesPane platform={platform} adAccountId={adAccountId} setAdAccountId={setAdAccountId}/>}
+        {view === "campaigns" ? <CampaignsPane platform={platform}/>
+         : view === "audiences" ? <AudiencesPane platform={platform} adAccountId={adAccountId} setAdAccountId={setAdAccountId}/>
+         : <LeadFormsPane platform={platform}/>}
       </div>
     </div>
   );

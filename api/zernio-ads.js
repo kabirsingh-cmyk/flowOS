@@ -20,6 +20,17 @@
  *                                (Zernio hashes server-side; we forward raw
  *                                 {email, phone} objects.)
  *
+ * Actions (PR 4c):
+ *   lead_forms_list           — GET    /v1/ads/lead-forms          (Meta only)
+ *   lead_forms_get            — GET    /v1/ads/lead-forms/{formId} (Meta only)
+ *   lead_forms_create         — POST   /v1/ads/lead-forms          (Meta only)
+ *   leads_list                — GET    /v1/ads/leads          (cross-form CRM)
+ *                              or GET  /v1/ads/lead-forms/{formId}/leads
+ *                              when `formId` is passed.
+ *   send_conversions          — POST   /v1/ads/conversions
+ *                                (Meta + Google + LinkedIn; platform inferred
+ *                                 from accountId on Zernio's side.)
+ *
  * Response shape: { ok: true, data } | { ok: false, error }
  *
  * Required env vars:
@@ -193,6 +204,104 @@ async function audiencesAddUsers({ audienceId, users }) {
   });
 }
 
+// ─── lead forms + leads (PR 4c) ──────────────────────────────────────────────
+// Meta Lead Gen forms are Page-owned and Meta-only. We gate locally to
+// fail fast with a clear message on other platforms.
+
+function assertMetaForLeadForms(platform) {
+  if (platform && platform !== "metaads") {
+    throw Object.assign(
+      new Error("Lead Gen forms are Meta-only. Supported platform: metaads."),
+      { status: 400 }
+    );
+  }
+}
+
+async function leadFormsList({ tenantId, platform, limit, cursor }) {
+  assertMetaForLeadForms(platform || "metaads");
+  const accountId = await requireZernioAccountId(tenantId, "metaads");
+  const qs = new URLSearchParams({ accountId });
+  if (Number.isFinite(limit)) qs.set("limit", String(Math.max(1, Math.min(100, limit))));
+  if (cursor)                 qs.set("cursor", String(cursor));
+  return zernioFetch(`/ads/lead-forms?${qs}`, { method: "GET" });
+}
+
+async function leadFormsGet({ tenantId, platform, formId }) {
+  if (!formId) throw new Error("formId required");
+  assertMetaForLeadForms(platform || "metaads");
+  const accountId = await requireZernioAccountId(tenantId, "metaads");
+  const qs = new URLSearchParams({ accountId });
+  return zernioFetch(`/ads/lead-forms/${encodeURIComponent(formId)}?${qs}`, { method: "GET" });
+}
+
+async function leadFormsCreate({
+  tenantId, platform, name, questions, privacyPolicyUrl, privacyPolicyLinkText,
+  followUpActionUrl, locale, thankYouTitle, thankYouBody, thankYouButtonText,
+  thankYouButtonType, thankYouWebsiteUrl, isOptimizedForQuality,
+}) {
+  assertMetaForLeadForms(platform || "metaads");
+  if (!name)              throw new Error("name required");
+  if (!privacyPolicyUrl)  throw new Error("privacyPolicyUrl required");
+  if (!Array.isArray(questions) || questions.length === 0) {
+    throw new Error("questions[] required (at least one question)");
+  }
+  const accountId = await requireZernioAccountId(tenantId, "metaads");
+  const payload = {
+    accountId, name, questions, privacyPolicyUrl,
+    ...(privacyPolicyLinkText  ? { privacyPolicyLinkText }  : {}),
+    ...(followUpActionUrl      ? { followUpActionUrl }      : {}),
+    ...(locale                 ? { locale }                 : {}),
+    ...(thankYouTitle          ? { thankYouTitle }          : {}),
+    ...(thankYouBody           ? { thankYouBody }           : {}),
+    ...(thankYouButtonText     ? { thankYouButtonText }     : {}),
+    ...(thankYouButtonType     ? { thankYouButtonType }     : {}),
+    ...(thankYouWebsiteUrl     ? { thankYouWebsiteUrl }     : {}),
+    ...(isOptimizedForQuality != null ? { isOptimizedForQuality } : {}),
+  };
+  return zernioFetch(`/ads/lead-forms`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+// When `formId` is passed, returns leads for ONE form via
+// /v1/ads/lead-forms/{formId}/leads. Otherwise lists across all forms via
+// /v1/ads/leads. Both endpoints share the same keyset-pagination shape.
+async function leadsList({ tenantId, platform, formId, limit, cursor, since }) {
+  assertMetaForLeadForms(platform || "metaads");
+  const accountId = await requireZernioAccountId(tenantId, "metaads");
+  const qs = new URLSearchParams({ accountId });
+  if (Number.isFinite(limit)) qs.set("limit", String(Math.max(1, Math.min(100, limit))));
+  if (cursor)                 qs.set("cursor", String(cursor));
+  if (Number.isFinite(since)) qs.set("since",  String(since));
+  if (formId) {
+    return zernioFetch(`/ads/lead-forms/${encodeURIComponent(formId)}/leads?${qs}`, { method: "GET" });
+  }
+  return zernioFetch(`/ads/leads?${qs}`, { method: "GET" });
+}
+
+// POST /v1/ads/conversions — relay conversion events. Zernio infers the
+// platform from accountId. Meta-only, Google-only, or LinkedIn-only fields go
+// directly through to Zernio; we don't gate them here so callers can use the
+// route as a thin pass-through.
+async function sendConversions({ tenantId, platform, accountId, destinationId, events, testCode, consent }) {
+  if (!destinationId)  throw new Error("destinationId required (pixel ID / conversion action resource name / LinkedIn rule)");
+  if (!Array.isArray(events) || events.length === 0) {
+    throw new Error("events[] required (at least one event)");
+  }
+  // If accountId isn't passed, resolve from the connected channel for `platform`.
+  let resolvedAccountId = accountId;
+  if (!resolvedAccountId) {
+    if (!platform) throw new Error("accountId or platform required");
+    resolvedAccountId = await requireZernioAccountId(tenantId, String(platform).toLowerCase());
+  }
+  const payload = {
+    accountId: resolvedAccountId,
+    destinationId,
+    events,
+    ...(testCode ? { testCode } : {}),
+    ...(consent  ? { consent }  : {}),
+  };
+  return zernioFetch(`/ads/conversions`, { method: "POST", body: JSON.stringify(payload) });
+}
+
 // ─── ad_analytics ────────────────────────────────────────────────────────────
 
 async function adAnalytics({ adId, fromDate, toDate, breakdowns }) {
@@ -251,10 +360,27 @@ export default async function handler(req) {
       case "audiences_add_users":
         result = await audiencesAddUsers(params);
         break;
+      case "lead_forms_list":
+        result = await leadFormsList({ tenantId, ...params });
+        break;
+      case "lead_forms_get":
+        result = await leadFormsGet({ tenantId, ...params });
+        break;
+      case "lead_forms_create":
+        result = await leadFormsCreate({ tenantId, ...params });
+        break;
+      case "leads_list":
+        result = await leadsList({ tenantId, ...params });
+        break;
+      case "send_conversions":
+        result = await sendConversions({ tenantId, ...params });
+        break;
       default:
         return errResponse(
           `Unknown action: ${action}. Supported: targeting_search, targeting_reach_estimate, ` +
-          `ad_analytics, audiences_list, audiences_create, audiences_get, audiences_delete, audiences_add_users`
+          `ad_analytics, audiences_list, audiences_create, audiences_get, audiences_delete, ` +
+          `audiences_add_users, lead_forms_list, lead_forms_get, lead_forms_create, ` +
+          `leads_list, send_conversions`
         );
     }
     return jsonResponse({ ok: true, data: result });
