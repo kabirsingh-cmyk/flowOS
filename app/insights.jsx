@@ -17,6 +17,8 @@
     { value: "90d", label: "90 days" },
   ];
 
+
+
   // Channel display config
   const CHANNEL_META = {
     meta_ads:    { label: "Meta Ads",      icon: "📘", group: "paid",    color: "#1877F2" },
@@ -633,6 +635,163 @@
     );
   }
 
+  // ─── Trend Deltas ────────────────────────────────────────────────────────────
+  // Computes week-over-week-ish deltas from Zernio time-series values arrays.
+
+  function computeDelta(values) {
+    if (!Array.isArray(values) || values.length < 4) return null;
+    const mid = Math.floor(values.length / 2);
+    const first = values.slice(0, mid).reduce((s, v) => s + (Number(v.value) || 0), 0) / mid;
+    const second = values.slice(mid).reduce((s, v) => s + (Number(v.value) || 0), 0) / (values.length - mid);
+    if (first === 0) return second > 0 ? 100 : 0;
+    return ((second - first) / first) * 100;
+  }
+
+  function TrendDeltas({ snapshots, loading }) {
+    if (loading) return null;
+    if (!snapshots || snapshots.length === 0) return null;
+
+    const deltas = [];
+    for (const snap of snapshots) {
+      const meta = CHANNEL_META[snap.channel];
+      if (!meta) continue;
+      const metrics = snap.metrics || {};
+      // Find metrics with values arrays
+      for (const [key, raw] of Object.entries(metrics)) {
+        if (key === "dateRange" || key === "metricType" || key === "platform") continue;
+        if (typeof raw === "object" && Array.isArray(raw.values) && raw.values.length >= 4) {
+          const delta = computeDelta(raw.values);
+          if (delta !== null) {
+            deltas.push({
+              channel: meta.label,
+              icon: meta.icon,
+              metric: fmtMetricLabel(key),
+              delta,
+              total: resolveMetricValue(raw),
+            });
+          }
+        }
+      }
+    }
+    // Sort by absolute delta, take top 8
+    deltas.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+    const top = deltas.slice(0, 8);
+    if (top.length === 0) return null;
+
+    return (
+      <section style={{ marginBottom: 28 }}>
+        <h3 style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 12px" }}>
+          Trending
+        </h3>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
+          {top.map((d, i) => (
+            <div key={i} style={{
+              background: "var(--paper)", border: "1px solid var(--rule)",
+              borderRadius: 8, padding: "12px 14px",
+              display: "flex", alignItems: "center", gap: 10,
+            }}>
+              <span style={{ fontSize: 18 }}>{d.icon}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 10.5, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                  {d.channel} · {d.metric}
+                </div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 2 }}>
+                  <span style={{ fontSize: 16, fontWeight: 600, color: "var(--ink)", fontFamily: "JetBrains Mono, monospace" }}>
+                    {typeof d.total === "number" ? d.total.toLocaleString() : d.total}
+                  </span>
+                  <span style={{
+                    fontSize: 11, fontWeight: 600,
+                    color: d.delta >= 0 ? "oklch(55% 0.15 145)" : "oklch(55% 0.15 25)",
+                  }}>
+                    {d.delta >= 0 ? "▲" : "▼"} {Math.abs(d.delta).toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  // ─── Sparkline helper ─────────────────────────────────────────────────────────
+
+  function Sparkline({ values, width = 120, height = 32, color = "var(--ink)" }) {
+    if (!Array.isArray(values) || values.length < 2) return null;
+    const nums = values.map(v => Number(v.value) || 0);
+    const min = Math.min(...nums);
+    const max = Math.max(...nums);
+    const range = max - min || 1;
+    const step = width / (nums.length - 1);
+    const points = nums.map((n, i) => {
+      const x = i * step;
+      const y = height - ((n - min) / range) * (height - 4) - 2;
+      return `${x},${y}`;
+    });
+    const pathD = `M ${points.join(" L ")}`;
+    return (
+      <svg width={width} height={height} style={{ flexShrink: 0 }}>
+        <path d={pathD} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+
+  // ─── Follower Charts ──────────────────────────────────────────────────────────
+
+  function FollowerCharts({ snapshots, loading }) {
+    if (loading) return null;
+    // Find snapshots with time-series follower/reach/view data
+    const charts = [];
+    for (const snap of snapshots) {
+      const meta = CHANNEL_META[snap.channel];
+      if (!meta) continue;
+      const metrics = snap.metrics || {};
+      for (const [key, raw] of Object.entries(metrics)) {
+        if (typeof raw === "object" && Array.isArray(raw.values) && raw.values.length >= 3) {
+          const label = fmtMetricLabel(key);
+          charts.push({
+            channel: meta.label,
+            icon: meta.icon,
+            color: meta.color,
+            metric: label,
+            key,
+            values: raw.values,
+            total: resolveMetricValue(raw),
+          });
+        }
+      }
+    }
+    if (charts.length === 0) return null;
+
+    return (
+      <section style={{ marginBottom: 28 }}>
+        <h3 style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 12px" }}>
+          Per-Platform Trends
+        </h3>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
+          {charts.map((c, i) => (
+            <div key={i} style={{
+              background: "var(--paper)", border: "1px solid var(--rule)",
+              borderRadius: 8, padding: "12px 14px",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 16 }}>{c.icon}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: "var(--ink)" }}>{c.channel}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--muted)" }}>{c.metric}</div>
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", fontFamily: "JetBrains Mono, monospace" }}>
+                  {typeof c.total === "number" ? c.total.toLocaleString() : c.total}
+                </div>
+              </div>
+              <Sparkline values={c.values} color={c.color} />
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
   // ─── Error state ─────────────────────────────────────────────────────────────
 
   function ErrorState({ onRetry, errorMsg }) {
@@ -886,9 +1045,11 @@
           ) : (
             <>
               <SummarySection insights={insights} snapshots={snapshots} loading={loading} />
+              <TrendDeltas snapshots={snapshots} loading={loading} />
               <RecommendedActions actions={insights?.recommended_actions} loading={loading} onNavigate={handleNavigate} />
               <InsightsGrid items={insights?.insights} loading={loading} onNavigate={handleNavigate} />
               <PrimitivesSection primitives={primitives} loading={loading} />
+              <FollowerCharts snapshots={snapshots} loading={loading} />
               <DataByChannel snapshots={snapshots} loading={loading} />
               <AnalyticsChat tenantId={tenantId} snapshots={snapshots} insights={insights} period={period} />
             </>

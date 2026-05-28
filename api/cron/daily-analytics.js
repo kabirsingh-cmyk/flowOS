@@ -90,6 +90,7 @@ async function processTenant(tenantId, origin, sbUrl, sbKey) {
   const period = "30d";
   const snapshotRows = [];
   const primitiveRows = [];
+  const endpointErrors = [];
   let analyticsIngestOk = false;
   let analyticsIngestError = null;
 
@@ -125,6 +126,8 @@ async function processTenant(tenantId, origin, sbUrl, sbKey) {
           source: "live",
           fetched_at: new Date().toISOString(),
         });
+      } else {
+        endpointErrors.push({ type: "platform", platform: v.platform, action: v.action, error: v.error });
       }
     }
 
@@ -148,6 +151,8 @@ async function processTenant(tenantId, origin, sbUrl, sbKey) {
           payload: v.data,
           captured_at: new Date().toISOString(),
         });
+      } else {
+        endpointErrors.push({ type: "primitive", action: v.action, error: v.error });
       }
     }
 
@@ -158,18 +163,23 @@ async function processTenant(tenantId, origin, sbUrl, sbKey) {
     ]);
 
     // ── 5. Call legacy analytics-ingest for Composio data + insights ────────
-    const ingestRes = await fetch(`${origin}/api/analytics-ingest`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.CRON_SECRET}`,
-      },
-      body: JSON.stringify({ tenantId, period }),
-    });
-    analyticsIngestOk = ingestRes.ok;
-    if (!ingestRes.ok) {
-      const ingestData = await ingestRes.json().catch(() => ({}));
-      analyticsIngestError = ingestData.error || `HTTP ${ingestRes.status}`;
+    try {
+      const ingestRes = await fetchWithRetry(`${origin}/api/analytics-ingest`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.CRON_SECRET}`,
+        },
+        body: JSON.stringify({ tenantId, period }),
+      }, { retries: 1, backoffMs: 500 });
+      analyticsIngestOk = ingestRes.ok;
+      if (!ingestRes.ok) {
+        const ingestData = await ingestRes.json().catch(() => ({}));
+        analyticsIngestError = ingestData.error || `HTTP ${ingestRes.status}`;
+      }
+    } catch (e) {
+      analyticsIngestOk = false;
+      analyticsIngestError = e.message;
     }
 
     const elapsed = Date.now() - start;
@@ -181,10 +191,11 @@ async function processTenant(tenantId, origin, sbUrl, sbKey) {
       primitives: primitiveRows.length,
       analyticsIngest: analyticsIngestOk,
       analyticsIngestError,
+      endpointErrors: endpointErrors.length > 0 ? endpointErrors : undefined,
     };
 
   } catch (e) {
-    return { tenantId, ok: false, error: e.message };
+    return { tenantId, ok: false, error: e.message, endpointErrors: endpointErrors.length > 0 ? endpointErrors : undefined };
   }
 }
 
@@ -202,18 +213,50 @@ async function fetchConnectedPlatforms(tenantId, sbUrl, sbKey) {
   return [...new Set(rows.map(r => r.platform).filter(Boolean))];
 }
 
+async function fetchWithRetry(url, init, opts = {}) {
+  const { retries = 2, backoffMs = 500 } = opts;
+  let lastErr;
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const res = await fetch(url, init);
+      if (res.ok) return res;
+      // Retry on 5xx or rate-limit (429)
+      const status = res.status;
+      if (status >= 500 || status === 429) {
+        lastErr = new Error(`HTTP ${status}`);
+        if (i < retries) {
+          await sleep(backoffMs * Math.pow(2, i));
+          continue;
+        }
+      }
+      // 4xx (except 429) — don't retry
+      return res;
+    } catch (e) {
+      lastErr = e;
+      if (i < retries) {
+        await sleep(backoffMs * Math.pow(2, i));
+      }
+    }
+  }
+  throw lastErr || new Error("fetch failed after retries");
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
 async function callZernioAnalytics(origin, tenantId, action, platform, period) {
   const body = { tenantId, action, period };
   if (platform) body.platform = platform;
 
-  const res = await fetch(`${origin}/api/zernio-analytics`, {
+  const res = await fetchWithRetry(`${origin}/api/zernio-analytics`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${process.env.CRON_SECRET}`,
     },
     body: JSON.stringify(body),
-  });
+  }, { retries: 2, backoffMs: 600 });
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -222,7 +265,7 @@ async function callZernioAnalytics(origin, tenantId, action, platform, period) {
 
 async function persistSnapshots(sbUrl, sbKey, rows) {
   if (rows.length === 0) return;
-  await fetch(`${sbUrl}/rest/v1/analytics_snapshots`, {
+  const res = await fetchWithRetry(`${sbUrl}/rest/v1/analytics_snapshots`, {
     method: "POST",
     headers: {
       apikey: sbKey,
@@ -231,12 +274,16 @@ async function persistSnapshots(sbUrl, sbKey, rows) {
       Prefer: "resolution=merge-duplicates",
     },
     body: JSON.stringify(rows),
-  });
+  }, { retries: 1, backoffMs: 400 });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(`persistSnapshots failed: ${body.message || res.status}`);
+  }
 }
 
 async function persistPrimitives(sbUrl, sbKey, rows) {
   if (rows.length === 0) return;
-  await fetch(`${sbUrl}/rest/v1/analytics_primitives`, {
+  const res = await fetchWithRetry(`${sbUrl}/rest/v1/analytics_primitives`, {
     method: "POST",
     headers: {
       apikey: sbKey,
@@ -245,7 +292,11 @@ async function persistPrimitives(sbUrl, sbKey, rows) {
       Prefer: "resolution=merge-duplicates",
     },
     body: JSON.stringify(rows),
-  });
+  }, { retries: 1, backoffMs: 400 });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(`persistPrimitives failed: ${body.message || res.status}`);
+  }
 }
 
 function platformToChannel(platform) {

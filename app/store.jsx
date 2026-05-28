@@ -137,6 +137,13 @@ function mveda_initialState({ seedMode = null, userId = null } = {}) {
     // default grid view when null.
     // Shape: { title, summary, itemCount, goal, audience, timeline, budget, channels[], brief (markdown), createdAt }
     activePlan: null,
+
+    // === TRACK B: ANALYTICS + GMB ===
+    // Analytics workspace state (mirrors local state in insights.jsx for cross-workspace access)
+    analyticsPeriod: "30d",
+    analyticsRefreshing: false,
+    analyticsLastRefresh: null,
+    // === END TRACK B ===
   };
 }
 
@@ -588,6 +595,20 @@ function mveda_reducer(s, a) {
     case "ACTIVE_PLAN_CLEAR": {
       return { ...s, activePlan: null };
     }
+
+    // === TRACK B: ANALYTICS + GMB ===
+    case "ANALYTICS_PERIOD_SET": {
+      return { ...s, analyticsPeriod: a.period };
+    }
+    case "ANALYTICS_REFRESH_STATE": {
+      return {
+        ...s,
+        analyticsRefreshing: a.refreshing,
+        analyticsLastRefresh: a.at != null ? a.at : s.analyticsLastRefresh,
+      };
+    }
+    // === END TRACK B ===
+
     default: return s;
   }
 }
@@ -671,6 +692,11 @@ function useMvedaStore(seedMode = null, userId = null) {
       dispatch({ type: "PROACTIVE_SMS_REMOVE", id, notify: opts.notify }),
     setActivePlan: (plan) => dispatch({ type: "ACTIVE_PLAN_SET", plan }),
     clearActivePlan: () => dispatch({ type: "ACTIVE_PLAN_CLEAR" }),
+
+    // === TRACK B: ANALYTICS + GMB ===
+    setAnalyticsPeriod: (period) => dispatch({ type: "ANALYTICS_PERIOD_SET", period }),
+    setAnalyticsRefreshState: (refreshing, at) => dispatch({ type: "ANALYTICS_REFRESH_STATE", refreshing, at }),
+    // === END TRACK B ===
   };
   return [state, actions];
 }
