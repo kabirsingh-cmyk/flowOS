@@ -698,19 +698,12 @@ function Connections({ state, actions }) {
         return;
       }
 
-      // No /api/<provider> route yet → simulated path (placeholder until wired).
-      setTimeout(() => {
-        actions.setConnector(connector.id, {
-          connected: true,
-          status:    "ok",
-          note:      "API key validated · direct",
-          syncCount: "initial sync running…",
-        }, {
-          logEvent: `connected · ${connector.name}`,
-          notify:   { tone: "ok", text: `${connector.name} connected` },
-        });
-        setConnecting(p => { const n = { ...p }; delete n[connector.id]; return n; });
-      }, 1100);
+      // No /api/<provider> route wired yet. Refuse to fake a "Connected" state —
+      // surface honestly so users don't discover the lie at publish time.
+      // To wire a new Direct-API connector: add an /api/<id>.js route with an
+      // initiate_connection action and add it to DIRECT_API_ROUTES above.
+      setConnecting(p => { const n = { ...p }; delete n[connector.id]; return n; });
+      actions.notify("warn", `${connector.name} is not yet available — backend not wired.`);
       return;
     }
 
