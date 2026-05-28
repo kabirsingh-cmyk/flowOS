@@ -4,6 +4,39 @@ Reverse-chronological record of notable changes. New entries on top.
 
 ---
 
+## 2026-05-28 · Track A · PR 4b — Ads audiences + customer-list CSV upload
+
+**Scope:** Phase 4 PR 2/3 — audiences CRUD on the API side, a new Audiences sub-tab in the Ads workspace, and CSV upload for customer-list audiences (the headline acceptance criterion: "Upload a 500-email CSV to a Meta customer_list audience → audience populated").
+
+### Changes
+
+- **[api/zernio-ads.js](api/zernio-ads.js)** — extended with 5 audience actions (Zernio hashes member data server-side; we forward raw `{email, phone}` objects):
+  - `audiences_list` — `GET /v1/ads/audiences` with optional `type` filter.
+  - `audiences_create` — `POST /v1/ads/audiences`. `customer_list` works on all 6 ad platforms; `website` + `lookalike` are gated to Meta locally (fail-fast with a clear message rather than waiting for Zernio's 400). `saved_targeting` stores a reusable TargetingSpec with no member upload.
+  - `audiences_get` — `GET /v1/ads/audiences/{id}`.
+  - `audiences_delete` — `DELETE /v1/ads/audiences/{id}`.
+  - `audiences_add_users` — `POST /v1/ads/audiences/{id}/users`. Server-side enforces the 10 000-per-request cap, lowercases emails, and drops rows with neither email nor phone before forwarding.
+
+- **[app/ads-workspace.jsx](app/ads-workspace.jsx)** — workspace gained a topbar (platform picker + tab strip) and a second sub-tab.
+  - **Restructure:** `AdsWorkspace` now hosts `CampaignsPane` (the existing three-pane, refactored to receive `platform` as a prop — its self-platform-picker was removed from the left column since it lives in the topbar now) and the new `AudiencesPane`.
+  - **AudiencesPane:** three-pane shell. Left = filter chips (All / Customer / Website / Lookalike / Saved) + sticky platform-ad-account-ID input (persisted to `localStorage` per platform, keyed `flowos.ads.adAccountId.<platform>`) + audiences list. Center = audience name + spec preview (for saved_targeting). Right = `AudienceDetail` panel with delete + post-create CSV upload.
+  - **NewAudienceDrawer:** type select gates website + lookalike to Meta-only (option marked `(Meta only)` and disabled on other platforms); per-type conditional fields (pixelId + retentionDays for website; sourceAudienceId + country + ratio for lookalike). For customer_list, an inline CSV file picker — parser auto-detects `email` / `phone` headers (or treats single-column files as one-email-per-line), then after the audience is created chunk-uploads members at 10 000 rows per request, with progress feedback.
+  - Local CSV parser (`parseCsvForUsers`) is scoped to ads-workspace.jsx because `workspaces3.jsx`'s `parseCsv` is IIFE-private.
+
+### Deliberately not in this PR
+
+- **TikTok Spark Ads UI + Lead Forms + Conversions API** → PR 4c.
+- **Audience-level analytics / member counts beyond what `audiences_list` returns** → out of scope; revisit if support tickets demand it.
+- **CSV download / export of an audience** → not in the Zernio spec, skipped.
+- **Cross-audience copy / merge** → Zernio has no native primitive for this; would require client-side fan-out, skipped.
+
+### Files touched
+
+- `api/zernio-ads.js` (extended, no breaking changes to the 4a actions).
+- `app/ads-workspace.jsx` (extended; `CampaignsPane` is the 4a body, refactored to take `platform` as prop).
+
+---
+
 ## 2026-05-28 · Track A · PR 4a — Paid ads targeting + hierarchy
 
 **Scope:** Phase 4 PR 1/3 — extend the paid-social route with full ad-tree CRUD and normalized cross-platform targeting; add a separate zernio-ads route for pre-flight primitives; ship a three-pane Ads workspace.
