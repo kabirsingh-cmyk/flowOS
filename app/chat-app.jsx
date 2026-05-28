@@ -319,6 +319,13 @@ function inferResponse(userText) {
       { delay: 1100, agent: "Supervisor", text: "Open.", artifact: { type: "workspace", target: "mobile" } },
     ];
   }
+  if (/google business|gmb|business profile|local seo|google maps|my business|gbp/.test(t)) {
+    return [
+      { delay: 500, agent: "Supervisor", text: "Routing to Google Business Profile. I'll pull your connected location, recent reviews, and active posts." },
+      { delay: 1200, agent: "Supervisor", text: "Google Business workspace open. You can reply to reviews, publish updates, events, or offers, and check performance.",
+        artifact: { type: "workspace", target: "gmb" } },
+    ];
+  }
   if (/brand|voice|memory|never use|word/.test(t)) {
     return [
       { delay: 500, agent: "Brand Guard", text: "Got it — adding to prohibited list. Drafter and all future generations will avoid the word. Existing drafts unaffected; want me to scan and flag the ones using it?" },
