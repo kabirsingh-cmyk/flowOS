@@ -633,6 +633,82 @@
     );
   }
 
+  // ─── Cohorts / Demographics ───────────────────────────────────────────────────
+
+  const COHORT_LABELS = {
+    age: "Age", gender: "Gender", country: "Country", city: "City", device: "Device",
+  };
+
+  function CohortsSection({ cohorts, loading }) {
+    if (loading) return null;
+    if (!cohorts || cohorts.length === 0) return null;
+
+    // Group by channel for display
+    const byChannel = {};
+    cohorts.forEach(c => {
+      if (!byChannel[c.channel]) byChannel[c.channel] = [];
+      byChannel[c.channel].push(c);
+    });
+
+    return (
+      <section style={{ marginBottom: 28 }}>
+        <h3 style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 12px" }}>
+          Audience Breakdowns
+        </h3>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
+          {Object.entries(byChannel).map(([channel, items]) => {
+            const meta = CHANNEL_META[channel] || { label: channel, icon: "📊", color: "#666" };
+            return items.map((c, i) => (
+              <CohortCard key={`${channel}-${c.cohort_type}-${i}`} channelMeta={meta} cohort={c} />
+            ));
+          })}
+        </div>
+      </section>
+    );
+  }
+
+  function CohortCard({ channelMeta, cohort }) {
+    const breakdowns = (cohort.breakdowns || []).slice(0, 6);
+    const maxPct = breakdowns.length > 0 ? Math.max(...breakdowns.map(b => b.pct || 0)) : 0;
+
+    return (
+      <div style={{
+        background: "var(--paper)", border: "1px solid var(--rule)",
+        borderRadius: 8, padding: "14px 16px",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <span style={{ fontSize: 16 }}>{channelMeta.icon}</span>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink)" }}>
+            {channelMeta.label}
+          </span>
+          <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: "auto", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            {COHORT_LABELS[cohort.cohort_type] || cohort.cohort_type}
+          </span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          {breakdowns.map((b, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 70, fontSize: 11.5, color: "var(--muted)", textAlign: "right", flexShrink: 0 }}>
+                {b.label}
+              </div>
+              <div style={{ flex: 1, height: 10, background: "var(--paper-2)", borderRadius: 5, overflow: "hidden" }}>
+                <div style={{
+                  width: `${maxPct > 0 ? (b.pct / maxPct * 100) : 0}%`,
+                  height: "100%", background: channelMeta.color,
+                  borderRadius: 5, opacity: 0.85,
+                  transition: "width 0.4s ease",
+                }} />
+              </div>
+              <div style={{ width: 45, fontSize: 11.5, color: "var(--ink)", fontWeight: 500, textAlign: "right", flexShrink: 0, fontFamily: "JetBrains Mono, monospace" }}>
+                {typeof b.pct === "number" ? `${b.pct}%` : fmtMetricValue(cohort.cohort_type, b.value)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   // ─── Error state ─────────────────────────────────────────────────────────────
 
   function ErrorState({ onRetry, errorMsg }) {
@@ -870,6 +946,7 @@
     const [error, setError]             = useStateI(null);
     const [compareMode, setCompareMode] = useStateI(false);
     const [compareSelection, setCompareSelection] = useStateI([]);
+    const [cohorts, setCohorts] = useStateI([]);
 
     const sb = window.sb;
 
@@ -879,7 +956,7 @@
       setLoading(true);
       setError(null);
       try {
-        const [snapRes, primRes, insRes] = await Promise.all([
+        const [snapRes, primRes, insRes, cohortRes] = await Promise.all([
           sb.from("analytics_snapshots")
             .select("*")
             .eq("tenant_id", tenantId)
@@ -895,11 +972,17 @@
             .eq("period", period)
             .order("generated_at", { ascending: false })
             .limit(1),
+          sb.from("analytics_cohorts")
+            .select("*")
+            .eq("tenant_id", tenantId)
+            .eq("period", period)
+            .order("fetched_at", { ascending: false }),
         ]);
 
         if (snapRes.error) throw new Error(snapRes.error.message || "Snapshot fetch failed");
         if (primRes.error) throw new Error(primRes.error.message || "Primitives fetch failed");
         if (insRes.error)  throw new Error(insRes.error.message  || "Insights fetch failed");
+        if (cohortRes.error) throw new Error(cohortRes.error.message || "Cohorts fetch failed");
 
         if (Array.isArray(snapRes.data)) {
           const rows = snapRes.data;
@@ -930,6 +1013,16 @@
             insights:            row.insights || [],
             recommended_actions: row.recommended_actions || [],
           });
+        }
+
+        if (Array.isArray(cohortRes.data)) {
+          setCohorts(cohortRes.data.map(r => ({
+            channel: r.channel,
+            cohort_type: r.cohort_type,
+            breakdowns: r.breakdowns,
+            meta: r.meta,
+            fetched_at: r.fetched_at,
+          })));
         }
       } catch (e) {
         setError(e.message || "Failed to load analytics data");
@@ -1092,6 +1185,7 @@
                   <RecommendedActions actions={insights?.recommended_actions} loading={loading} onNavigate={handleNavigate} />
                   <InsightsGrid items={insights?.insights} loading={loading} onNavigate={handleNavigate} />
                   <PrimitivesSection primitives={primitives} loading={loading} />
+                  <CohortsSection cohorts={cohorts} loading={loading} />
                   <DataByChannel snapshots={snapshots} loading={loading} />
                   <AnalyticsChat tenantId={tenantId} snapshots={snapshots} insights={insights} period={period} />
                 </>

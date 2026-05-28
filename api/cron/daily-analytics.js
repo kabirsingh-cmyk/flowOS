@@ -24,7 +24,7 @@ const PLATFORM_ENDPOINTS = {
   ig:        ["instagram_account_insights", "instagram_follower_history", "instagram_demographics"],
   li:        ["linkedin_org_aggregate"],
   tt:        ["tiktok_account_insights"],
-  yt:        ["youtube_channel_insights"],
+  yt:        ["youtube_channel_insights", "youtube_demographics"],
   gbusiness: ["gmb_performance", "gmb_search_keywords"],
 };
 
@@ -90,6 +90,7 @@ async function processTenant(tenantId, origin, sbUrl, sbKey) {
   const period = "30d";
   const snapshotRows = [];
   const primitiveRows = [];
+  const cohortRows = [];
   let analyticsIngestOk = false;
   let analyticsIngestError = null;
 
@@ -151,13 +152,20 @@ async function processTenant(tenantId, origin, sbUrl, sbKey) {
       }
     }
 
-    // ── 4. Persist snapshots + primitives ───────────────────────────────────
+    // ── 4. Extract cohorts from demographic snapshots ───────────────────────
+    for (const snap of snapshotRows) {
+      const extracted = extractCohorts(snap);
+      if (extracted) cohortRows.push(...extracted);
+    }
+
+    // ── 5. Persist snapshots + primitives + cohorts ─────────────────────────
     await Promise.all([
       persistSnapshots(sbUrl, sbKey, snapshotRows),
       persistPrimitives(sbUrl, sbKey, primitiveRows),
+      persistCohorts(sbUrl, sbKey, cohortRows),
     ]);
 
-    // ── 5. Call legacy analytics-ingest for Composio data + insights ────────
+    // ── 6. Call legacy analytics-ingest for Composio data + insights ────────
     const ingestRes = await fetch(`${origin}/api/analytics-ingest`, {
       method: "POST",
       headers: {
@@ -179,6 +187,7 @@ async function processTenant(tenantId, origin, sbUrl, sbKey) {
       elapsed: `${elapsed}ms`,
       snapshots: snapshotRows.length,
       primitives: primitiveRows.length,
+      cohorts: cohortRows.length,
       analyticsIngest: analyticsIngestOk,
       analyticsIngestError,
     };
@@ -246,6 +255,60 @@ async function persistPrimitives(sbUrl, sbKey, rows) {
     },
     body: JSON.stringify(rows),
   });
+}
+
+async function persistCohorts(sbUrl, sbKey, rows) {
+  if (rows.length === 0) return;
+  await fetch(`${sbUrl}/rest/v1/analytics_cohorts`, {
+    method: "POST",
+    headers: {
+      apikey: sbKey,
+      Authorization: `Bearer ${sbKey}`,
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates",
+    },
+    body: JSON.stringify(rows),
+  });
+}
+
+// Extract normalized cohort rows from a snapshot that contains demographic data.
+function extractCohorts(snap) {
+  const demographics = snap.metrics?.demographics;
+  if (!demographics || typeof demographics !== "object") return null;
+
+  const rows = [];
+  const meta = {};
+  if (snap.metrics.metric) meta.metric = snap.metrics.metric;
+  if (snap.metrics.timeframe) meta.timeframe = snap.metrics.timeframe;
+  if (snap.metrics.dateRange) meta.dateRange = snap.metrics.dateRange;
+  if (snap.metrics.note) meta.note = snap.metrics.note;
+
+  for (const [cohortType, items] of Object.entries(demographics)) {
+    if (!Array.isArray(items)) continue;
+    const breakdowns = items.map(item => ({
+      label: item.dimension || item.label || String(item),
+      value: typeof item.value === "number" ? item.value : 0,
+    }));
+    if (breakdowns.length === 0) continue;
+
+    // Compute percentages so the UI can render bars without math
+    const total = breakdowns.reduce((s, b) => s + b.value, 0);
+    if (total > 0) {
+      breakdowns.forEach(b => { b.pct = Number((b.value / total * 100).toFixed(1)); });
+    }
+
+    rows.push({
+      tenant_id: snap.tenant_id,
+      channel: snap.channel,
+      cohort_type: cohortType,
+      period: snap.period,
+      breakdowns,
+      meta: Object.keys(meta).length > 0 ? meta : null,
+      fetched_at: snap.fetched_at,
+    });
+  }
+
+  return rows.length > 0 ? rows : null;
 }
 
 function platformToChannel(platform) {
