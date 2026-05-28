@@ -168,6 +168,7 @@ function Icon({ name, size = 14 }) {
     plug:    <><path d="M5 2 V6 H11 V2"/><path d="M8 6 V10"/><path d="M5 10 H11 V12 A3 3 0 0 1 5 12 Z"/></>,
     mail:    <><rect x="2" y="3" width="12" height="10" rx="1"/><polyline points="2 4 8 9 14 4"/></>,
     target:  <><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="3"/><circle cx="8" cy="8" r="0.5"/></>,
+    pin:     <><path d="M8 2 C5 2 3 4 3 6.5 C3 9 8 14 8 14 C8 14 13 9 13 6.5 C13 4 11 2 8 2 Z"/><circle cx="8" cy="6.5" r="1.5"/></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 16 16"
