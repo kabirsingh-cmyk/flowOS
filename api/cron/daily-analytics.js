@@ -2,9 +2,15 @@
  * FlowOS Reach — Daily analytics cron
  * Vercel Cron: GET /api/cron/daily-analytics — runs at 06:00 UTC every day
  *
- * 1. Verify Vercel cron secret (set automatically on Pro; optional on Hobby)
+ * 1. Verify Vercel cron secret
  * 2. Fetch all distinct tenant IDs from the brands table
- * 3. POST to /api/analytics-ingest for each tenant, sequentially
+ * 3. Per tenant:
+ *    a. Fetch connected Zernio platforms from channels table
+ *    b. Fan out to platform analytics endpoints in parallel (Promise.allSettled)
+ *    c. Persist raw payloads into analytics_snapshots
+ *    d. Run cross-platform primitives in parallel
+ *    e. Persist primitive results into analytics_primitives
+ *    f. POST to /api/analytics-ingest for Composio data + Claude insights
  * 4. Return a run summary
  */
 
@@ -12,14 +18,29 @@ import { requireCron } from "../lib/auth.js";
 
 export const config = { runtime: "edge" };
 
+// Map FlowOS platform short IDs → the analytics endpoints we want to call.
+const PLATFORM_ENDPOINTS = {
+  fb:        ["facebook_page_insights"],
+  ig:        ["instagram_account_insights", "instagram_follower_history", "instagram_demographics"],
+  li:        ["linkedin_org_aggregate"],
+  tt:        ["tiktok_account_insights"],
+  yt:        ["youtube_channel_insights"],
+  gbusiness: ["gmb_performance", "gmb_search_keywords"],
+};
+
+const PRIMITIVE_ACTIONS = [
+  "best_time",
+  "content_decay",
+  "posting_frequency",
+  "daily_metrics",
+];
+
 export default async function handler(req) {
-  // Cron auth — fails closed if CRON_SECRET isn't set.
   const cronAuth = requireCron(req);
   if (cronAuth instanceof Response) return cronAuth;
 
   const sbUrl = process.env.SUPABASE_URL;
   const sbKey = process.env.SUPABASE_SERVICE_KEY;
-
   if (!sbUrl || !sbKey) {
     return json(500, { ok: false, error: "Supabase env vars not configured" });
   }
@@ -33,7 +54,7 @@ export default async function handler(req) {
     );
     if (!res.ok) throw new Error(`Supabase ${res.status}`);
     const rows = await res.json();
-    tenantIds  = [...new Set(rows.map(r => r.user_id).filter(Boolean))];
+    tenantIds = [...new Set(rows.map(r => r.user_id).filter(Boolean))];
   } catch (e) {
     return json(500, { ok: false, error: `Could not fetch tenants: ${e.message}` });
   }
@@ -42,38 +63,12 @@ export default async function handler(req) {
     return json(200, { ok: true, message: "No tenants found — nothing to ingest" });
   }
 
-  // ── Run ingest per tenant (sequential — avoids hammering Composio / Claude) ─
-  const origin  = new URL(req.url).origin;
+  const origin = new URL(req.url).origin;
   const results = [];
 
   for (const tenantId of tenantIds) {
-    const start = Date.now();
-    try {
-      const res = await fetch(`${origin}/api/analytics-ingest`, {
-        method:  "POST",
-        headers: {
-          "Content-Type": "application/json",
-          // Pass cron secret so /api/analytics-ingest's requireAuthOrCron
-          // accepts this server-to-server call. tenantId in the body is
-          // what the helper validates against (we set it just above from
-          // the brands table, not from any client input).
-          Authorization:  `Bearer ${process.env.CRON_SECRET}`,
-        },
-        body:    JSON.stringify({ tenantId, period: "30d" }),
-      });
-      const data    = await res.json().catch(() => ({}));
-      const elapsed = Date.now() - start;
-      results.push({
-        tenantId,
-        ok:      res.ok,
-        elapsed: `${elapsed}ms`,
-        ...(res.ok
-          ? { snapshotCount: data.snapshots?.length ?? 0 }
-          : { error: data.error ?? `HTTP ${res.status}` }),
-      });
-    } catch (e) {
-      results.push({ tenantId, ok: false, error: e.message });
-    }
+    const tenantResult = await processTenant(tenantId, origin, sbUrl, sbKey);
+    results.push(tenantResult);
   }
 
   const passed = results.filter(r => r.ok).length;
@@ -82,12 +77,188 @@ export default async function handler(req) {
   console.log(`[cron/daily-analytics] ${passed} ok · ${failed} failed`, results);
 
   return json(200, {
-    ok:        failed === 0,
+    ok: failed === 0,
     processed: results.length,
     passed,
     failed,
     results,
   });
+}
+
+async function processTenant(tenantId, origin, sbUrl, sbKey) {
+  const start = Date.now();
+  const period = "30d";
+  const snapshotRows = [];
+  const primitiveRows = [];
+  let analyticsIngestOk = false;
+  let analyticsIngestError = null;
+
+  try {
+    // ── 1. Connected Zernio platforms for this tenant ───────────────────────
+    const connectedPlatforms = await fetchConnectedPlatforms(tenantId, sbUrl, sbKey);
+
+    // ── 2. Platform analytics — fan out in parallel ─────────────────────────
+    const platformCalls = [];
+    for (const platform of connectedPlatforms) {
+      const endpoints = PLATFORM_ENDPOINTS[platform];
+      if (!endpoints) continue;
+      for (const action of endpoints) {
+        platformCalls.push(
+          callZernioAnalytics(origin, tenantId, action, platform, period)
+            .then(data => ({ ok: true, platform, action, data }))
+            .catch(err => ({ ok: false, platform, action, error: err.message }))
+        );
+      }
+    }
+
+    const platformResults = await Promise.allSettled(platformCalls);
+    for (const r of platformResults) {
+      const v = r.value || r.reason;
+      if (!v) continue;
+      if (v.ok && v.data) {
+        snapshotRows.push({
+          tenant_id: tenantId,
+          channel: platformToChannel(v.platform),
+          period,
+          endpoint: v.action,
+          metrics: v.data,
+          source: "live",
+          fetched_at: new Date().toISOString(),
+        });
+      }
+    }
+
+    // ── 3. Cross-platform primitives — fan out in parallel ──────────────────
+    const primitiveCalls = PRIMITIVE_ACTIONS.map(action =>
+      callZernioAnalytics(origin, tenantId, action, null, period)
+        .then(data => ({ ok: true, action, data }))
+        .catch(err => ({ ok: false, action, error: err.message }))
+    );
+
+    const primitiveResults = await Promise.allSettled(primitiveCalls);
+    for (const r of primitiveResults) {
+      const v = r.value || r.reason;
+      if (!v) continue;
+      if (v.ok && v.data) {
+        primitiveRows.push({
+          tenant_id: tenantId,
+          primitive: v.action,
+          platform: null,
+          period,
+          payload: v.data,
+          captured_at: new Date().toISOString(),
+        });
+      }
+    }
+
+    // ── 4. Persist snapshots + primitives ───────────────────────────────────
+    await Promise.all([
+      persistSnapshots(sbUrl, sbKey, snapshotRows),
+      persistPrimitives(sbUrl, sbKey, primitiveRows),
+    ]);
+
+    // ── 5. Call legacy analytics-ingest for Composio data + insights ────────
+    const ingestRes = await fetch(`${origin}/api/analytics-ingest`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
+      body: JSON.stringify({ tenantId, period }),
+    });
+    analyticsIngestOk = ingestRes.ok;
+    if (!ingestRes.ok) {
+      const ingestData = await ingestRes.json().catch(() => ({}));
+      analyticsIngestError = ingestData.error || `HTTP ${ingestRes.status}`;
+    }
+
+    const elapsed = Date.now() - start;
+    return {
+      tenantId,
+      ok: true,
+      elapsed: `${elapsed}ms`,
+      snapshots: snapshotRows.length,
+      primitives: primitiveRows.length,
+      analyticsIngest: analyticsIngestOk,
+      analyticsIngestError,
+    };
+
+  } catch (e) {
+    return { tenantId, ok: false, error: e.message };
+  }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function fetchConnectedPlatforms(tenantId, sbUrl, sbKey) {
+  const url =
+    `${sbUrl}/rest/v1/channels` +
+    `?user_id=eq.${encodeURIComponent(tenantId)}` +
+    `&status=eq.connected` +
+    `&select=platform`;
+  const res = await fetch(url, { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` } });
+  if (!res.ok) return [];
+  const rows = await res.json();
+  return [...new Set(rows.map(r => r.platform).filter(Boolean))];
+}
+
+async function callZernioAnalytics(origin, tenantId, action, platform, period) {
+  const body = { tenantId, action, period };
+  if (platform) body.platform = platform;
+
+  const res = await fetch(`${origin}/api/zernio-analytics`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.CRON_SECRET}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data.data;
+}
+
+async function persistSnapshots(sbUrl, sbKey, rows) {
+  if (rows.length === 0) return;
+  await fetch(`${sbUrl}/rest/v1/analytics_snapshots`, {
+    method: "POST",
+    headers: {
+      apikey: sbKey,
+      Authorization: `Bearer ${sbKey}`,
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates",
+    },
+    body: JSON.stringify(rows),
+  });
+}
+
+async function persistPrimitives(sbUrl, sbKey, rows) {
+  if (rows.length === 0) return;
+  await fetch(`${sbUrl}/rest/v1/analytics_primitives`, {
+    method: "POST",
+    headers: {
+      apikey: sbKey,
+      Authorization: `Bearer ${sbKey}`,
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates",
+    },
+    body: JSON.stringify(rows),
+  });
+}
+
+function platformToChannel(platform) {
+  // Map FlowOS short IDs to analytics_snapshots channel names.
+  const map = {
+    fb: "fb_organic",
+    ig: "ig_organic",
+    li: "li_organic",
+    tt: "tt_organic",
+    yt: "yt_organic",
+    gbusiness: "gmb",
+  };
+  return map[platform] || platform;
 }
 
 function json(status, body) {
