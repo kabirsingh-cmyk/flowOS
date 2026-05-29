@@ -467,7 +467,7 @@ function PermissionSwitch({ value, onChange }) {
   );
 }
 
-function Connections({ state, actions }) {
+function Connections({ state, actions, go }) {
   const [importOpen, setImportOpen]   = useState4(false);
   const [connectStep, setConnectStep] = useState4(null);  // { connector }
   const [manageStep, setManageStep]   = useState4(null);  // { connector }
@@ -533,11 +533,12 @@ function Connections({ state, actions }) {
       const { data: { session } } = await sb.auth.getSession();
       if (!session?.user) return;
       const { data } = await sb.from("channels")
-        .select("platform, account_handle, followers_count, composio_connection_id, status")
+        .select("platform, account_handle, followers_count, composio_connection_id, status, health_status")
         .eq("user_id", session.user.id)
         .eq("status", "connected");
       if (!data?.length) return;
       const platformToId = { instagram: "ig", tiktok: "tt", pinterest: "pn", youtube: "yt", facebook: "fb", linkedin: "li" };
+      const healthItems = [];
       data.forEach(ch => {
         const id = platformToId[ch.platform] || ch.platform;
         actions.setConnector(id, {
@@ -546,7 +547,11 @@ function Connections({ state, actions }) {
           note:       `${ch.account_handle || ch.platform} · connected`,
           syncCount:  ch.followers_count ? `${Number(ch.followers_count).toLocaleString()} followers` : "connected",
         });
+        if (ch.health_status && Object.keys(ch.health_status).length) {
+          healthItems.push({ id, health: ch.health_status });
+        }
       });
+      if (healthItems.length) actions.loadAccountHealth(healthItems);
     })();
   }, []); // eslint-disable-line
 
@@ -948,6 +953,40 @@ function Connections({ state, actions }) {
       </div>
 
       {/* Grid */}
+      {/* Reconnect banner */}
+      {(() => {
+        const reconnectors = visible.filter(c => {
+          const st = state.connectors[c.id] || {};
+          return st.connected && st.health?.needsReconnect;
+        });
+        if (!reconnectors.length) return null;
+        return (
+          <div style={{
+            padding: "10px 14px", borderRadius: 8,
+            background: "color-mix(in oklch, var(--danger) 8%, var(--paper))",
+            border: "1.5px solid var(--danger)",
+            display: "flex", alignItems: "center", gap: 10, fontSize: 12.5,
+          }}>
+            <span style={{ color: "var(--danger)", fontWeight: 600 }}>⚠</span>
+            <span style={{ flex: 1, color: "var(--ink)" }}>
+              {reconnectors.length === 1
+                ? `${reconnectors[0].name} needs reconnect.`
+                : `${reconnectors.length} integrations need reconnect.`}
+            </span>
+            <button
+              onClick={() => reconnectors.forEach(c => startConnect(c))}
+              style={{
+                fontSize: 11.5, fontWeight: 500,
+                padding: "4px 10px", borderRadius: 6,
+                background: "var(--danger)", color: "#fff", border: "none", cursor: "pointer",
+              }}
+            >
+              Reconnect
+            </button>
+          </div>
+        );
+      })()}
+
       <div style={{
         display: "grid",
         gridTemplateColumns: "repeat(auto-fill, minmax(132px, 1fr))",
@@ -958,6 +997,8 @@ function Connections({ state, actions }) {
           const isConnected  = !!st.connected;
           const isConnecting = !!connecting[c.id];
           const isRecommended = recommendedSet.has(c.id);
+          const health = st.health || {};
+          const healthStatus = health.status;
 
           const onClick = () => {
             if (isConnecting) return;
@@ -965,18 +1006,31 @@ function Connections({ state, actions }) {
             else              startConnect(c);
           };
 
-          const borderColor = isConnected  ? "var(--success)"
+          const healthBorder = healthStatus === "reconnect" ? "var(--danger)"
+                             : healthStatus === "degraded" ? "var(--warn)"
+                             : null;
+          const healthTint   = healthStatus === "reconnect" ? "color-mix(in oklch, var(--danger) 5%, var(--paper))"
+                             : healthStatus === "degraded" ? "color-mix(in oklch, var(--warn) 5%, var(--paper))"
+                             : null;
+
+          const borderColor = healthBorder
+                            || (isConnected  ? "var(--success)"
                             : isConnecting ? "var(--warn)"
                             : isRecommended? "var(--accent)"
-                            : "var(--rule)";
-          const tint = isConnected  ? "color-mix(in oklch, var(--success) 5%, var(--paper))"
+                            : "var(--rule)");
+          const tint = healthTint
+                     || (isConnected  ? "color-mix(in oklch, var(--success) 5%, var(--paper))"
                      : isConnecting ? "color-mix(in oklch, var(--warn)    5%, var(--paper))"
-                     : "var(--paper)";
+                     : "var(--paper)");
+          const dotColor = healthStatus === "reconnect" ? "var(--danger)"
+                         : healthStatus === "degraded" ? "var(--warn)"
+                         : isConnected ? "var(--success)"
+                         : "transparent";
           return (
             <button
               key={c.id}
               onClick={onClick}
-              title={`${c.name} — ${c.desc}`}
+              title={`${c.name} — ${c.desc}${health.message ? ` · ${health.message}` : ""}`}
               style={{
                 border: `1.5px solid ${borderColor}`,
                 background: tint,
@@ -989,10 +1043,19 @@ function Connections({ state, actions }) {
                 minHeight: 132,
                 fontFamily: "var(--font-sans)",
                 textAlign: "center",
+                position: "relative",
               }}
               onMouseEnter={e => { if (!isConnecting) e.currentTarget.style.transform = "translateY(-1px)"; }}
               onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; }}
             >
+              {dotColor !== "transparent" && (
+                <span style={{
+                  position: "absolute", top: 8, right: 8,
+                  width: 8, height: 8, borderRadius: "50%",
+                  background: dotColor,
+                  boxShadow: `0 0 0 2px ${tint}`,
+                }}/>
+              )}
               <ConnectorIcon connector={c} size={48}/>
               <div style={{
                 fontSize: 12.5, fontWeight: 500,
@@ -1000,7 +1063,9 @@ function Connections({ state, actions }) {
                 lineHeight: 1.2,
               }}>{c.name}</div>
               {isConnected && (
-                <div style={{ fontSize: 10.5, color: "var(--success)", marginTop: -2 }}>Connected</div>
+                <div style={{ fontSize: 10.5, color: healthStatus === "reconnect" ? "var(--danger)" : healthStatus === "degraded" ? "var(--warn)" : "var(--success)", marginTop: -2 }}>
+                  {healthStatus === "reconnect" ? "Needs reconnect" : healthStatus === "degraded" ? "Degraded" : "Connected"}
+                </div>
               )}
               {isConnecting && (
                 <div style={{ fontSize: 10.5, color: "var(--warn)", marginTop: -2 }}>Connecting…</div>
