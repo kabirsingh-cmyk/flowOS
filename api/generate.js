@@ -145,25 +145,24 @@ async function logGenerationUsage({ tenantId, provider, model, jobType, jobId, s
  * @param {string} provider
  * @returns {Promise<string>}   Durable URL
  */
-const ALLOWED_REHOST_ORIGINS = new Set([
+// Provider CDN domains we'll re-host from. Suffix-matched against the URL
+// hostname so subdomain CDNs (im.runware.ai, files2.heygen.ai, cdn.higgsfield.ai,
+// pbxt.replicate.delivery, …) are covered without enumerating every subdomain.
+const ALLOWED_REHOST_SUFFIXES = [
   'runware.ai',
-  'api.runware.ai',
   'higgsfield.ai',
-  'api.higgsfield.ai',
   'replicate.delivery',
   'replicate.com',
-  'pbxt.replicate.delivery',
-  'replicate.delivery',
+  'heygen.ai',
   'heygen.com',
-  'api.heygen.com',
-]);
+];
 
 const MAX_REHOST_BYTES = 100 * 1024 * 1024; // 100 MB
 
 function isAllowedRehostUrl(url) {
   try {
-    const u = new URL(url);
-    return ALLOWED_REHOST_ORIGINS.has(u.hostname) || u.hostname.endsWith('.replicate.delivery');
+    const host = new URL(url).hostname;
+    return ALLOWED_REHOST_SUFFIXES.some(s => host === s || host.endsWith('.' + s));
   } catch {
     return false;
   }
