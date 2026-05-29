@@ -666,7 +666,7 @@ function NewAudienceDrawer({ open, onClose, platform, adAccountId, onCreated }) 
       // Chunk-upload the CSV after create (customer_list only).
       if (type === "customer_list" && csvUsers.length > 0) {
         if (!audienceId) throw new Error("Audience created but no ID returned — cannot upload members.");
-        const CHUNK = 10000;
+        const CHUNK = 1000;
         for (let i = 0; i < csvUsers.length; i += CHUNK) {
           setProgress(`Uploading ${i + 1}–${Math.min(i + CHUNK, csvUsers.length)} of ${csvUsers.length}…`);
           await callAds("audiences_add_users", { audienceId, users: csvUsers.slice(i, i + CHUNK) });
@@ -687,7 +687,8 @@ function NewAudienceDrawer({ open, onClose, platform, adAccountId, onCreated }) 
       actions={
         <div style={{ display: "flex", gap: 8 }}>
           <Btn variant="ghost" onClick={onClose} disabled={submitting}>Cancel</Btn>
-          <Btn variant="primary" onClick={submit} disabled={submitting || metaOnly}>
+          <Btn variant="primary" onClick={submit} disabled={submitting || metaOnly}
+            title={metaOnly ? "Lookalikes are Meta-only per platform spec." : undefined}>
             {submitting ? "Creating…" : "Create"}
           </Btn>
         </div>
@@ -696,8 +697,8 @@ function NewAudienceDrawer({ open, onClose, platform, adAccountId, onCreated }) 
         <FormRow label="Type">
           <select value={type} onChange={e => setType(e.target.value)} style={{ ...inputCSS, width: "100%" }}>
             {AUDIENCE_TYPES.map(t => (
-              <option key={t.id} value={t.id} disabled={t.metaOnly && platform !== "metaads"}>
-                {t.label}{t.metaOnly && platform !== "metaads" ? " (Meta only)" : ""}
+              <option key={t.id} value={t.id}>
+                {t.label}
               </option>
             ))}
           </select>
@@ -775,7 +776,7 @@ function AudienceDetail({ audience, onDelete, onAppend, platform }) {
     if (csvUsers.length === 0) return;
     try {
       setBusy("upload");
-      const CHUNK = 10000;
+      const CHUNK = 1000;
       for (let i = 0; i < csvUsers.length; i += CHUNK) {
         setProgress(`Uploading ${i + 1}–${Math.min(i + CHUNK, csvUsers.length)} of ${csvUsers.length}…`);
         await callAds("audiences_add_users", { audienceId, users: csvUsers.slice(i, i + CHUNK) });
@@ -861,7 +862,17 @@ function AudiencesPane({ platform, adAccountId, setAdAccountId }) {
     } finally { setLoading(false); }
   };
 
+  // After CSV uploads, poll a few times so the async "processing → ready" flip
+  // and updated row count are visible without manual refresh.
+  const pollTimers = useRefAds([]);
+  const loadWithPoll = async () => {
+    await load();
+    pollTimers.current.forEach(clearTimeout);
+    pollTimers.current = [1, 2, 3].map(n => setTimeout(load, n * 2000));
+  };
+
   useEffectAds(() => { load(); /* eslint-disable-next-line */ }, [platform, adAccountId, filter]);
+  useEffectAds(() => () => pollTimers.current.forEach(clearTimeout), []);
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "320px 1fr 360px", height: "100%", minHeight: 0 }}>
@@ -950,12 +961,12 @@ function AudiencesPane({ platform, adAccountId, setAdAccountId }) {
       {/* RIGHT: detail/actions */}
       <div style={{ borderLeft: "1px solid var(--rule)", overflowY: "auto", minHeight: 0, background: "var(--paper)" }}>
         {selected
-          ? <AudienceDetail audience={selected} platform={platform} onDelete={load} onAppend={load}/>
+          ? <AudienceDetail audience={selected} platform={platform} onDelete={load} onAppend={loadWithPoll}/>
           : <div style={{ padding: 16, color: "var(--muted)", fontSize: 12 }}>No selection.</div>}
       </div>
 
       <NewAudienceDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)}
-        platform={platform} adAccountId={adAccountId} onCreated={load}/>
+        platform={platform} adAccountId={adAccountId} onCreated={loadWithPoll}/>
     </div>
   );
 }
@@ -1229,7 +1240,7 @@ function LeadFormsPane({ platform }) {
                       </div>
                     </button>
                   );
-                })}
+                })}</div></div>
               </div>
             )}
           </div>
