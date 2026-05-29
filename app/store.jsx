@@ -592,6 +592,16 @@ function mveda_reducer(s, a) {
     // Reducer cases for Track A (publishing + ads). PR 1 uses CAL_UPDATE for
     // optimistic queue mutations; new cases land here as later PRs need them.
     // === END TRACK A ===
+    // === TRACK B: HYGIENE + HEALTH ===
+    case "CONN_HEALTH_LOAD": {
+      const next = { ...s.connectors };
+      for (const { id, health } of (a.items || [])) {
+        if (!id) continue;
+        next[id] = { ...(next[id] || {}), health: health || null };
+      }
+      return { ...s, connectors: next };
+    }
+    // === END TRACK B ===
     default: return s;
   }
 }
@@ -784,6 +794,10 @@ function useMvedaStore(seedMode = null, userId = null) {
       }
     },
     // === END TRACK A ===
+    // === TRACK B: HYGIENE + HEALTH ===
+    loadAccountHealth: (items) =>
+      dispatch({ type: "CONN_HEALTH_LOAD", items: items || [] }),
+    // === END TRACK B ===
   };
   return [state, actions];
 }
