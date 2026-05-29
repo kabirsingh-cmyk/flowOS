@@ -591,6 +591,12 @@ function mveda_reducer(s, a) {
     // === TRACK A: PUBLISHING + ADS ===
     // Reducer cases for Track A (publishing + ads). PR 1 uses CAL_UPDATE for
     // optimistic queue mutations; new cases land here as later PRs need them.
+    case "ADS_SPARK_BOOST": {
+      return { ...s,
+        calendar: s.calendar.map(c => c.id === a.id ? { ...c, boosted: true, sparkCampaignId: a.campaignId } : c),
+        notifications: [notify("ok", a.message || "Spark Ad boosted"), ...s.notifications],
+      };
+    }
     // === END TRACK A ===
     default: return s;
   }
@@ -783,6 +789,47 @@ function useMvedaStore(seedMode = null, userId = null) {
         return { ok: false, error: e.message };
       }
     },
+    // === TRACK A: ADS COMPLETION ===
+    boostAsSpark: async (itemId, { postId, budgetDaily, durationDays, callToAction, linkUrl, sparkAuthCode }) => {
+      if (!postId) {
+        dispatch({ type: "NOTIFY", tone: "warn", text: "postId required for Spark boost" });
+        return { ok: false, error: "postId required" };
+      }
+      try {
+        const res = await window.apiFetch("/api/paid-social", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "boost_post",
+            platform: "ttads",
+            postId,
+            name: `Spark · ${new Date().toISOString().slice(0, 10)}`,
+            goal: "traffic",
+            budgetDaily: budgetDaily || 20,
+            schedule: durationDays ? { endDate: new Date(Date.now() + durationDays * 864e5).toISOString().slice(0, 10) } : undefined,
+            callToAction,
+            linkUrl,
+            sparkAuthCode,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          dispatch({ type: "NOTIFY", tone: "warn", text: `Spark boost failed: ${data.error || res.status}` });
+          return { ok: false, error: data.error || `HTTP ${res.status}` };
+        }
+        dispatch({
+          type: "ADS_SPARK_BOOST",
+          id: itemId,
+          campaignId: data.data?.id || data.data?.campaignId,
+          message: `Spark Ad boosted · ${data.data?.name || data.data?.id || "campaign created"}`,
+        });
+        return { ok: true, data: data.data };
+      } catch (e) {
+        dispatch({ type: "NOTIFY", tone: "warn", text: `Spark boost failed: ${e.message}` });
+        return { ok: false, error: e.message };
+      }
+    },
+    // === END TRACK A: ADS COMPLETION ===
     // === END TRACK A ===
   };
   return [state, actions];
