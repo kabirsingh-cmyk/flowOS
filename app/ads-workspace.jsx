@@ -1001,6 +1001,7 @@ function PushToKlaviyoButton({ lead, onPushed }) {
         body:    JSON.stringify({
           action: "subscribe_lead",
           email, phone, firstName, lastName,
+          leadId: lead.id,
           properties: {
             source:           "Meta Lead Ad",
             zernio_lead_id:   lead.id,
@@ -1170,6 +1171,17 @@ function LeadFormsPane({ platform }) {
   const selectedForm = forms.find(f => f.id === selectedFormId) || forms[0] || null;
   const selectedLead = leads.find(l => l.id === selectedLeadId) || leads[0] || null;
 
+  const sendTestLead = async () => {
+    if (!selectedForm) return;
+    try {
+      await callAds("test_leads", { platform: "metaads", formId: selectedForm.id });
+      alert("Test lead sent. It will appear in the leads list shortly.");
+      loadLeads();
+      setTimeout(loadLeads, 3000);
+      setTimeout(loadLeads, 6000);
+    } catch (e) { alert(e.message); }
+  };
+
   return (
     <div style={{ display: "grid", gridTemplateColumns: "300px 1fr 420px", height: "100%", minHeight: 0 }}>
       {/* LEFT — forms list */}
@@ -1211,7 +1223,10 @@ function LeadFormsPane({ platform }) {
         ) : (
           <div>
             <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 6 }}>Lead form</div>
-            <div style={{ fontSize: 20, fontWeight: 600, marginBottom: 14 }}>{selectedForm.name}</div>
+            <div style={{ fontSize: 20, fontWeight: 600, marginBottom: 8 }}>{selectedForm.name}</div>
+            <div style={{ marginBottom: 14 }}>
+              <Btn size="sm" variant="ghost" onClick={sendTestLead}>Send test lead</Btn>
+            </div>
 
             {loadingLeads ? (
               <div style={{ color: "var(--muted)", fontSize: 12 }}>Loading leads…</div>
@@ -1223,6 +1238,7 @@ function LeadFormsPane({ platform }) {
               <div style={{ border: "1px solid var(--rule)", borderRadius: 8, overflow: "hidden" }}>
                 {leads.map(l => {
                   const email = l.fields?.email || (l.fieldData || []).find(f => /email/i.test(f.name || ""))?.values?.[0];
+                  const phone = l.fields?.phone || (l.fieldData || []).find(f => /phone/i.test(f.name || ""))?.values?.[0];
                   const name  = l.fields?.full_name || l.fields?.first_name ||
                                 (l.fieldData || []).find(f => /name/i.test(f.name || ""))?.values?.[0];
                   return (
@@ -1236,11 +1252,11 @@ function LeadFormsPane({ platform }) {
                         {name || email || "Unnamed lead"}
                       </div>
                       <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
-                        {email || "—"}{l.createdTime ? ` · ${new Date(l.createdTime).toLocaleString()}` : ""}
+                        {email || "—"}{phone ? ` · ${phone}` : ""}{l.createdTime ? ` · ${new Date(l.createdTime).toLocaleString()}` : ""}
                       </div>
                     </button>
                   );
-                })}</div></div>
+                })}</div>
               </div>
             )}
           </div>

@@ -123,6 +123,77 @@ async function handleInboxEvent(sbUrl, sbKey, tenantId, eventType, data) {
   return json({ ok: true });
 }
 
+// ─── lead.received ───────────────────────────────────────────────────────────
+// Upserts into leads_cache and optionally surfaces in inbox_events so the
+// InboxEscalation view (Track B) picks it up without code changes.
+
+async function handleLeadReceived(sbUrl, sbKey, tenantId, data) {
+  const platformLeadId = data?.lead_id || data?.id || null;
+  const leadFormId     = data?.form_id || data?.formId || null;
+  const platform       = data?.platform || "meta";
+  const payload        = data?.fields || data?.fieldData || data?.raw || data || {};
+
+  // Normalise field extraction (handles both { fields: { email: ... } }
+  // and { fieldData: [{ name: "email", values: [...] }] } shapes).
+  const fieldOf = (key) => {
+    if (payload[key]) return String(payload[key]);
+    if (Array.isArray(payload.fieldData)) {
+      const f = payload.fieldData.find(fd => String(fd?.name || "").toLowerCase().includes(key));
+      return f?.values?.[0] ? String(f.values[0]) : null;
+    }
+    return null;
+  };
+
+  const email     = fieldOf("email");
+  const fullName  = fieldOf("full_name") || fieldOf("full name") || fieldOf("name");
+
+  // Upsert leads_cache (ON CONFLICT → update payload in case it changes).
+  const leadRow = {
+    tenant_id:        tenantId,
+    platform,
+    lead_form_id:     leadFormId,
+    platform_lead_id: platformLeadId,
+    payload:          JSON.stringify(payload),
+  };
+
+  const upsertRes = await fetch(
+    `${sbUrl}/rest/v1/leads_cache?on_conflict=tenant_id,platform,platform_lead_id`, {
+    method: "POST",
+    headers: { ...sbHeaders(sbKey), Prefer: "resolution=merge-duplicates" },
+    body: JSON.stringify(leadRow),
+  });
+  if (!upsertRes.ok) {
+    const textErr = await upsertRes.text().catch(() => "");
+    console.error("[zernio-webhook] leads_cache upsert failed:", upsertRes.status, textErr);
+  }
+
+  // Also append to inbox_events so InboxEscalation surfaces the lead.
+  const inboxRow = {
+    tenant_id:     tenantId,
+    event_type:    "lead",
+    platform,
+    external_id:   platformLeadId,
+    author_name:   fullName || null,
+    author_handle: email || null,
+    text:          `Lead from ${platform} form ${leadFormId || ""}`,
+    risk:          "medium",
+    status:        "open",
+    raw:           JSON.stringify(data),
+  };
+
+  const inboxRes = await fetch(`${sbUrl}/rest/v1/inbox_events`, {
+    method: "POST",
+    headers: sbHeaders(sbKey),
+    body: JSON.stringify(inboxRow),
+  });
+  if (!inboxRes.ok) {
+    const textErr = await inboxRes.text().catch(() => "");
+    console.error("[zernio-webhook] inbox_events insert failed:", inboxRes.status, textErr);
+  }
+
+  return json({ ok: true });
+}
+
 async function handlePostStatus(sbUrl, sbKey, tenantId, status, data) {
   const externalId =
     data?.post_id ||
@@ -223,6 +294,8 @@ export default async function handler(req) {
       return handleInboxEvent(sbUrl, sbKey, tenantId, "review", data);
     case "post.published":
       return handlePostStatus(sbUrl, sbKey, tenantId, "published", data);
+    case "lead.received":
+      return handleLeadReceived(sbUrl, sbKey, tenantId, data);
     case "post.failed":
       return handlePostStatus(sbUrl, sbKey, tenantId, "failed", data);
     default:
