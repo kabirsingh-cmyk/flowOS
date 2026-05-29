@@ -67,6 +67,8 @@ function DraftCreatedCard({ artifact, onOpen }) {
     setQueued(true);
   };
 
+  const canQueue = artifact.publishable !== false;
+
   return (
     <div data-testid="draft-card" style={{
       marginTop: 10,
@@ -87,6 +89,7 @@ function DraftCreatedCard({ artifact, onOpen }) {
           {platformLabel} · {artifact.contentType || "Post"}
         </span>
         <Chip tone="accent">draft</Chip>
+        {!canQueue && <Chip tone="warn">draft only</Chip>}
       </div>
 
       {/* Copy body */}
@@ -123,17 +126,25 @@ function DraftCreatedCard({ artifact, onOpen }) {
         display: "flex", gap: 8, alignItems: "center",
       }}>
         {!queued ? (
-          <Btn size="sm" variant="primary" data-testid="send-to-queue" onClick={handleSendToQueue}>
-            <Icon name="check" size={11}/> Send to queue
-          </Btn>
+          canQueue ? (
+            <Btn size="sm" variant="primary" data-testid="send-to-queue" onClick={handleSendToQueue}>
+              <Icon name="check" size={11}/> Send to queue
+            </Btn>
+          ) : (
+            <Btn size="sm" variant="ghost" onClick={() => { navigator.clipboard.writeText(artifact.copy); setQueued(true); }}>
+              <Icon name="copy" size={11}/> Copy draft
+            </Btn>
+          )
         ) : (
           <>
             <span style={{ fontSize: 11.5, color: "var(--success)", fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}>
-              <Icon name="check" size={11}/> Added to queue
+              <Icon name="check" size={11}/> {canQueue ? "Added to queue" : "Copied"}
             </span>
-            <Btn size="sm" variant="ghost" onClick={() => onOpen({ kind: "open_queue" })}>
-              View queue →
-            </Btn>
+            {canQueue && (
+              <Btn size="sm" variant="ghost" onClick={() => onOpen({ kind: "open_queue" })}>
+                View queue →
+              </Btn>
+            )}
           </>
         )}
       </div>
