@@ -4,6 +4,34 @@ Reverse-chronological record of notable changes. New entries on top.
 
 ---
 
+## 2026-05-28 · Track A · PR A1 — Spark Ads (TikTok)
+
+**Scope:** UI exposure for TikTok Spark Ads on published TikTok rows. The API side (`boost_post` in `api/paid-social.js`) already accepted `sparkAuthCode`, `linkUrl`, and `callToAction` since PR 4a — this PR wires the frontend button + modal.
+
+### Changes
+
+- **[app/workspaces3.jsx]** — Spark Ads UI:
+  - `getZernioPostId` now reads `tiktokPostId` so already-published TikTok videos can be targeted for lifecycle actions.
+  - Hydration effect (`RESULT_BY_PLATFORM`) now maps `tiktok` → `{ tiktokPostId, tiktokUrl }` from `scheduled_posts` results. Previously TikTok published rows got no post-id mapping.
+  - Sent-view row actions: new "Boost as Spark Ad" button (lightning icon) appears when `platform === "tiktok" && publishStatus === "published" && tiktokPostId`.
+  - `SparkBoostModal` (Dialog) collects: daily budget USD (min 20), duration days (default 7), CTA dropdown (TikTok CTAs), landing-page URL (prefilled from first URL in post body), optional `sparkAuthCode` with helper text "Cross-creator? Paste the creator's Spark code from Promote settings".
+  - Submit calls `actions.boostAsSpark(...)`; on success the row gets `boosted: true` + `sparkCampaignId`.
+  - Boosted rows render a small `Chip tone="accent">Boosted</Chip>` badge in the platform column of the sent list.
+
+- **[app/store.jsx]** — Track A completion block:
+  - New reducer case `ADS_SPARK_BOOST` patches the calendar row with `{ boosted: true, sparkCampaignId }`.
+  - New async action `boostAsSpark(itemId, { postId, budgetDaily, durationDays, callToAction, linkUrl, sparkAuthCode })` POSTs to `/api/paid-social` `action="boost_post"` `platform="ttads"`, computes an `endDate` from `durationDays`, and dispatches `ADS_SPARK_BOOST` on success.
+
+### Deliberately not done
+- No changes to `api/paid-social.js` — PR 4a already wired `sparkAuthCode`, `linkUrl`, `callToAction` passthrough.
+- No validation that `linkUrl` is a valid URL beyond the HTML5 `type="url"` input — Zernio will reject malformed URLs with a clear error.
+
+### Verification
+- `node --check api/paid-social.js` → OK (no edits, but confirmed syntax)
+- `node scripts/health-check.mjs` → OK
+
+---
+
 ## 2026-05-28 · Track B · Phase 4 PR B.3 — Cohort drill-downs (demographics)
 
 **Scope:** Persist and surface demographic breakdowns from Instagram and YouTube analytics. New `analytics_cohorts` table, cron extraction, and audience-breakdown UI cards.

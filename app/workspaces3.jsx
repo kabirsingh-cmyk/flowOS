@@ -9,7 +9,7 @@ const { useState: useState3, useMemo: useMemo3, useEffect: useEffect3, useRef: u
 function getZernioPostId(item) {
   if (!item) return null;
   return item.linkedinPostId  || item.facebookPostId  || item.xPostId
-      || item.instagramPostId || item.redditPostId    || null;
+      || item.instagramPostId || item.redditPostId    || item.tiktokPostId || null;
 }
 
 // Minimal RFC4180-ish CSV parser. Handles quoted fields with embedded
@@ -88,6 +88,12 @@ function PublishingQueue({ state, actions }) {
   // Array of ISO date strings; empty when no queue is configured yet.
   const [smartSlots, setSmartSlots] = useState3([]);
 
+  // Spark Ad boost modal state (Track A — PR 4c)
+  const [sparkOpen, setSparkOpen] = useState3(false);
+  const [sparkItem, setSparkItem] = useState3(null);
+  const [sparkForm, setSparkForm] = useState3({ budget: 20, duration: 7, cta: "LEARN_MORE", linkUrl: "", sparkAuthCode: "" });
+  const [boosting, setBoosting] = useState3(false);
+
   const resetCsv = () => {
     setCsvFileName(""); setCsvHeader([]); setCsvRows([]);
     setCsvMapping({ platform: "", content: "", scheduled_for: "", media_urls: "" });
@@ -129,6 +135,10 @@ function PublishingQueue({ state, actions }) {
         redditPostId:    result?.postId || null,
         redditUrl:       result?.postUrl || null,
         redditSubreddit: payload?.subreddit || null,
+      }),
+      tiktok: (result) => ({
+        tiktokPostId: result?.postId || null,
+        tiktokUrl:    result?.postUrl || null,
       }),
     };
 
@@ -739,6 +749,11 @@ function PublishingQueue({ state, actions }) {
                             style={{ fontSize: 11, color: "var(--accent)", textDecoration: "none", fontWeight: 500 }}>
                             View ↗
                           </a>
+                        )}
+                        {pkey === "tiktok" && item.tiktokPostId && (
+                          <Btn size="sm" variant="ghost" onClick={() => { setSparkItem(item); setSparkOpen(true); }} title="Boost as Spark Ad">
+                            ⚡
+                          </Btn>
                         )}
                         <Btn size="sm" variant="ghost" onClick={() => setEditItem(item)} title="Edit">
                           <Icon name="edit" size={11}/>
@@ -1767,6 +1782,96 @@ function PublishingQueue({ state, actions }) {
             )}
           </div>
         </Drawer>
+      )}
+
+      {/* Spark Ad Boost Modal */}
+      {sparkOpen && sparkItem && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 50,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "rgba(0,0,0,0.35)",
+        }} onClick={() => { if (!boosting) setSparkOpen(false); }}>
+          <div style={{
+            background: "var(--paper)", border: "1px solid var(--rule-strong)",
+            borderRadius: 10, width: 420, maxWidth: "90vw",
+            padding: "20px 24px 24px",
+            boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <span style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>Boost as Spark Ad</span>
+              <button onClick={() => { if (!boosting) setSparkOpen(false); }} style={{ background: "none", border: "none", fontSize: 18, color: "var(--muted)", cursor: "pointer" }}>×</button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Daily budget (USD)</label>
+                <input type="number" min={20} value={sparkForm.budget}
+                  onChange={e => setSparkForm(f => ({ ...f, budget: Number(e.target.value) }))}
+                  style={{ width: "100%", marginTop: 4, padding: "8px 10px", borderRadius: 6, border: "1px solid var(--rule)", fontSize: 13, background: "var(--paper-2)", color: "var(--ink)" }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Duration (days)</label>
+                <input type="number" min={1} max={30} value={sparkForm.duration}
+                  onChange={e => setSparkForm(f => ({ ...f, duration: Number(e.target.value) }))}
+                  style={{ width: "100%", marginTop: 4, padding: "8px 10px", borderRadius: 6, border: "1px solid var(--rule)", fontSize: 13, background: "var(--paper-2)", color: "var(--ink)" }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Call to action</label>
+                <select value={sparkForm.cta}
+                  onChange={e => setSparkForm(f => ({ ...f, cta: e.target.value }))}
+                  style={{ width: "100%", marginTop: 4, padding: "8px 10px", borderRadius: 6, border: "1px solid var(--rule)", fontSize: 13, background: "var(--paper-2)", color: "var(--ink)" }}>
+                  {["LEARN_MORE","SHOP_NOW","SIGN_UP","DOWNLOAD","BOOK_NOW","CONTACT_US"].map(c => (
+                    <option key={c} value={c}>{c.replace(/_/g, " ")}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Landing page URL</label>
+                <input type="url" value={sparkForm.linkUrl}
+                  onChange={e => setSparkForm(f => ({ ...f, linkUrl: e.target.value }))}
+                  placeholder="https://..."
+                  style={{ width: "100%", marginTop: 4, padding: "8px 10px", borderRadius: 6, border: "1px solid var(--rule)", fontSize: 13, background: "var(--paper-2)", color: "var(--ink)" }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Spark Auth Code (optional)</label>
+                <input type="text" value={sparkForm.sparkAuthCode}
+                  onChange={e => setSparkForm(f => ({ ...f, sparkAuthCode: e.target.value }))}
+                  placeholder="Cross-creator code"
+                  style={{ width: "100%", marginTop: 4, padding: "8px 10px", borderRadius: 6, border: "1px solid var(--rule)", fontSize: 13, background: "var(--paper-2)", color: "var(--ink)" }}
+                />
+                <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 3 }}>
+                  For cross-creator boosts, paste the Spark code from the creator's Promote settings.
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
+              <Btn size="sm" variant="ghost" onClick={() => setSparkOpen(false)} disabled={boosting}>Cancel</Btn>
+              <Btn size="sm" variant="primary" disabled={boosting || !sparkForm.linkUrl}
+                onClick={async () => {
+                  setBoosting(true);
+                  const res = await actions.boostAsSpark(sparkItem.id, {
+                    postId: sparkItem.tiktokPostId,
+                    budgetDaily: sparkForm.budget,
+                    durationDays: sparkForm.duration,
+                    callToAction: sparkForm.cta,
+                    linkUrl: sparkForm.linkUrl,
+                    sparkAuthCode: sparkForm.sparkAuthCode || undefined,
+                  });
+                  setBoosting(false);
+                  if (res?.ok) {
+                    setSparkOpen(false);
+                    setSparkForm({ budget: 20, duration: 7, cta: "LEARN_MORE", linkUrl: "", sparkAuthCode: "" });
+                  }
+                }}>
+                {boosting ? "Boosting…" : "Boost Spark Ad"}
+              </Btn>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
