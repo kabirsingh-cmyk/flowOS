@@ -461,6 +461,10 @@ function BoostDrawer({ open, onClose, platform, onCreated }) {
 function CampaignDetail({ platform, campaign, tree, onRefresh }) {
   const [busy, setBusy] = useStateAds("");
   const [editBudget, setEditBudget] = useStateAds(campaign.budgetMonth ? Math.round(campaign.budgetMonth / 30.4) : "");
+  const [adChart, setAdChart] = useStateAds(null); // { adId, adName, data, loading, error }
+  const [chartCache, setChartCache] = useStateAds({}); // { [adId]: { data, fetchedAt } }
+
+  const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip: ReTooltip, ResponsiveContainer } = window.Recharts || {};
 
   useEffectAds(() => {
     setEditBudget(campaign.budgetMonth ? Math.round(campaign.budgetMonth / 30.4) : "");
@@ -470,6 +474,32 @@ function CampaignDetail({ platform, campaign, tree, onRefresh }) {
     try { setBusy(label); await fn(); await onRefresh(); }
     catch (e) { alert(e.message); }
     finally   { setBusy(""); }
+  };
+
+  const openAdChart = async (ad) => {
+    const adId = ad.id || ad.platformAdId || ad.adId;
+    const adName = ad.name || "Untitled ad";
+    if (!adId) return;
+
+    // Serve from session cache if available.
+    const cached = chartCache[adId];
+    if (cached?.data) {
+      setAdChart({ adId, adName, loading: false, data: cached.data });
+      return;
+    }
+
+    const toDate   = new Date().toISOString().slice(0, 10);
+    const fromDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    try {
+      setAdChart({ adId, adName, loading: true, data: [] });
+      const analytics = await callAds("ad_analytics", { adId, fromDate, toDate });
+      // Zernio returns { rows: [{ date, impressions, clicks, spend, ctr, cpc, conversions, roas }, ...] }
+      const rows = (analytics?.rows || analytics?.data || analytics || []).filter(Boolean);
+      setChartCache(prev => ({ ...prev, [adId]: { data: rows, fetchedAt: Date.now() } }));
+      setAdChart({ adId, adName, loading: false, data: rows });
+    } catch (e) {
+      setAdChart({ adId, adName, loading: false, data: [], error: e.message });
+    }
   };
 
   return (
@@ -537,11 +567,12 @@ function CampaignDetail({ platform, campaign, tree, onRefresh }) {
                       {(s.ads || []).length > 0 && (
                         <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
                           {s.ads.map((ad, j) => (
-                            <div key={ad.id || ad.platformAdId || j} style={{
+                            <button key={ad.id || ad.platformAdId || j} type="button" onClick={() => openAdChart(ad)} style={{
                               fontSize: 12, color: "var(--ink-2)", paddingLeft: 10, borderLeft: "2px solid var(--rule)",
+                              background: "transparent", border: 0, cursor: "pointer", textAlign: "left",
                             }}>
                               {ad.name || "Untitled ad"} <span style={{ color: "var(--muted)" }}>· {ad.status}</span>
-                            </div>
+                            </button>
                           ))}
                         </div>
                       )}
@@ -550,6 +581,41 @@ function CampaignDetail({ platform, campaign, tree, onRefresh }) {
                 </div>
               )}
       </div>
+
+      {/* Per-ad analytics chart (PR A4) */}
+      {adChart && (
+        <div style={{ border: "1px solid var(--rule)", borderRadius: 8, padding: 12, marginTop: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 500 }}>{adChart.adName}</div>
+            <button type="button" onClick={() => setAdChart(null)} style={{
+              fontSize: 11, color: "var(--muted)", background: "transparent", border: 0, cursor: "pointer",
+            }}>Close</button>
+          </div>
+          {adChart.loading ? (
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>Loading analytics…</div>
+          ) : adChart.error ? (
+            <div style={{ fontSize: 11, color: "var(--accent-ink)" }}>{adChart.error}</div>
+          ) : adChart.data.length === 0 ? (
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>No analytics data for this period.</div>
+          ) : !LineChart ? (
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>Chart library not loaded.</div>
+          ) : (
+            <div style={{ width: "100%", height: 180 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={adChart.data} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--rule)" />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="var(--muted)" />
+                  <YAxis yAxisId="left"  tick={{ fontSize: 10 }} stroke="#8884d8" />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} stroke="#82ca9d" />
+                  <ReTooltip contentStyle={{ fontSize: 11, background: "var(--paper)", border: "1px solid var(--rule)" }} />
+                  <Line yAxisId="left"  type="monotone" dataKey="spend"        stroke="#8884d8" strokeWidth={2} dot={false} name="Spend ($)" />
+                  <Line yAxisId="right" type="monotone" dataKey="impressions" stroke="#82ca9d" strokeWidth={2} dot={false} name="Impressions" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
