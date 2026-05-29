@@ -31,9 +31,13 @@ const reply = (data, status = 200) =>
   });
 
 // Allowlist of platforms that have a working /api/<platform> publish_now.
-// Keep in sync with the PLATFORM_PUBLISHERS map in app/workspaces3.jsx.
+// Must stay in sync with PLATFORM_ROUTES in api/cron/fire-scheduled.js — the
+// cron is what actually fires these, so anything it can't route is unfireable.
+// All social platforms route through their thin Zernio proxy.
 const SUPPORTED_PLATFORMS = new Set([
   "linkedin", "facebook", "x", "instagram", "reddit",
+  "tiktok", "pinterest", "threads", "bluesky", "youtube",
+  "whatsapp", "telegram", "snapchat", "discord", "gbusiness",
 ]);
 
 function sbHeaders(serviceKey) {
