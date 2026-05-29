@@ -43,6 +43,23 @@ const fmtMoney = (n, currency) => n == null
 
 const fmtInt = (n) => n == null ? "—" : new Intl.NumberFormat("en-US").format(Math.round(n));
 
+function MiniSparkline({ values, width, height, color }) {
+  if (!values || values.length < 2) return null;
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const range = max - min || 1;
+  const points = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * width;
+    const y = height - ((v - min) / range) * height;
+    return `${x},${y}`;
+  }).join(" ");
+  return (
+    <svg width={width} height={height} style={{ display: "block" }}>
+      <polyline fill="none" stroke={color} strokeWidth={1.5} points={points} />
+    </svg>
+  );
+}
+
 async function callPaidSocial(action, payload) {
   const res  = await window.apiFetch("/api/paid-social", {
     method:  "POST",
@@ -328,6 +345,9 @@ function NewCampaignDrawer({ open, onClose, platform, onCreated }) {
 function CampaignDetail({ platform, campaign, tree, onRefresh }) {
   const [busy, setBusy] = useStateAds("");
   const [editBudget, setEditBudget] = useStateAds(campaign.budgetMonth ? Math.round(campaign.budgetMonth / 30.4) : "");
+  const [selectedAdId, setSelectedAdId] = useStateAds(null);
+  const [adAnalytics, setAdAnalytics] = useStateAds(null);
+  const [adAnalyticsLoading, setAdAnalyticsLoading] = useStateAds(false);
 
   useEffectAds(() => {
     setEditBudget(campaign.budgetMonth ? Math.round(campaign.budgetMonth / 30.4) : "");
@@ -338,6 +358,19 @@ function CampaignDetail({ platform, campaign, tree, onRefresh }) {
     catch (e) { alert(e.message); }
     finally   { setBusy(""); }
   };
+
+  async function loadAdAnalytics(adId) {
+    if (!adId) return;
+    setAdAnalyticsLoading(true);
+    try {
+      const data = await callAds("ad_analytics", { adId });
+      setAdAnalytics(data);
+    } catch (e) {
+      setAdAnalytics({ error: e.message });
+    } finally {
+      setAdAnalyticsLoading(false);
+    }
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: 16 }}>
@@ -404,10 +437,15 @@ function CampaignDetail({ platform, campaign, tree, onRefresh }) {
                       {(s.ads || []).length > 0 && (
                         <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
                           {s.ads.map((ad, j) => (
-                            <div key={ad.id || ad.platformAdId || j} style={{
-                              fontSize: 12, color: "var(--ink-2)", paddingLeft: 10, borderLeft: "2px solid var(--rule)",
-                            }}>
+                            <div key={ad.id || ad.platformAdId || j}
+                              onClick={() => { setSelectedAdId(ad.id || ad.platformAdId); loadAdAnalytics(ad.id || ad.platformAdId); }}
+                              style={{
+                                fontSize: 12, color: "var(--ink-2)", paddingLeft: 10, borderLeft: "2px solid var(--rule)",
+                                cursor: "pointer", borderRadius: 4, padding: "3px 6px",
+                                background: (ad.id || ad.platformAdId) === selectedAdId ? "var(--paper-2)" : "transparent",
+                              }}>
                               {ad.name || "Untitled ad"} <span style={{ color: "var(--muted)" }}>· {ad.status}</span>
+                              <span style={{ fontSize: 10, color: "var(--accent)", marginLeft: 6 }}>Analytics →</span>
                             </div>
                           ))}
                         </div>
@@ -417,6 +455,38 @@ function CampaignDetail({ platform, campaign, tree, onRefresh }) {
                 </div>
               )}
       </div>
+
+      {/* Per-ad Analytics */}
+      {selectedAdId && (
+        <div style={{ border: "1px solid var(--rule)", borderRadius: 8, padding: 12 }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>
+            Ad Analytics
+          </div>
+          {adAnalyticsLoading ? (
+            <div style={{ fontSize: 12, color: "var(--muted)" }}>Loading…</div>
+          ) : adAnalytics?.error ? (
+            <div style={{ fontSize: 12, color: "var(--accent-ink)" }}>{adAnalytics.error}</div>
+          ) : adAnalytics ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <Chip>{fmtMoney(adAnalytics.summary?.spend)} spend</Chip>
+                <Chip>{fmtInt(adAnalytics.summary?.impressions)} impr</Chip>
+                <Chip>{fmtInt(adAnalytics.summary?.clicks)} clicks</Chip>
+                <Chip>CTR {(adAnalytics.summary?.ctr ?? 0).toFixed(2)}%</Chip>
+                <Chip>CPC {fmtMoney(adAnalytics.summary?.cpc)}</Chip>
+                {adAnalytics.summary?.conversions != null && <Chip>{fmtInt(adAnalytics.summary?.conversions)} conv</Chip>}
+                {adAnalytics.summary?.roas != null && <Chip tone="ok">ROAS {adAnalytics.summary?.roas}x</Chip>}
+              </div>
+              {adAnalytics.daily?.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 4 }}>Daily spend</div>
+                  <MiniSparkline values={adAnalytics.daily.map(d => d.spend || 0)} width={280} height={40} color="var(--accent)" />
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
