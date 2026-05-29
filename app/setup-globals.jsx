@@ -5,6 +5,8 @@
 
 import React from 'react'
 import * as ReactDOM from 'react-dom/client'
+import * as Recharts from 'recharts'
 
 globalThis.React = React
 globalThis.ReactDOM = ReactDOM
+globalThis.Recharts = Recharts
