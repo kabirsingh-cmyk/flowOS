@@ -229,6 +229,7 @@ async function sendAIMessage({
       contentType: draftTool.input.contentType,
       copy:        draftTool.input.copy,
       imagePrompt: draftTool.input.imagePrompt || null,
+      publishable: ["linkedin","facebook","x","instagram","reddit","tiktok","pinterest","threads","bluesky","youtube","whatsapp","telegram","snapchat","discord","gbusiness"].includes(draftTool.input.platform),
     } : planTool ? {
       type:      "campaign-plan",
       title:     planTool.input.title,

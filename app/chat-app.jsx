@@ -170,12 +170,15 @@ function makeDraftArtifact(t) {
     bluesky:   "Minimal top-down: dropper bottle and single saffron strand on pale marble",
   };
 
+  const canPublish = ["linkedin","facebook","x","instagram","reddit","tiktok","pinterest","threads","bluesky","youtube","whatsapp","telegram","snapchat","discord","gbusiness"].includes(platform);
+
   return {
     type:        "draft_created",
     platform,
     contentType,
     copy:        copies[platform] || copies.instagram,
     imagePrompt: (platform !== "email" && platform !== "sms") ? (imagePrompts[platform] || imagePrompts.instagram) : null,
+    publishable: canPublish,
   };
 }
 
