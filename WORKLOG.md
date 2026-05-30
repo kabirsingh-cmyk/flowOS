@@ -4,6 +4,89 @@ Reverse-chronological record of notable changes. New entries on top.
 
 ---
 
+## 2026-05-29 · PR D1 — Zernio lib extraction follow-through
+
+**Scope:** Refactor `api/zernio.js` to consume the shared lib modules instead of inlining the maps + client. No behavior changes; all 12 actions preserved.
+
+### Changes
+- **[api/zernio.js](api/zernio.js)** — replaced inline declarations with imports from `./lib/zernioMap.js` and `./lib/zernioClient.js`:
+  - Removed: `ZERNIO_BASE`, `PLATFORM_ID_MAP`, `ZERNIO_TO_FLOWOS`, `SUPPORTED_PLATFORMS`, `ADS_TO_ORGANIC`, `resolvePlatform`, `flowOSId`, `zernioHeaders`, `zernioFetch`, `sbHeaders`, `getZernioProfileId`, `storeZernioProfileId`, `getOrCreateZernioProfile`, `getZernioAccountId` (all duplicates of lib exports).
+  - Kept: `buildMediaArray` (post-construction helper, not in lib), all 12 action handlers, the action router.
+  - Wherever the old code called `getZernioProfileId` (read-only, no-create) — `connection_status`, `get_dms`, `get_comments`, `resolve_authors` — now calls `getCachedZernioProfile` from the lib (same semantics).
+  - File size: 673 → 505 lines (-168, ~25%).
+
+### Verification
+- `node --check api/zernio.js` ✅
+- `node --check api/lib/zernioClient.js` ✅
+- `node --check api/lib/zernioMap.js` ✅
+- `node scripts/health-check.mjs` ✅ (2 pre-existing cron-schedule warnings only)
+
+### Notes for next reader
+- `api/paid-social.js` already consumes the same lib modules — this PR brings `api/zernio.js` to parity.
+- No callers of `api/zernio.js` change (no exported helpers were removed; the actions are still POSTed via the same JSON shapes).
+
+---
+
+## 2026-05-29 · PR M3 — Real Reddit subreddit search via Zernio
+
+**Scope:** Replace the stub `search_subreddits` handler in `api/reddit.js` with a real implementation that searches Reddit posts via Zernio's `/v1/reddit/search` endpoint and extracts unique subreddits from the results.
+
+### Changes
+- **[api/reddit.js](api/reddit.js)** — `search_subreddits` action:
+  - Fetches the tenant's Reddit accountId via `getZernioAccountId`
+  - Calls `GET /v1/reddit/search?q=<query>&accountId=<id>&limit=25&sort=relevance`
+  - Extracts unique subreddits from returned posts (name + first 120 chars of selftext as description)
+  - Returns `{ ok: true, subreddits: [...] }` matching the UI contract
+  - Gracefully returns `[]` when Reddit is not connected (no 500)
+  - Empty query returns `[]` cleanly
+
+### Acceptance
+- Zernio search returns real posts; unique subreddits extracted from them
+- Empty query → `[]`, no error
+- Reddit not connected → `[]`, no error
+
+---
+
+## 2026-05-29 · PR M2 — Prune merged local branches
+
+Deleted 21 merged-to-main local branches:
+
+```
+chore/auth-rls-audit
+chore/backlog-engine
+chore/connector-cleanup-drops
+chore/remove-publer
+docs/audit-backlog
+feat/brand-voice
+feat/campaign-planner
+feat/connectors-redesign-composio-e2e
+feat/direct-connectors-ab-testing-audiostack-wordpress
+feat/direct-connectors-image-video
+feat/direct-connectors-oauth-msads-attentive
+feat/drafter-channel-format-rules
+feat/fix-insights-center
+feat/klaviyo-sms
+feat/proactive-email-drafts
+feat/proactive-sms-image-drawer
+feat/runware-provider-adapter
+feat/scheduled-posting
+feat/scheduled-posts
+feat/seo-auditor
+fix/dark-theme-workspace-buttons
+```
+
+No force-deleted branches — all were cleanly merged.
+
+## 2026-05-29 · PR M1 — Remove legacy app.html
+
+**Scope:** Delete `app.html` (legacy Babel-CDN entry point) and update `server.py` to serve `index.html` (Vite entry) at `/`.
+
+### Changes
+- **app.html** — deleted. Was the Babel-CDN era entry with Jost/Cormorant fonts; `index.html` is the live Vite entry with Inter Tight fonts. No deploy config referenced it.
+- **server.py** — updated `do_GET` to serve `/index.html` at root, updated startup URL print.
+
+---
+
 ## 2026-05-28 · Track B · Phase 4 PR B.3 — Cohort drill-downs (demographics)
 
 **Scope:** Persist and surface demographic breakdowns from Instagram and YouTube analytics. New `analytics_cohorts` table, cron extraction, and audience-breakdown UI cards.

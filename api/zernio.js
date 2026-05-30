@@ -46,190 +46,22 @@
 
 import { requireAuthOrCron, requireAuth } from "./lib/auth.js";
 import { corsPreflightResponse, jsonResponse, errResponse } from "./lib/cors.js";
+import {
+  PLATFORM_ID_MAP,        // eslint-disable-line no-unused-vars
+  ZERNIO_TO_FLOWOS,       // eslint-disable-line no-unused-vars
+  SUPPORTED_PLATFORMS,
+  ADS_TO_ORGANIC,
+  resolvePlatform,
+  flowOSId,               // eslint-disable-line no-unused-vars
+} from "./lib/zernioMap.js";
+import {
+  zernioFetch,
+  getOrCreateZernioProfile,
+  getCachedZernioProfile,
+  getZernioAccountId,
+} from "./lib/zernioClient.js";
 
 export const config = { runtime: "edge" };
-
-const ZERNIO_BASE = "https://zernio.com/api/v1";
-
-/**
- * PLATFORM_ID_MAP: FlowOS Reach short connector IDs → Zernio platform slugs.
- * workspaces4.jsx always sends connector.id as `app`; we resolve here.
- * Confirmed against https://docs.zernio.com (2026-05-24).
- */
-const PLATFORM_ID_MAP = {
-  // Organic social — FlowOS Reach short IDs → Zernio slugs (confirmed 2026-05-24)
-  fb:        "facebook",
-  ig:        "instagram",
-  li:        "linkedin",
-  tt:        "tiktok",
-  pn:        "pinterest",
-  yt:        "youtube",
-  x:         "twitter",        // Zernio uses "twitter" not "x"
-  gbusiness: "googlebusiness", // Zernio uses "googlebusiness"
-  // Paid social — FlowOS Reach IDs → Zernio slugs (confirmed 2026-05-24)
-  liads:  "linkedinads",
-  ttads:  "tiktokads",
-  pinads: "pinterestads",
-  // metaads → "metaads" (same), xads → "xads" (same) — no entry needed
-};
-
-/**
- * ZERNIO_TO_FLOWOS: reverse map for Supabase channel lookups.
- * channels.platform stores FlowOS Reach connector IDs (fb, ig, li…);
- * some callers (thin proxies) pass resolved Zernio slugs — this maps back.
- */
-const ZERNIO_TO_FLOWOS = {
-  // Organic
-  facebook:       "fb",
-  instagram:      "ig",
-  linkedin:       "li",
-  tiktok:         "tt",
-  pinterest:      "pn",
-  youtube:        "yt",
-  twitter:        "x",
-  googlebusiness: "gbusiness",
-  // Paid social
-  linkedinads:    "liads",
-  tiktokads:      "ttads",
-  pinterestads:   "pinads",
-  // metaads → "metaads", xads → "xads" (same in both)
-};
-
-function resolvePlatform(id) {
-  return PLATFORM_ID_MAP[id] || id;
-}
-
-function flowOSId(platform) {
-  return ZERNIO_TO_FLOWOS[platform] || platform;
-}
-
-const SUPPORTED_PLATFORMS = new Set([
-  // Organic — FlowOS Reach short IDs
-  "fb", "ig", "li", "tt", "pn", "yt", "x", "gbusiness",
-  // Organic — Zernio slugs (confirmed)
-  "facebook", "instagram", "linkedin", "tiktok", "pinterest", "youtube",
-  "twitter", "reddit", "bluesky", "threads", "googlebusiness",
-  "whatsapp", "telegram", "snapchat", "discord",
-  // Paid social — FlowOS Reach IDs
-  "metaads", "liads", "ttads", "xads", "pinads",
-  // Paid social — Zernio slugs (confirmed)
-  "linkedinads", "tiktokads", "pinterestads",
-  // metaads and xads are the same in both — already covered above
-  // Paid Search
-  "googleads",
-]);
-
-/**
- * ADS_TO_ORGANIC: resolved Zernio ad slug → organic platform name used in
- * GET /v1/connect/{platform}/ads.  Same-token platforms (metaads, linkedinads,
- * pinterestads) return { alreadyConnected, accountId } immediately because
- * Zernio copies the existing organic token.  Separate-token platforms (tiktokads,
- * xads, googleads) start a fresh OAuth and return { authUrl }.
- */
-const ADS_TO_ORGANIC = {
-  metaads:     "facebook",
-  linkedinads: "linkedin",
-  tiktokads:   "tiktok",
-  xads:        "twitter",
-  pinterestads:"pinterest",
-  googleads:   "googleads",
-};
-
-// ─── Zernio API helpers ───────────────────────────────────────────────────────
-
-function zernioHeaders() {
-  const key = process.env.ZERNIO_API_KEY;
-  if (!key) throw new Error("ZERNIO_API_KEY env var not set");
-  return {
-    "Authorization": `Bearer ${key}`,
-    "Content-Type":  "application/json",
-  };
-}
-
-async function zernioFetch(path, options = {}) {
-  const res = await fetch(`${ZERNIO_BASE}${path}`, {
-    ...options,
-    headers: { ...zernioHeaders(), ...(options.headers || {}) },
-  });
-  const text = await res.text();
-  let data;
-  try { data = JSON.parse(text); } catch { data = { raw: text }; }
-  if (!res.ok) {
-    const msg = data?.error || data?.message || `Zernio ${path} ${res.status}: ${text.slice(0, 300)}`;
-    throw Object.assign(new Error(msg), { status: res.status, zernioCode: data?.code });
-  }
-  return data;
-}
-
-// ─── Supabase helpers (profile storage + channel lookup) ─────────────────────
-
-function sbHeaders() {
-  const key = process.env.SUPABASE_SERVICE_KEY;
-  return {
-    "apikey":        key,
-    "Authorization": `Bearer ${key}`,
-    "Content-Type":  "application/json",
-  };
-}
-
-async function getZernioProfileId(tenantId) {
-  const url = `${process.env.SUPABASE_URL}/rest/v1/connector_credentials` +
-    `?user_id=eq.${encodeURIComponent(tenantId)}&platform=eq.zernio_profile` +
-    `&select=secret_value&limit=1`;
-  const res = await fetch(url, { headers: sbHeaders() });
-  if (!res.ok) return null;
-  const rows = await res.json();
-  return rows?.[0]?.secret_value || null;
-}
-
-async function storeZernioProfileId(tenantId, profileId) {
-  await fetch(`${process.env.SUPABASE_URL}/rest/v1/connector_credentials`, {
-    method:  "POST",
-    headers: { ...sbHeaders(), "Prefer": "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify({
-      user_id:      tenantId,
-      platform:     "zernio_profile",
-      secret_kind:  "profile_id",
-      secret_value: profileId,
-      validated_at: new Date().toISOString(),
-      updated_at:   new Date().toISOString(),
-    }),
-  });
-}
-
-/**
- * Returns the cached Zernio profileId for a tenant, creating one if absent.
- * Each FlowOS Reach tenant gets exactly one Zernio profile (named by tenantId).
- */
-async function getOrCreateZernioProfile(tenantId) {
-  const cached = await getZernioProfileId(tenantId);
-  if (cached) return cached;
-
-  const data = await zernioFetch("/profiles", {
-    method: "POST",
-    body:   JSON.stringify({ name: tenantId, description: "FlowOS Reach tenant" }),
-  });
-  const profileId = data.profile?._id || data._id;
-  if (!profileId) throw new Error("Zernio profile creation returned no _id");
-  await storeZernioProfileId(tenantId, profileId);
-  return profileId;
-}
-
-/**
- * Load the Zernio accountId (_id from GET /accounts) for a connected platform.
- * Stored in channels.composio_connection_id at verify-and-persist time.
- * Accepts either a Zernio slug ("linkedin") or FlowOS Reach ID ("li").
- */
-async function getZernioAccountId(tenantId, platform) {
-  const channelPlatform = flowOSId(platform); // normalize to FlowOS Reach ID for DB lookup
-  const url = `${process.env.SUPABASE_URL}/rest/v1/channels` +
-    `?user_id=eq.${encodeURIComponent(tenantId)}&platform=eq.${encodeURIComponent(channelPlatform)}` +
-    `&select=composio_connection_id&limit=1`;
-  const res = await fetch(url, { headers: sbHeaders() });
-  if (!res.ok) return null;
-  const rows = await res.json();
-  return rows?.[0]?.composio_connection_id || null;
-}
 
 // ─── Media helper ─────────────────────────────────────────────────────────────
 
@@ -316,7 +148,7 @@ async function handleConnectionStatus({ tenantId, app }) {
   const platform         = app.toLowerCase();
   const resolvedPlatform = resolvePlatform(platform);
 
-  const profileId = await getZernioProfileId(tenantId);
+  const profileId = await getCachedZernioProfile(tenantId);
   if (!profileId) {
     return jsonResponse({ ok: true, connected: false, accountId: null, status: "not_connected", app });
   }
@@ -446,7 +278,7 @@ async function handleGetDms({ tenantId, platform, limit = 50, cursor, accountId:
   if (!platform) return errResponse("platform required");
   const resolvedPlatform = resolvePlatform(platform.toLowerCase());
 
-  const profileId = await getZernioProfileId(tenantId);
+  const profileId = await getCachedZernioProfile(tenantId);
   const accountId = bodyAccountId || await getZernioAccountId(tenantId, platform);
 
   const qs = new URLSearchParams({ platform: resolvedPlatform, limit: String(limit) });
@@ -493,7 +325,7 @@ async function handleGetComments({ tenantId, platform, postId, limit = 50, curso
   }
 
   // Inbox-wide comments: GET /inbox/comments
-  const profileId = await getZernioProfileId(tenantId);
+  const profileId = await getCachedZernioProfile(tenantId);
   const qs = new URLSearchParams({ platform: resolvedPlatform, limit: String(limit) });
   if (profileId) qs.set("profileId", profileId);
   if (cursor)    qs.set("cursor", cursor);
@@ -540,7 +372,7 @@ async function handleResolveAuthors({ tenantId, platform }) {
   if (!platform) return errResponse("platform required");
   const resolvedPlatform = resolvePlatform(platform.toLowerCase());
 
-  const profileId = await getZernioProfileId(tenantId);
+  const profileId = await getCachedZernioProfile(tenantId);
   const qs        = new URLSearchParams({ platform: resolvedPlatform });
   if (profileId) qs.set("profileId", profileId);
 
