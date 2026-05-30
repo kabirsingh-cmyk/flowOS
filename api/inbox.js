@@ -4,7 +4,8 @@
  *
  * Pulls DMs and comments from Zernio for each connected v1 platform
  * (Instagram, Facebook, LinkedIn, X), upserts new items into inbox_events
- * (preserving replied/archived status on conflicts), and returns the tenant's
+ * (preserving replied/archived status on conflicts), runs a single Claude call
+ * to triage + draft-reply any newly inserted items, and returns the tenant's
  * open inbox items with Supabase UUIDs so the frontend archive/reply handlers
  * work without modification.
  *
@@ -15,15 +16,17 @@
  * - GET /v1/inbox/comments without postId is assumed; falls back to [] if Zernio
  *   doesn't support inbox-wide comment listing (webhook path still delivers them).
  * - LinkedIn DMs are skipped — not listed as supported by Zernio's DM endpoint.
- * - ai_draft and ai_triage_note are empty for pull-fetched items (v1).
  */
 
 import { requireAuth } from "./lib/auth.js";
 import { corsPreflightResponse, jsonResponse, errResponse } from "./lib/cors.js";
+import { fetchBrandProfile } from "./lib/supabase.js";
+import { getModel } from "./lib/anthropic.js";
 
 export const config = { runtime: "edge" };
 
 const ZERNIO_BASE = "https://zernio.com/api/v1";
+const ANTHROPIC_BASE = "https://api.anthropic.com/v1";
 
 // v1 scope — FlowOS connector IDs
 const V1_PLATFORMS     = ["ig", "fb", "li", "x"];
@@ -143,6 +146,124 @@ async function getOpenEvents(tenantId) {
   }));
 }
 
+// ─── AI Triage + Draft (inbox_assistant) ──────────────────────────────────────
+
+function buildBrandBlock(brand) {
+  if (!brand) return "";
+  const name = brand.name || "this brand";
+  const voice = brand.voice || {};
+  const lines = [`Brand: ${name}`];
+  if (voice.tone) lines.push(`Tone: ${voice.tone}`);
+  if (voice.personality) lines.push(`Personality: ${voice.personality}`);
+  if (Array.isArray(brand.values) && brand.values.length) lines.push(`Values: ${brand.values.join(", ")}`);
+  if (Array.isArray(voice.bannedPhrases) && voice.bannedPhrases.length) lines.push(`Never say: ${voice.bannedPhrases.join(", ")}`);
+  return lines.join("\n");
+}
+
+async function triageItems(tenantId, items, brand) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey || items.length === 0) return [];
+
+  const brandBlock = buildBrandBlock(brand);
+
+  const systemPrompt = `You are Inbox Assistant — the programmatic inbox triage AI for FlowOS Reach.
+${brandBlock}
+
+TASK
+For every customer message provided, return a structured JSON analysis.
+
+OUTPUT FORMAT — return ONLY a JSON array. No markdown fences, no prose:
+[
+  {
+    "intent": "question | complaint | sales_lead | spam | praise | other",
+    "sentiment": number between -1.0 and 1.0,
+    "urgency": "low | medium | high",
+    "suggested_action": "reply | archive | escalate",
+    "triage_note": "One-sentence reasoning for the classification",
+    "draft_reply": "A brand-voice-aligned reply draft. Keep it concise and on-brand."
+  }
+]
+
+RULES
+- intent must be exactly one of the enum values.
+- sentiment: -1.0 = extremely negative, 0.0 = neutral, 1.0 = extremely positive.
+- urgency: high = time-sensitive or escalatory; medium = needs attention today; low = can wait.
+- suggested_action: reply = respond directly; archive = no action needed; escalate = human review required.
+- draft_reply must match the brand voice above. Never use banned phrases. Address the specific message content.
+- Output MUST be valid JSON — no trailing commas, no comments, no markdown code blocks.`;
+
+  const userContent = items.map((it, i) => (
+    `Message ${i + 1}:\n` +
+    `platform: ${it.platform}\n` +
+    `type: ${it.event_type}\n` +
+    `author: ${it.author_name || it.author_handle || "Unknown"}\n` +
+    `text: "${(it.text || "").replace(/"/g, '\\"')}"`
+  )).join("\n\n---\n\n");
+
+  try {
+    const res = await fetch(`${ANTHROPIC_BASE}/messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type":      "application/json",
+        "x-api-key":         apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model:      getModel(),
+        max_tokens: 2048,
+        system:     systemPrompt,
+        messages:   [{ role: "user", content: userContent }],
+      }),
+    });
+
+    if (!res.ok) {
+      console.error("[inbox] triage Claude error:", res.status);
+      return [];
+    }
+
+    const data = await res.json();
+    const text = data?.content?.[0]?.text || "";
+    const clean = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const parsed = JSON.parse(clean);
+    if (!Array.isArray(parsed)) return [];
+    return parsed;
+  } catch (e) {
+    console.error("[inbox] triage parse error:", e.message);
+    return [];
+  }
+}
+
+async function applyTriageToRows(tenantId, items, triageResults) {
+  if (!items.length || !triageResults.length) return;
+
+  for (let i = 0; i < items.length && i < triageResults.length; i++) {
+    const item = items[i];
+    const t = triageResults[i];
+    if (!t || !item.external_id) continue;
+
+    const note = JSON.stringify({
+      intent:           t.intent || "other",
+      sentiment:        typeof t.sentiment === "number" ? t.sentiment : 0,
+      urgency:          t.urgency || "low",
+      suggested_action: t.suggested_action || "reply",
+      triage_note:      t.triage_note || "",
+    });
+
+    const url = `${process.env.SUPABASE_URL}/rest/v1/inbox_events` +
+      `?tenant_id=eq.${encodeURIComponent(tenantId)}` +
+      `&external_id=eq.${encodeURIComponent(item.external_id)}`;
+
+    await fetch(url, {
+      method: "PATCH",
+      headers: sbHeaders(),
+      body: JSON.stringify({
+        ai_triage_note: note,
+        ai_draft:       t.draft_reply || "",
+      }),
+    });
+  }
+}
+
 // ─── Normalization ────────────────────────────────────────────────────────────
 
 function normalizeDm(conv, platform) {
@@ -184,9 +305,10 @@ export default async function handler(req) {
   const { tenantId } = auth;
 
   try {
-    const [connected, profileId] = await Promise.all([
+    const [connected, profileId, brand] = await Promise.all([
       getConnectedPlatforms(tenantId),
       getProfileId(tenantId),
+      fetchBrandProfile(tenantId),
     ]);
 
     if (connected.length === 0) {
@@ -237,6 +359,28 @@ export default async function handler(req) {
         status:       item.status,
         raw:          item.raw,
       })));
+    }
+
+    // ── AI triage + draft for newly inserted items ───────────────────────────
+    if (pulled.length > 0 && process.env.ANTHROPIC_API_KEY) {
+      // Query which of the pulled items still need triage (webhook may have pre-populated)
+      const extIds = pulled.map(p => p.external_id).filter(Boolean);
+      if (extIds.length > 0) {
+        const inList = extIds.map(id => `"${id}"`).join(",");
+        const checkUrl = `${process.env.SUPABASE_URL}/rest/v1/inbox_events` +
+          `?tenant_id=eq.${encodeURIComponent(tenantId)}` +
+          `&external_id=in.(${inList})` +
+          `&ai_triage_note=is.null` +
+          `&select=external_id`;
+        const checkRes = await fetch(checkUrl, { headers: sbHeaders() });
+        const needTriageIds = checkRes.ok ? (await checkRes.json()).map(r => r.external_id) : [];
+        const needTriageItems = pulled.filter(p => needTriageIds.includes(p.external_id));
+
+        if (needTriageItems.length > 0) {
+          const triageResults = await triageItems(tenantId, needTriageItems, brand);
+          await applyTriageToRows(tenantId, needTriageItems, triageResults);
+        }
+      }
     }
 
     const items = await getOpenEvents(tenantId);

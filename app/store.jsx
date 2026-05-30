@@ -602,6 +602,24 @@ function mveda_reducer(s, a) {
       return { ...s, connectors: next };
     }
     // === END TRACK B ===
+    // === TRACK KIMI: INBOX + INSIGHTS ===
+    case "INBOX_TRIAGE_LOAD": {
+      return { ...s, inbox: a.items || [] };
+    }
+    case "INBOX_TRIAGE_PATCH": {
+      return { ...s, inbox: s.inbox.map(i => i.id === a.id ? { ...i, ...a.patch } : i) };
+    }
+    case "INBOX_ARCHIVE": {
+      return { ...s,
+        inbox: s.inbox.map(i => i.id === a.id ? { ...i, status: "archived", archivedAt: new Date().toISOString() } : i),
+        activity: [log("Ana O.", `archived · ${s.inbox.find(i=>i.id===a.id)?.author || a.id}`), ...s.activity],
+        notifications: [notify("neutral", "Archived"), ...s.notifications],
+      };
+    }
+    case "INSIGHTS_LOAD": {
+      return { ...s, insightCards: a.cards || [] };
+    }
+    // === END TRACK KIMI ===
     default: return s;
   }
 }
@@ -798,6 +816,13 @@ function useMvedaStore(seedMode = null, userId = null) {
     loadAccountHealth: (items) =>
       dispatch({ type: "CONN_HEALTH_LOAD", items: items || [] }),
     // === END TRACK B ===
+    // === TRACK KIMI: INBOX + INSIGHTS ===
+    loadInbox:        (items)      => dispatch({ type: "INBOX_TRIAGE_LOAD", items }),
+    triageInboxItem:  (id, triage) => dispatch({ type: "INBOX_TRIAGE_PATCH", id, patch: triage }),
+    draftInboxReply:  (id, draft)  => dispatch({ type: "INBOX_TRIAGE_PATCH", id, patch: { draft } }),
+    archiveInboxItem: (id)         => dispatch({ type: "INBOX_ARCHIVE", id }),
+    loadInsightCards: (cards)      => dispatch({ type: "INSIGHTS_LOAD", cards }),
+    // === END TRACK KIMI ===
   };
   return [state, actions];
 }

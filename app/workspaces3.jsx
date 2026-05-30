@@ -1859,13 +1859,54 @@ function InboxEscalation({ state, actions }) {
   const riskBorder = { high: "var(--danger)", medium: "var(--warn)", low: "var(--success)" };
   const riskTone   = { high: "danger",        medium: "warn",        low: "ok" };
 
+  // ── Triage parsing helpers ───────────────────────────────────────────────
+  function parseTriage(item) {
+    if (!item.reason) return null;
+    try {
+      const t = JSON.parse(item.reason);
+      if (t && typeof t === "object") return t;
+    } catch { /* legacy plain text */ }
+    return null;
+  }
+
+  function intentLabel(intent) {
+    const map = {
+      question: "Question", complaint: "Complaint", sales_lead: "Sales Lead",
+      spam: "Spam", praise: "Praise", other: "Other",
+    };
+    return map[intent] || (intent || "Unknown");
+  }
+  function intentTone(intent) {
+    const map = { question: "accent", complaint: "warn", sales_lead: "ok", spam: "neutral", praise: "ok", other: "neutral" };
+    return map[intent] || "neutral";
+  }
+  function urgencyTone(u) {
+    const map = { low: "ok", medium: "warn", high: "danger" };
+    return map[u] || "neutral";
+  }
+  function sentimentColor(s) {
+    if (typeof s !== "number") return "var(--muted)";
+    if (s >= 0.5) return "oklch(45% 0.14 150)";
+    if (s <= -0.5) return "oklch(48% 0.16 25)";
+    return "var(--muted)";
+  }
+  function sentimentLabel(s) {
+    if (typeof s !== "number") return "—";
+    if (s >= 0.5) return "Positive";
+    if (s <= -0.5) return "Negative";
+    return "Neutral";
+  }
+
   const archive = (item) => {
+    const nowIso = new Date().toISOString();
+    // Optimistically remove from fetchedItems so UI updates immediately
+    setFetchedItems(prev => prev ? prev.map(i => i.id === item.id ? { ...i, status: "archived", archivedAt: nowIso } : i) : prev);
     actions.updateInbox(item.id, { status: "archived" }, {
       logEvent: `archived · ${item.author}`,
       notify:   { tone: "neutral", text: `Archived · ${item.author}` },
     });
-    // fire-and-forget DB sync
-    sb.from("inbox_events").update({ status: "archived" }).eq("id", item.id).then(() => {}, () => {});
+    // fire-and-forget DB sync with archived_at
+    sb.from("inbox_events").update({ status: "archived", archived_at: nowIso }).eq("id", item.id).then(() => {}, () => {});
   };
 
   const INBOX_CHANNEL_NAMES = ["Instagram", "LinkedIn", "TikTok", "Facebook", "X", "Twitter", "YouTube", "Email", "Pinterest"];
@@ -1893,13 +1934,16 @@ function InboxEscalation({ state, actions }) {
       }
     }
 
+    const nowIso = new Date().toISOString();
+
     // Seed/demo items have no externalId — fall back to local-only update
     if (!item.externalId || !item.platform) {
+      setFetchedItems(prev => prev ? prev.map(i => i.id === item.id ? { ...i, status: "replied", draft: replyDraft, repliedAt: nowIso } : i) : prev);
       actions.updateInbox(item.id, { status: "replied", draft: replyDraft }, {
         logEvent: `replied · ${item.source} · ${item.author}`,
         notify:   { tone: "ok", text: `Reply sent to ${item.author}` },
       });
-      sb.from("inbox_events").update({ status: "replied" }).eq("id", item.id).then(() => {}, () => {});
+      sb.from("inbox_events").update({ status: "replied", replied_at: nowIso }).eq("id", item.id).then(() => {}, () => {});
       return;
     }
 
@@ -1927,11 +1971,12 @@ function InboxEscalation({ state, actions }) {
         return;
       }
       // Success: update local state + DB
+      setFetchedItems(prev => prev ? prev.map(i => i.id === item.id ? { ...i, status: "replied", draft: replyDraft, repliedAt: nowIso } : i) : prev);
       actions.updateInbox(item.id, { status: "replied", draft: replyDraft }, {
         logEvent: `replied · ${item.source} · ${item.author}`,
         notify:   { tone: "ok", text: `Reply sent to ${item.author}` },
       });
-      sb.from("inbox_events").update({ status: "replied" }).eq("id", item.id).then(() => {}, () => {});
+      sb.from("inbox_events").update({ status: "replied", replied_at: nowIso }).eq("id", item.id).then(() => {}, () => {});
     } catch (e) {
       console.error("[sendReply]", e);
       actions.notify("danger", "Reply failed — check connection");
@@ -1942,6 +1987,7 @@ function InboxEscalation({ state, actions }) {
   const Row = ({ item, section }) => {
     const isActive = selected?.id === item.id;
     const border   = riskBorder[item.risk] || "var(--rule)";
+    const t = parseTriage(item);
     return (
       <div onClick={() => setSelectedId(item.id)} className="cell-btn"
         style={{
@@ -1963,6 +2009,15 @@ function InboxEscalation({ state, actions }) {
           overflow: "hidden", textOverflow: "ellipsis",
           display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
         }}>{item.text}</div>
+        {t && (
+          <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
+            <Chip tone={intentTone(t.intent)}>{intentLabel(t.intent)}</Chip>
+            <Chip tone={urgencyTone(t.urgency)}>{t.urgency}</Chip>
+            <span style={{ fontSize: 10, color: sentimentColor(t.sentiment), fontWeight: 500, display: "inline-flex", alignItems: "center" }}>
+              {sentimentLabel(t.sentiment)}
+            </span>
+          </div>
+        )}
       </div>
     );
   };
@@ -1971,6 +2026,7 @@ function InboxEscalation({ state, actions }) {
     <div style={{ padding: 40, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
       <div style={{ fontSize: 28, marginBottom: 12 }}>✓</div>
       Inbox clear.
+      <div style={{ fontSize: 12, marginTop: 8, opacity: 0.7 }}>New messages will appear here automatically.</div>
     </div>
   );
 
@@ -2027,8 +2083,21 @@ function InboxEscalation({ state, actions }) {
                 {selected.source} · {selected.timeAgo} ago
               </div>
               <div style={{ fontSize: 20, fontWeight: 500, letterSpacing: "-0.02em" }}>{selected.author}</div>
-              <div style={{ marginTop: 6 }}>
+              <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
                 <Chip tone={riskTone[selected.risk] || "neutral"}>{selected.category}</Chip>
+                {(() => {
+                  const t = parseTriage(selected);
+                  if (!t) return null;
+                  return (
+                    <>
+                      <Chip tone={intentTone(t.intent)}>{intentLabel(t.intent)}</Chip>
+                      <Chip tone={urgencyTone(t.urgency)}>{t.urgency}</Chip>
+                      <span style={{ fontSize: 10.5, color: sentimentColor(t.sentiment), fontWeight: 500, display: "inline-flex", alignItems: "center" }}>
+                        {sentimentLabel(t.sentiment)}
+                      </span>
+                    </>
+                  );
+                })()}
               </div>
             </div>
 
@@ -2045,9 +2114,22 @@ function InboxEscalation({ state, actions }) {
                 <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
                   <Icon name="shield" size={11}/> AI Triage
                 </div>
-                <div style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.55 }}>
-                  {selected.reason || "No triage note."}
-                </div>
+                {(() => {
+                  const t = parseTriage(selected);
+                  if (t && t.triage_note) {
+                    return (
+                      <div style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.55 }}>
+                        {t.triage_note}
+                        {t.suggested_action && (
+                          <div style={{ marginTop: 6, fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                            Suggested: {t.suggested_action}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                  return <div style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.55 }}>{selected.reason || "No triage note."}</div>;
+                })()}
               </div>
 
               {/* ── Message ── */}
