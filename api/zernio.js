@@ -394,49 +394,97 @@ async function handleResolveAuthors({ tenantId, platform }) {
 /**
  * reply_comment
  * POST /v1/inbox/comments/{postId}
- * Body: { accountId, message, commentId? }
+ * Body per Zernio OpenAPI: { accountId, message, commentId?, parentCid?, rootUri?, rootCid? }
+ *
+ * Client contract is snake_case (post_id, comment_id, parent_cid, root_uri,
+ * root_cid) — we rename on destructure. Previous bug: client sent snake_case
+ * but handler destructured camelCase → every reply landed with undefined
+ * IDs and 400'd. See docs/phase-5-engagement-scoping.md §4 R1.
+ *
+ * Bluesky reply fields live in the inbox row's `raw` jsonb (captured by
+ * normalizeComment); workspaces3.jsx passes them through when present.
  */
-async function handleReplyComment({ tenantId, platform, postId, commentId, text, accountId: bodyAccountId }) {
+async function handleReplyComment(body) {
+  const {
+    tenantId,
+    platform,
+    post_id:    postId,
+    comment_id: commentId,
+    parent_cid: parentCid,
+    root_uri:   rootUri,
+    root_cid:   rootCid,
+    text,
+    accountId:  bodyAccountId,
+  } = body;
+
   if (!platform) return errResponse("platform required");
-  if (!postId)   return errResponse("postId required");
+  if (!postId)   return errResponse("post_id required");
   if (!text)     return errResponse("text required");
 
   const accountId = bodyAccountId || await getZernioAccountId(tenantId, platform);
   if (!accountId) return errResponse(`No connected account for ${platform}. Reconnect and try again.`);
 
-  const body = { accountId, message: text };
-  if (commentId) body.commentId = commentId;
+  const reqBody = { accountId, message: text };
+  if (commentId) reqBody.commentId = commentId;
+  if (parentCid) reqBody.parentCid = parentCid;
+  if (rootUri)   reqBody.rootUri   = rootUri;
+  if (rootCid)   reqBody.rootCid   = rootCid;
 
   const data = await zernioFetch(`/inbox/comments/${encodeURIComponent(postId)}`, {
     method: "POST",
-    body:   JSON.stringify(body),
+    body:   JSON.stringify(reqBody),
   });
 
-  return jsonResponse({ ok: true, replyId: data.reply?._id || data.id || null, raw: data });
+  return jsonResponse({
+    ok:      true,
+    replyId: data.data?.commentId || data.reply?._id || data.id || null,
+    raw:     data,
+  });
 }
 
 /**
  * reply_dm
  * POST /v1/inbox/conversations/{conversationId}/messages
  * Body: { accountId, message }
+ *
+ * Client contract: snake_case conversation_id (matches reply_comment scheme).
+ * See R1 fix above.
  */
-async function handleReplyDm({ tenantId, platform, conversationId, text, accountId: bodyAccountId }) {
+async function handleReplyDm(body) {
+  const {
+    tenantId,
+    platform,
+    conversation_id: conversationId,
+    text,
+    accountId: bodyAccountId,
+  } = body;
+
   if (!platform)       return errResponse("platform required");
-  if (!conversationId) return errResponse("conversationId required");
+  if (!conversationId) return errResponse("conversation_id required");
   if (!text)           return errResponse("text required");
 
   const accountId = bodyAccountId || await getZernioAccountId(tenantId, platform);
   if (!accountId) return errResponse(`No connected account for ${platform}. Reconnect and try again.`);
 
-  const data = await zernioFetch(
-    `/inbox/conversations/${encodeURIComponent(conversationId)}/messages`,
-    {
-      method: "POST",
-      body:   JSON.stringify({ accountId, message: text }),
-    },
-  );
-
-  return jsonResponse({ ok: true, messageId: data.message?._id || data.id || null, raw: data });
+  try {
+    const data = await zernioFetch(
+      `/inbox/conversations/${encodeURIComponent(conversationId)}/messages`,
+      {
+        method: "POST",
+        body:   JSON.stringify({ accountId, message: text }),
+      },
+    );
+    return jsonResponse({ ok: true, messageId: data.message?._id || data.id || null, raw: data });
+  } catch (e) {
+    // Defensive: X DM writes require X API Pro tier ($5k/mo) for BYOK per
+    // Zernio OpenAPI. If Zernio's shared key doesn't cover it, surface a
+    // structured error so the UI can flip to "Requires X API Pro" badge.
+    const msg = e.message || "";
+    if (platform === "x" && /\b(403|tier|pro)\b/i.test(msg)) {
+      return errResponse(`X_DM_PRO_TIER_REQUIRED: ${msg}`, 403);
+    }
+    throw e;
+  }
 }
 
 // ─── Main handler ─────────────────────────────────────────────────────────────

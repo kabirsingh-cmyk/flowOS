@@ -2,20 +2,26 @@
  * FlowOS — Inbox hydration endpoint
  * GET /api/inbox
  *
- * Pulls DMs and comments from Zernio for each connected v1 platform
- * (Instagram, Facebook, LinkedIn, X), upserts new items into inbox_events
- * (preserving replied/archived status on conflicts), runs a single Claude call
- * to triage + draft-reply any newly inserted items, and returns the tenant's
- * open inbox items with Supabase UUIDs so the frontend archive/reply handlers
- * work without modification.
+ * Pulls DMs from Zernio for each connected v1 platform, upserts new items into
+ * inbox_events (preserving replied/archived status on conflicts), runs a single
+ * Claude call to triage + draft-reply any newly inserted items, and returns the
+ * tenant's open inbox items with Supabase UUIDs so the frontend archive/reply
+ * handlers work without modification.
  *
- * DM-capable platforms (per Zernio docs): instagram, facebook, x (twitter)
- * Comment-capable platforms: instagram, facebook, linkedin, x
+ * DM pull (this endpoint): instagram, facebook, x (twitter) — LinkedIn skipped
+ * (Zernio doesn't expose LinkedIn DMs).
  *
- * Caveats:
- * - GET /v1/inbox/comments without postId is assumed; falls back to [] if Zernio
- *   doesn't support inbox-wide comment listing (webhook path still delivers them).
- * - LinkedIn DMs are skipped — not listed as supported by Zernio's DM endpoint.
+ * Comments are NOT pulled here — Zernio's `GET /v1/inbox/comments` returns
+ * POSTS WITH COMMENT COUNTS, not individual comments, and the per-post
+ * `GET /v1/inbox/comments/{postId}` requires knowing post IDs up front.
+ * Comments arrive via the `comment.received` webhook (api/webhooks/zernio.js)
+ * which is authoritative for fb/ig/li/x/yt/reddit/bluesky.
+ *
+ * Threads comments have no webhook — handled separately by a cron poller
+ * (added in PR K4).
+ *
+ * Shape contracts verified against Zernio OpenAPI 2026-05-30 — see
+ * docs/phase-5-engagement-scoping.md §3.
  */
 
 import { requireAuth } from "./lib/auth.js";
@@ -130,19 +136,22 @@ async function getOpenEvents(tenantId) {
   if (!res.ok) return [];
   const rows = await res.json();
   return (rows || []).map(row => ({
-    id:         row.id,                 // Supabase UUID — used for inbox_events UPDATE
-    externalId: row.external_id,        // Zernio ID — used for Zernio API calls
-    author:     row.author_name || row.author_handle || "Unknown",
-    source:     `${capitalize(row.platform)} · ${row.event_type}`,
-    text:       row.text || "",
-    risk:       row.risk || "low",
-    status:     row.status || "open",
-    draft:      row.ai_draft || "",
-    reason:     row.ai_triage_note || "",
-    timeAgo:    timeAgoFromMs(Date.now() - new Date(row.created_at).getTime()),
-    category:   row.event_type,
-    platform:   row.platform,
-    eventType:  row.event_type,
+    id:               row.id,                 // Supabase UUID — used for inbox_events UPDATE
+    externalId:       row.external_id,        // Zernio ID — used for Zernio API calls
+    parentExternalId: row.parent_external_id, // post_id for comments
+    author:           row.author_name || row.author_handle || "Unknown",
+    source:           `${capitalize(row.platform)} · ${row.event_type}`,
+    text:             row.text || "",
+    sourceUrl:        row.source_url || null,
+    risk:             row.risk || "low",
+    status:           row.status || "open",
+    draft:            row.ai_draft || "",
+    reason:           row.ai_triage_note || "",
+    raw:              row.raw || null,        // Bluesky reply needs cid/rootUri/rootCid
+    timeAgo:          timeAgoFromMs(Date.now() - new Date(row.created_at).getTime()),
+    category:         row.event_type,
+    platform:         row.platform,
+    eventType:        row.event_type,
   }));
 }
 
@@ -266,32 +275,58 @@ async function applyTriageToRows(tenantId, items, triageResults) {
 
 // ─── Normalization ────────────────────────────────────────────────────────────
 
+/**
+ * normalizeDm — Conversation shape per OpenAPI listInboxConversations:
+ *   { id, platform, accountId, accountUsername, participantId, participantName,
+ *     participantPicture, participantVerifiedType, lastMessage, updatedTime,
+ *     status, unreadCount, url, instagramProfile: {...} }
+ *
+ * NOTE: fields are flat (participantName, not participant.name) and the
+ * last-message preview is `lastMessage`, not `snippet`. Previous code read
+ * non-existent fields → all author + text values were null in prod.
+ */
 function normalizeDm(conv, platform) {
-  const lastMsg = Array.isArray(conv.messages) ? conv.messages[conv.messages.length - 1] : null;
   return {
-    external_id:   conv._id || conv.id || null,
+    external_id:   conv.id || null,
     event_type:    "dm",
     platform,
-    author_name:   conv.participant?.name || null,
-    author_handle: conv.participant?.handle || conv.participant?.username || null,
-    text:          conv.snippet || lastMsg?.text || "",
-    risk:          "low",
+    author_name:   conv.participantName || null,
+    author_handle: conv.participantId || null,           // numeric / opaque per platform
+    text:          conv.lastMessage || "",
+    source_url:    conv.url || null,
+    risk:          "low",                                // re-derived from triage urgency at render time
     status:        "open",
     raw:           conv,
   };
 }
 
-function normalizeComment(comment, platform) {
+/**
+ * normalizeComment — Comment shape per OpenAPI getInboxPostComments:
+ *   { id, message, createdTime, from: {id, name, username, picture, isOwner,
+ *     verifiedType}, likeCount, replyCount, platform, url, replies[], canReply,
+ *     canDelete, canHide, canLike, isHidden, isLiked, likeUri, cid, parentId,
+ *     rootUri, rootCid }
+ *
+ * NOTE: author lives under `from`, body field is `message` (not `text`). For
+ * Bluesky reply we also need `cid`, `rootUri`, `rootCid` — captured into raw
+ * and pulled at reply time by api/zernio.js.
+ *
+ * `postId` is passed in as a second arg from the caller — it isn't on the
+ * comment object itself but is needed for reply (POST /v1/inbox/comments/{postId}).
+ */
+function normalizeComment(comment, platform, postId) {
   return {
-    external_id:   comment._id || comment.id || null,
-    event_type:    "comment",
+    external_id:        comment.id || null,
+    parent_external_id: postId || null,
+    event_type:         "comment",
     platform,
-    author_name:   comment.author?.name || null,
-    author_handle: comment.author?.handle || comment.author?.username || null,
-    text:          comment.text || comment.message || "",
-    risk:          "low",
-    status:        "open",
-    raw:           comment,
+    author_name:        comment.from?.name || null,
+    author_handle:      comment.from?.username || null,
+    text:               comment.message || "",
+    source_url:         comment.url || null,
+    risk:               "low",
+    status:             "open",
+    raw:                comment,
   };
 }
 
@@ -317,30 +352,25 @@ export default async function handler(req) {
       return jsonResponse({ ok: true, items, source: "events_only" });
     }
 
-    // Fan out Zernio fetches — one DM fetch + one comment fetch per platform, all parallel
+    // Fan out Zernio DM fetches — one per DM-capable connected platform.
+    // Comments come via the comment.received webhook (authoritative for 7
+    // platforms); Threads comments are pulled separately by the K4 cron.
+    let inboxAddonDisabled = false;
     const fetches = connected.flatMap(({ platform, composio_connection_id: accountId }) => {
+      if (!DM_PLATFORMS.has(platform) || !accountId) return [];
       const resolvedPlatform = resolvePlatform(platform);
-      const tasks = [];
-
-      if (DM_PLATFORMS.has(platform) && accountId) {
-        const qs = new URLSearchParams({ accountId });
-        tasks.push(
-          zernioGet(`/inbox/conversations?${qs}`)
-            .then(data => (data.data || []).map(c => normalizeDm(c, platform)))
-            .catch(() => []),
-        );
-      }
-
-      if (profileId) {
-        const qs = new URLSearchParams({ platform: resolvedPlatform, profileId });
-        tasks.push(
-          zernioGet(`/inbox/comments?${qs}`)
-            .then(data => (data.data || []).map(c => normalizeComment(c, platform)))
-            .catch(() => []),
-        );
-      }
-
-      return tasks;
+      const qs = new URLSearchParams({ platform: resolvedPlatform, accountId });
+      if (profileId) qs.set("profileId", profileId);
+      return [
+        zernioGet(`/inbox/conversations?${qs}`)
+          .then(data => (data.data || []).map(c => normalizeDm(c, platform)))
+          .catch(e => {
+            // Defensive 403 surfacing — flag the missing Inbox addon to caller
+            if (/\b403\b/.test(e.message)) inboxAddonDisabled = true;
+            else console.error(`[inbox] ${platform} DM fetch:`, e.message);
+            return [];
+          }),
+      ];
     });
 
     const results   = await Promise.all(fetches);
@@ -348,16 +378,18 @@ export default async function handler(req) {
 
     if (pulled.length > 0) {
       await upsertInboxEvents(pulled.map(item => ({
-        tenant_id:    tenantId,
-        event_type:   item.event_type,
-        platform:     item.platform,
-        external_id:  item.external_id,
-        author_name:  item.author_name,
-        author_handle:item.author_handle,
-        text:         item.text,
-        risk:         item.risk,
-        status:       item.status,
-        raw:          item.raw,
+        tenant_id:          tenantId,
+        event_type:         item.event_type,
+        platform:           item.platform,
+        external_id:        item.external_id,
+        parent_external_id: item.parent_external_id || null,
+        author_name:        item.author_name,
+        author_handle:      item.author_handle,
+        text:               item.text,
+        source_url:         item.source_url || null,
+        risk:               item.risk,
+        status:             item.status,
+        raw:                item.raw,
       })));
     }
 
@@ -384,7 +416,12 @@ export default async function handler(req) {
     }
 
     const items = await getOpenEvents(tenantId);
-    return jsonResponse({ ok: true, items, pulled: pulled.length });
+    return jsonResponse({
+      ok: true,
+      items,
+      pulled: pulled.length,
+      ...(inboxAddonDisabled ? { warning: "ZERNIO_INBOX_ADDON_DISABLED" } : {}),
+    });
 
   } catch (e) {
     console.error("[inbox]", e);
