@@ -26,7 +26,7 @@ class FlowOSHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0]
         if path == "/":
-            path = "/app.html"
+            path = "/index.html"
 
         file_path = PROJECT_DIR / path.lstrip("/")
 
@@ -299,7 +299,7 @@ TOOLS = [
 if __name__ == "__main__":
     server = ThreadingHTTPServer(("127.0.0.1", PORT), FlowOSHandler)
     has_key = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
-    print(f"FlowOS server → http://127.0.0.1:{PORT}/app.html")
+    print(f"FlowOS server → http://127.0.0.1:{PORT}/index.html")
     print(f"AI mode: {'Claude (live)' if has_key else 'simulation (set ANTHROPIC_API_KEY to go live)'}")
     try:
         server.serve_forever()

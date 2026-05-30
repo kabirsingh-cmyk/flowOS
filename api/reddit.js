@@ -3,12 +3,14 @@
 // and /api/cron/fire-scheduled PLATFORM_ROUTES.
 //
 // Actions:
-//   search_subreddits → not forwarded to Zernio (Zernio handles this client-side);
-//                       kept for backward compat — returns empty results with a hint.
+//   search_subreddits → searches Reddit posts via Zernio /v1/reddit/search and
+//                        extracts unique subreddits from results. Falls back to
+//                        empty array when Reddit is not connected.
 //   publish_now       → publish_now via Zernio (subreddit + title + text)
 
 import { requireAuthOrCron } from "./lib/auth.js";
 import { corsHeaders, corsPreflightResponse, jsonResponse, errResponse } from "./lib/cors.js";
+import { zernioFetch, getZernioAccountId } from "./lib/zernioClient.js";
 
 export const config = { runtime: "edge" };
 
@@ -44,14 +46,56 @@ export default async function handler(req) {
   const { action } = body;
 
   if (action === "search_subreddits") {
-    // Subreddit search is now handled via Zernio's community discovery API.
-    // The UI renders a free-text input so this stub keeps things working while
-    // a future iteration wires the Zernio endpoint.
-    return jsonResponse({ ok: true, subreddits: [] });
+    return handleSearchSubreddits(body);
   }
   if (action === "publish_now") {
     return forwardToZernio(req, { ...body, platform: "reddit" });
   }
 
   return errResponse(`Unknown action: ${action}. Supported: search_subreddits, publish_now`);
+}
+
+// ─── Subreddit search ────────────────────────────────────────────────────────
+// Zernio's /v1/reddit/search searches posts, not subreddits. We extract unique
+// subreddits from the post results and map them to the shape the UI expects.
+
+async function handleSearchSubreddits(body) {
+  const { tenantId, query } = body;
+  if (!query || typeof query !== "string" || !query.trim()) {
+    return jsonResponse({ ok: true, subreddits: [] });
+  }
+
+  const accountId = await getZernioAccountId(tenantId, "reddit");
+  if (!accountId) {
+    return jsonResponse({ ok: true, subreddits: [] });
+  }
+
+  try {
+    const params = new URLSearchParams({
+      accountId,
+      q: query.trim(),
+      limit: "25",
+      sort: "relevance",
+    });
+    const data = await zernioFetch(`/reddit/search?${params}`, { method: "GET" });
+    const items = data?.items || [];
+
+    const seen = new Map();
+    for (const item of items) {
+      const name = item.subreddit;
+      if (!name || seen.has(name)) continue;
+      seen.set(name, {
+        name,
+        description: item.selftext
+          ? item.selftext.slice(0, 120)
+          : "",
+        over18: !!item.over18,
+      });
+    }
+
+    return jsonResponse({ ok: true, subreddits: Array.from(seen.values()) });
+  } catch (e) {
+    console.error("[reddit] search_subreddits failed:", e.message);
+    return jsonResponse({ ok: true, subreddits: [] });
+  }
 }
