@@ -194,6 +194,45 @@ async function handleLeadReceived(sbUrl, sbKey, tenantId, data) {
   return json({ ok: true });
 }
 
+/**
+ * account.disconnected — Zernio fires this when a tenant's OAuth token
+ * expires or is revoked. K3 surgical scope: flip the channels row so the
+ * Connections workspace reflects the disconnected state on next mount.
+ *
+ * NOT done in K3 (deferred — needs new infra):
+ *   - Real-time banner / notification: requires a server-side notifications
+ *     table + frontend Supabase realtime subscription. Out of K3 scope.
+ *
+ * Payload shape (per OpenAPI account.disconnected event): expected to contain
+ * the platform slug and account ref. Tenant id comes from external_user_id at
+ * the dispatcher level above.
+ */
+async function handleAccountDisconnected(sbUrl, sbKey, tenantId, data) {
+  const platform = data?.platform;
+  if (!platform) {
+    console.error("[zernio-webhook] account.disconnected missing platform");
+    return json({ ok: true, skipped: true, reason: "no platform" });
+  }
+
+  const qs = new URLSearchParams({
+    user_id: `eq.${tenantId}`,
+    platform: `eq.${platform}`,
+  });
+
+  const res = await fetch(`${sbUrl}/rest/v1/channels?${qs}`, {
+    method: "PATCH",
+    headers: sbHeaders(sbKey),
+    body: JSON.stringify({ status: "disconnected" }),
+  });
+
+  if (!res.ok) {
+    const textErr = await res.text().catch(() => "");
+    console.error("[zernio-webhook] channels disconnect failed:", res.status, textErr);
+  }
+
+  return json({ ok: true });
+}
+
 async function handlePostStatus(sbUrl, sbKey, tenantId, status, data) {
   const externalId =
     data?.post_id ||
@@ -291,15 +330,38 @@ export default async function handler(req) {
     case "reaction.received":
       return handleInboxEvent(sbUrl, sbKey, tenantId, "reaction", data);
     case "review.new":
+      // Existing K2 behaviour. GMB workspace owns reviews; whether unified
+      // inbox should still ingest these is a separate question — see K3 PR
+      // body Q-1. Not changed here to stay surgical.
       return handleInboxEvent(sbUrl, sbKey, tenantId, "review", data);
+    case "review.updated":
+      // K3 noop-with-log per Q-1 — GMB workspace owns review state.
+      console.log("[zernio-webhook] review.updated noop (GMB workspace owns):", data?.review_id || data?.id);
+      return json({ ok: true, noop: true });
+    case "account.disconnected":
+      return handleAccountDisconnected(sbUrl, sbKey, tenantId, data);
+    case "account.connected":
+      // K3 log-only. Warm-triggering /api/inbox to backfill would require
+      // re-minting a user JWT server-side, which the webhook context doesn't
+      // have. Frontend will auto-pull on next InboxEscalation mount.
+      console.log("[zernio-webhook] account.connected:", data?.platform, data?.account_id || data?.id);
+      return json({ ok: true, acknowledged: true });
     case "post.published":
       return handlePostStatus(sbUrl, sbKey, tenantId, "published", data);
     case "lead.received":
       return handleLeadReceived(sbUrl, sbKey, tenantId, data);
     case "post.failed":
       return handlePostStatus(sbUrl, sbKey, tenantId, "failed", data);
+    case "post.partial":
+      // K3 log-only — scheduled_posts.status enum has no "partial" value.
+      // Adding it is a migration deferred per K3 PR body Q-3.
+      console.log("[zernio-webhook] post.partial log-only:", data?.post_id || data?.id, data?.results);
+      return json({ ok: true, logged: true });
     default:
-      console.log("[zernio-webhook] Ignored event:", event);
+      // Expanded log: include the data shape for observation. Used to inform
+      // K4 platform decisions — which webhook events actually fire per
+      // platform in production.
+      console.log("[zernio-webhook] Unhandled event:", event, "data keys:", Object.keys(data || {}));
       return json({ ok: true, ignored: true });
   }
 }

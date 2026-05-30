@@ -1982,15 +1982,11 @@ function InboxEscalation({ state, actions }) {
     sb.from("inbox_events").update({ status: "archived", archived_at: nowIso }).eq("id", item.id).then(() => {}, () => {});
   };
 
-  // Map FlowOS short connector IDs → display names used in state.channelRules.
-  // PR K3 will replace this with the capability matrix from
-  // api/lib/inboxCapabilities.js. Keep it minimal here: the rule lookup is
-  // the only consumer, and matching on platform (the row column) is far more
-  // robust than matching on source-label substring.
-  const PLATFORM_TO_RULE_NAME = {
-    fb: "Facebook", ig: "Instagram", li: "LinkedIn", x: "X",
-    yt: "YouTube",  reddit: "Reddit", bluesky: "Bluesky", threads: "Threads",
-  };
+  // K3 — consume the capability matrix exposed by app/inbox-capabilities.jsx.
+  // Window globals are set there (loaded by main.jsx before this file). Falls
+  // back to {} on the cold-start window where the IIFE hasn't run yet.
+  const CAP_MATRIX = (typeof window !== "undefined" && window.INBOX_CAPABILITIES) || {};
+  const PLATFORM_TO_RULE_NAME = (typeof window !== "undefined" && window.PLATFORM_DISPLAY_NAMES) || {};
 
   const sendReply = async (item, replyDraft) => {
     const ruleName = PLATFORM_TO_RULE_NAME[item.platform] || null;
@@ -2000,9 +1996,16 @@ function InboxEscalation({ state, actions }) {
       return;
     }
 
-    // Structural blocks before any network call.
-    if (item.platform === "li" && item.eventType === "dm") {
-      actions.notify("warn", "LinkedIn DMs aren't exposed by Zernio — reply via the LinkedIn app.");
+    // Structural blocks before any network call — matrix-driven (was: hardcoded
+    // LinkedIn-DM check in K2). Generalises to any (platform, event-type) that
+    // Zernio doesn't expose.
+    const cap = CAP_MATRIX[item.platform];
+    if (cap && item.eventType === "dm" && !cap.dm) {
+      actions.notify("warn", `${ruleName || item.platform}: DMs aren't available via Zernio — reply via the native app.`);
+      return;
+    }
+    if (cap && item.eventType === "comment" && !cap.comment) {
+      actions.notify("warn", `${ruleName || item.platform}: comments aren't available via Zernio.`);
       return;
     }
 
@@ -2089,6 +2092,92 @@ function InboxEscalation({ state, actions }) {
       actions.notify("danger", "Reply failed — check connection");
     }
   };
+
+  // K3 — IG/FB cold-DM-from-comment via Zernio's private-reply endpoint.
+  // Full implementation per Kabir's Q-A answer: supports text, optional
+  // quickReplies, and optional buttons (mutually exclusive per OpenAPI).
+  //
+  // K3 ships the wiring + a basic invocation from the detail-pane button
+  // (text-only). quickReplies/buttons authoring UI is intentionally not
+  // built here — the server accepts them, the client can be extended in a
+  // follow-up without a server change. This keeps the K3 surface small while
+  // unblocking the cold-reach use case (text alone is sufficient for most
+  // replies; the buttons are a polish-pass for IG Message Requests folder
+  // visibility).
+  const sendPrivateReply = async (item, replyDraft, { quickReplies, buttons } = {}) => {
+    const cap = CAP_MATRIX[item.platform];
+    if (!cap?.privateReplyToComment) {
+      actions.notify("warn", `Private reply isn't supported on ${item.platform}.`);
+      return;
+    }
+    if (item.eventType !== "comment") {
+      actions.notify("warn", "Private reply only works on comments.");
+      return;
+    }
+    if (!item.parentExternalId || !item.externalId) {
+      actions.notify("danger", "Private reply failed — missing IDs (re-sync the inbox).");
+      return;
+    }
+
+    const payload = {
+      action:     "private_reply_comment",
+      platform:   item.platform,
+      post_id:    item.parentExternalId,
+      comment_id: item.externalId,
+      text:       replyDraft,
+    };
+    if (Array.isArray(quickReplies) && quickReplies.length) payload.quick_replies = quickReplies;
+    if (Array.isArray(buttons) && buttons.length)           payload.buttons       = buttons;
+
+    const nowIso = new Date().toISOString();
+    try {
+      const res = await apiFetch("/api/zernio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const result = await res.json().catch(() => ({ ok: false, error: "Invalid response" }));
+      if (!result.ok) {
+        actions.notify("danger", `Private reply failed — ${result.error || "check connection"}`);
+        return;
+      }
+      // Comment is left open in the inbox (the public comment is unanswered);
+      // the action only sends a DM to the author. Log the activity.
+      actions.notify("ok", `Private DM sent to ${item.author}`);
+      actions.updateInbox(item.id, {}, {
+        logEvent: `private-replied · ${item.source} · ${item.author}`,
+      });
+      // Optimistic local fingerprint so user sees feedback
+      setFetchedItems(prev => prev ? prev.map(i => i.id === item.id ? { ...i, privateRepliedAt: nowIso } : i) : prev);
+    } catch (e) {
+      console.error("[sendPrivateReply]", e);
+      actions.notify("danger", "Private reply failed — check connection");
+    }
+  };
+
+  // K3 — DM-window indicator. Imprecise per Kabir's Q-B answer (Option a):
+  // uses `updatedTime` from the conversation, which is "any activity within
+  // 24h," NOT specifically "user's last incoming message." That means our own
+  // outbound reply also resets the window from the badge's POV. The follower
+  // chip is the more reliable signal — replies to non-followers outside the
+  // window land in IG Message Requests folder regardless.
+  function dmWindowBadge(item) {
+    if (item.eventType !== "dm" || item.platform !== "ig") return null;
+    const cap = CAP_MATRIX[item.platform];
+    if (!cap?.replyDmWindowHours) return null;
+    const igp = item.raw?.instagramProfile || null;
+    const updatedTime = item.raw?.updatedTime;
+    const followerChip = igp?.isFollower === true  ? { tone: "ok",   label: "Follower" }
+                       : igp?.isFollower === false ? { tone: "warn", label: "Not a follower" }
+                       : null;
+    if (!updatedTime) return followerChip ? [followerChip] : null;
+    const ageHours = (Date.now() - new Date(updatedTime).getTime()) / 3.6e6;
+    const inWindow = ageHours < cap.replyDmWindowHours;
+    const windowChip = inWindow
+      ? { tone: "ok",   label: `DM window open · ~${Math.max(0, Math.round(cap.replyDmWindowHours - ageHours))}h left` }
+      : { tone: "warn", label: "DM window closed · use private-reply from comment" };
+    return followerChip ? [followerChip, windowChip] : [windowChip];
+  }
 
   // Left panel row
   const Row = ({ item, section }) => {
@@ -2211,6 +2300,14 @@ function InboxEscalation({ state, actions }) {
                     </>
                   );
                 })()}
+                {/* K3 — IG DM-window indicator (imprecise, see dmWindowBadge comment) */}
+                {(dmWindowBadge(selected) || []).map((c, i) => (
+                  <Chip key={`win-${i}`} tone={c.tone}>{c.label}</Chip>
+                ))}
+                {/* K3 — defensive X DM Pro-tier warning chip */}
+                {CAP_MATRIX[selected.platform]?.dmWriteRequiresProTier && selected.eventType === "dm" && (
+                  <Chip tone="warn">Reply requires X API Pro</Chip>
+                )}
               </div>
             </div>
 
@@ -2297,6 +2394,17 @@ function InboxEscalation({ state, actions }) {
               <Btn size="sm" variant="ghost" onClick={() => archive(selected)}>
                 <Icon name="x" size={12}/> Archive
               </Btn>
+              {/* K3 — Reply privately (IG/FB cold-DM-from-comment). Only on
+                  comments where the capability matrix allows it. Sends the
+                  current draft text as a DM to the comment author. */}
+              {selected.eventType === "comment"
+                && CAP_MATRIX[selected.platform]?.privateReplyToComment
+                && selected.risk !== "high"
+                && draft && (
+                <Btn size="sm" variant="default" onClick={() => sendPrivateReply(selected, draft)}>
+                  <Icon name="mail" size={12}/> Reply privately
+                </Btn>
+              )}
               {selected.risk === "high" ? (
                 <Btn size="sm" variant="primary" onClick={() => archive(selected)}>
                   <Icon name="send" size={12}/> Forward to comms →
