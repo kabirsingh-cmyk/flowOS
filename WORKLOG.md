@@ -4,6 +4,66 @@ Reverse-chronological record of notable changes. New entries on top.
 
 ---
 
+## 2026-05-29 · PR M3 — Real Reddit subreddit search via Zernio
+
+**Scope:** Replace the stub `search_subreddits` handler in `api/reddit.js` with a real implementation that searches Reddit posts via Zernio's `/v1/reddit/search` endpoint and extracts unique subreddits from the results.
+
+### Changes
+- **[api/reddit.js](api/reddit.js)** — `search_subreddits` action:
+  - Fetches the tenant's Reddit accountId via `getZernioAccountId`
+  - Calls `GET /v1/reddit/search?q=<query>&accountId=<id>&limit=25&sort=relevance`
+  - Extracts unique subreddits from returned posts (name + first 120 chars of selftext as description)
+  - Returns `{ ok: true, subreddits: [...] }` matching the UI contract
+  - Gracefully returns `[]` when Reddit is not connected (no 500)
+  - Empty query returns `[]` cleanly
+
+### Acceptance
+- Zernio search returns real posts; unique subreddits extracted from them
+- Empty query → `[]`, no error
+- Reddit not connected → `[]`, no error
+
+---
+
+## 2026-05-29 · PR M2 — Prune merged local branches
+
+Deleted 21 merged-to-main local branches:
+
+```
+chore/auth-rls-audit
+chore/backlog-engine
+chore/connector-cleanup-drops
+chore/remove-publer
+docs/audit-backlog
+feat/brand-voice
+feat/campaign-planner
+feat/connectors-redesign-composio-e2e
+feat/direct-connectors-ab-testing-audiostack-wordpress
+feat/direct-connectors-image-video
+feat/direct-connectors-oauth-msads-attentive
+feat/drafter-channel-format-rules
+feat/fix-insights-center
+feat/klaviyo-sms
+feat/proactive-email-drafts
+feat/proactive-sms-image-drawer
+feat/runware-provider-adapter
+feat/scheduled-posting
+feat/scheduled-posts
+feat/seo-auditor
+fix/dark-theme-workspace-buttons
+```
+
+No force-deleted branches — all were cleanly merged.
+
+## 2026-05-29 · PR M1 — Remove legacy app.html
+
+**Scope:** Delete `app.html` (legacy Babel-CDN entry point) and update `server.py` to serve `index.html` (Vite entry) at `/`.
+
+### Changes
+- **app.html** — deleted. Was the Babel-CDN era entry with Jost/Cormorant fonts; `index.html` is the live Vite entry with Inter Tight fonts. No deploy config referenced it.
+- **server.py** — updated `do_GET` to serve `/index.html` at root, updated startup URL print.
+
+---
+
 ## 2026-05-28 · Track B · Phase 4 PR B.3 — Cohort drill-downs (demographics)
 
 **Scope:** Persist and surface demographic breakdowns from Instagram and YouTube analytics. New `analytics_cohorts` table, cron extraction, and audience-breakdown UI cards.
