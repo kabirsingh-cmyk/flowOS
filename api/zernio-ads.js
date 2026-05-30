@@ -277,6 +277,27 @@ async function leadsList({ tenantId, platform, formId, limit, cursor, since }) {
   return zernioFetch(`/ads/leads?${qs}`, { method: "GET" });
 }
 
+// POST /v1/ads/lead-forms/{formId}/test-leads — Meta only.
+async function testLeads({ tenantId, platform, formId, fields }) {
+  if (!formId) throw new Error("formId required");
+  assertMetaForLeadForms(platform || "metaads");
+  const accountId = await requireZernioAccountId(tenantId, "metaads");
+  const payload = { accountId, ...(fields ? { fields } : {}) };
+  return zernioFetch(`/ads/lead-forms/${encodeURIComponent(formId)}/test-leads`, {
+    method: "POST", body: JSON.stringify(payload),
+  });
+}
+
+// GET /v1/ads/conversions — list conversion actions / pixels.
+async function conversionsList({ tenantId, platform, limit, cursor }) {
+  const p = String(platform || "metaads").toLowerCase();
+  const accountId = await requireZernioAccountId(tenantId, p);
+  const qs = new URLSearchParams({ accountId, platform: resolveAdsPlatform(p) });
+  if (Number.isFinite(limit)) qs.set("limit", String(Math.max(1, Math.min(100, limit))));
+  if (cursor)                 qs.set("cursor", String(cursor));
+  return zernioFetch(`/ads/conversions?${qs}`, { method: "GET" });
+}
+
 // POST /v1/ads/conversions — relay conversion events. Zernio infers the
 // platform from accountId. Meta-only, Google-only, or LinkedIn-only fields go
 // directly through to Zernio; we don't gate them here so callers can use the
@@ -372,6 +393,15 @@ export default async function handler(req) {
       case "leads_list":
         result = await leadsList({ tenantId, ...params });
         break;
+      case "leads_list":
+        result = await leadsList({ tenantId, ...params });
+        break;
+      case "test_leads":
+        result = await testLeads({ tenantId, ...params });
+        break;
+      case "conversions_list":
+        result = await conversionsList({ tenantId, ...params });
+        break;
       case "send_conversions":
         result = await sendConversions({ tenantId, ...params });
         break;
@@ -380,7 +410,7 @@ export default async function handler(req) {
           `Unknown action: ${action}. Supported: targeting_search, targeting_reach_estimate, ` +
           `ad_analytics, audiences_list, audiences_create, audiences_get, audiences_delete, ` +
           `audiences_add_users, lead_forms_list, lead_forms_get, lead_forms_create, ` +
-          `leads_list, send_conversions`
+          `leads_list, test_leads, conversions_list, send_conversions`
         );
     }
     return jsonResponse({ ok: true, data: result });

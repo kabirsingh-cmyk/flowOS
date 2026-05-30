@@ -315,8 +315,16 @@ async function handleListAudiences(req) {
 // list. Used by the Ads workspace Lead-forms tab "Push to Klaviyo" button —
 // one lead at a time, fan-out is the caller's job.
 
+async function sbHeaders(serviceKey) {
+  return {
+    apikey: serviceKey,
+    Authorization: `Bearer ${serviceKey}`,
+    "Content-Type": "application/json",
+  };
+}
+
 async function handleSubscribeLead(req) {
-  const { tenantId, email, phone, firstName, lastName, properties, listId } = req;
+  const { tenantId, email, phone, firstName, lastName, properties, listId, leadId } = req;
   if (!tenantId)         return json(400, { ok: false, error: "tenantId required" });
   if (!email && !phone)  return json(400, { ok: false, error: "email or phone required" });
 
@@ -354,6 +362,27 @@ async function handleSubscribeLead(req) {
       phone_number:     phone,
       consented_at:     new Date().toISOString(),
     }, tenantId);
+  }
+
+  // If caller passed a leadId, update leads_cache so the UI can show
+  // pushed_to_klaviyo = true and the profile ID.
+  if (leadId && finalProfileId) {
+    const sbUrl = process.env.SUPABASE_URL;
+    const sbKey = process.env.SUPABASE_SERVICE_KEY;
+    if (sbUrl && sbKey) {
+      const patchRes = await fetch(
+        `${sbUrl}/rest/v1/leads_cache?tenant_id=eq.${encodeURIComponent(tenantId)}&platform_lead_id=eq.${encodeURIComponent(leadId)}`,
+        {
+          method: "PATCH",
+          headers: sbHeaders(sbKey),
+          body: JSON.stringify({ pushed_to_klaviyo: true, klaviyo_profile_id: finalProfileId }),
+        }
+      );
+      if (!patchRes.ok) {
+        const textErr = await patchRes.text().catch(() => "");
+        console.error("[klaviyo] leads_cache patch failed:", patchRes.status, textErr);
+      }
+    }
   }
 
   return json(200, {
