@@ -146,11 +146,37 @@
     return <Chip tone={toneMap[priority] || "neutral"}>{priority}</Chip>;
   }
 
+  // ─── Freshness pill ───────────────────────────────────────────────────────────
+  function FreshnessPill({ lastUpdated }) {
+    if (!lastUpdated) return null;
+    const ms = Date.now() - new Date(lastUpdated).getTime();
+    const min = Math.floor(ms / 60000);
+    const hr  = Math.floor(min / 60);
+    const day = Math.floor(hr / 24);
+    let label, tone;
+    if (min < 5)       { label = "Updated just now"; tone = "ok"; }
+    else if (min < 60) { label = `Updated ${min}m ago`; tone = "ok"; }
+    else if (hr < 24)  { label = `Updated ${hr}h ago`; tone = "ok"; }
+    else if (day < 3)  { label = `Updated ${day}d ago`; tone = "warn"; }
+    else               { label = `Stale — last ${day}d ago`; tone = "danger"; }
+    return <Chip tone={tone}>{label}</Chip>;
+  }
+
   // ─── Summary + KPI strip ─────────────────────────────────────────────────────
 
   function SummarySection({ insights, snapshots, loading }) {
     if (loading) return <Spinner />;
-    if (!insights) return null;
+    if (!insights || !insights.summary) return (
+      <section style={{ marginBottom: 28 }}>
+        <div style={{
+          background: "var(--paper)", border: "1px solid var(--rule)",
+          borderRadius: 10, padding: "16px 20px",
+          fontSize: 14, color: "var(--muted)", lineHeight: 1.65,
+        }}>
+          No summary yet. Click Refresh to generate AI insights from your connected platforms.
+        </div>
+      </section>
+    );
 
     // Derive top KPIs from snapshots (legacy Composio + Zernio organic social)
     const kpis = [];
@@ -217,7 +243,19 @@
 
   function RecommendedActions({ actions, loading, onNavigate }) {
     if (loading) return null;
-    if (!actions || actions.length === 0) return null;
+    if (!actions || actions.length === 0) return (
+      <section style={{ marginBottom: 28 }}>
+        <h3 style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 12px" }}>
+          Recommended Actions
+        </h3>
+        <div style={{
+          background: "var(--paper)", border: "1px solid var(--rule)",
+          borderRadius: 8, padding: "14px 16px", fontSize: 13, color: "var(--muted)",
+        }}>
+          No recommended actions yet. Connect a platform and refresh to see AI recommendations.
+        </div>
+      </section>
+    );
 
     return (
       <section style={{ marginBottom: 28 }}>
@@ -268,9 +306,21 @@
 
   // ─── Insights cards ───────────────────────────────────────────────────────────
 
-  function InsightsGrid({ items, loading, onNavigate }) {
+  function InsightsGrid({ items, loading, onNavigate, snapshots }) {
     if (loading) return null;
-    if (!items || items.length === 0) return null;
+    if (!items || items.length === 0) return (
+      <section style={{ marginBottom: 28 }}>
+        <h3 style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--muted)", margin: "0 0 12px" }}>
+          Insights
+        </h3>
+        <div style={{
+          background: "var(--paper)", border: "1px solid var(--rule)",
+          borderRadius: 8, padding: "14px 16px", fontSize: 13, color: "var(--muted)",
+        }}>
+          No insights yet. Click Refresh after connecting a platform.
+        </div>
+      </section>
+    );
 
     return (
       <section style={{ marginBottom: 28 }}>
@@ -301,19 +351,34 @@
                   </div>
                 </div>
                 <div style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.6, flex: 1 }}>{item.body}</div>
-                {ws && onNavigate && (
-                  <button
-                    onClick={() => onNavigate(ws)}
-                    style={{
-                      marginTop: 10, padding: "4px 12px", borderRadius: 6,
-                      border: "1px solid var(--rule)", background: "transparent",
-                      fontSize: 11.5, color: "var(--muted)", cursor: "pointer",
-                      alignSelf: "flex-start",
-                    }}
-                  >
-                    {WORKSPACE_LABELS[ws] || "Open →"}
-                  </button>
-                )}
+                <div style={{ display: "flex", gap: 6, marginTop: 10, alignSelf: "flex-start" }}>
+                  {ws && onNavigate && (
+                    <button
+                      onClick={() => onNavigate(ws)}
+                      style={{
+                        padding: "4px 12px", borderRadius: 6,
+                        border: "1px solid var(--rule)", background: "transparent",
+                        fontSize: 11.5, color: "var(--muted)", cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {WORKSPACE_LABELS[ws] || "Open →"}
+                    </button>
+                  )}
+                  {snapshots.find(s => s.channel === (item.channel || "").toLowerCase()) && (
+                    <a
+                      href={`#channel-${(item.channel || "").toLowerCase()}`}
+                      style={{
+                        padding: "4px 12px", borderRadius: 6,
+                        border: "1px solid var(--rule)", background: "transparent",
+                        fontSize: 11.5, color: "var(--accent)", textDecoration: "none",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Data →
+                    </a>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -350,7 +415,7 @@
     const dateRange = rawMetrics.dateRange || {};
 
     return (
-      <div style={{
+      <div id={`channel-${snapshot.channel}`} style={{
         background: "var(--paper)", border: "1px solid var(--rule)",
         borderRadius: 8, overflow: "hidden",
       }}>
@@ -1081,11 +1146,7 @@
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontWeight: 600, fontSize: 14, color: "var(--ink)" }}>Analytics</span>
-            {lastUpdated && (
-              <span style={{ fontSize: 11.5, color: "var(--muted)" }}>
-                Updated {new Date(lastUpdated).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-              </span>
-            )}
+            <FreshnessPill lastUpdated={lastUpdated} />
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1183,7 +1244,7 @@
                 <>
                   <SummarySection insights={insights} snapshots={snapshots} loading={loading} />
                   <RecommendedActions actions={insights?.recommended_actions} loading={loading} onNavigate={handleNavigate} />
-                  <InsightsGrid items={insights?.insights} loading={loading} onNavigate={handleNavigate} />
+                  <InsightsGrid items={insights?.insights} loading={loading} onNavigate={handleNavigate} snapshots={snapshots} />
                   <PrimitivesSection primitives={primitives} loading={loading} />
                   <CohortsSection cohorts={cohorts} loading={loading} />
                   <DataByChannel snapshots={snapshots} loading={loading} />

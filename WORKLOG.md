@@ -415,3 +415,37 @@ Added a `sourceBriefId` field to the `state.calendar` item shape so that drafts 
 
 ### Why now
 Cheap to add the field today before any rows exist; expensive to backfill later if rows already do. Adding the field with no consumer is normally premature, but here it's a one-line schema decision that costs nothing and unblocks the brief→queue flow whenever someone builds it.
+
+## 2026-05-29 · PR K2 — Analytics → Insights validation
+
+**Scope:** Harden the analytics-ingest Claude summarization path and improve Insights UI empty states + debuggability.
+
+### Changes
+
+- **api/analytics-ingest.js** — Hardened `generateInsights`:
+  - Added `FALLBACK_INSIGHTS` constant with "Not enough data" copy and a "Connect a platform" action.
+  - Added `validateInsightShape` to enforce schema (summary string, insights[] with title/body/severity, recommended_actions[] with action/reason/priority).
+  - Added `parseInsightJson` that strips markdown fences and validates shape.
+  - Added `callClaude` helper for retries.
+  - `generateInsights` now retries once with a stronger reminder if the first Claude response fails parsing.
+  - Returns fallback on zero snapshots, missing API key, or two consecutive parse failures — never crashes.
+- **app/insights.jsx** — UI improvements:
+  - Added `FreshnessPill` component: "Updated just now / Xh ago / Xd ago / Stale — last Xd ago" with color-coded chips.
+  - Replaced raw timestamp in top bar with `FreshnessPill`.
+  - Added empty state to `SummarySection` when no summary exists.
+  - Added empty state to `RecommendedActions` when no actions exist.
+  - Added empty state to `InsightsGrid` when no insights exist.
+  - Added debug "Data →" anchor link on each insight card that scrolls to the matching `ChannelMetricTable` by `id={"channel-<slug>"}`.
+  - Each `ChannelMetricTable` now has an `id` for anchor targeting.
+
+### Gaps closed
+1. Claude returning malformed JSON → retry once, then graceful fallback.
+2. Zero connected platforms → cron exits cleanly, fallback insights saved to DB.
+3. Insights UI now shows empty-state copy instead of disappearing sections.
+4. Freshness indicator makes data staleness obvious at a glance.
+5. Debug links let users jump from insight to raw snapshot.
+
+### Health check
+- `node --check api/analytics-ingest.js` ✅
+- `node scripts/health-check.mjs` ✅ (2 pre-existing cron-schedule warnings)
+
