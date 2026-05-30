@@ -4,6 +4,47 @@ Reverse-chronological record of notable changes. New entries on top.
 
 ---
 
+## 2026-05-29 · PR K1 — Inbox e2e validation
+
+**Scope:** End-to-end AI triage + draft for inbox items pulled from Zernio (DMs + comments).
+
+### Changes
+
+- **db/migrations/2026-06-06-inbox-triage.sql** — NEW. Adds `replied_at` and `archived_at` timestamps to `inbox_events` for lifecycle analytics.
+- **api/chat.js** — Added `inbox_assistant` specialist:
+  - Prompt returns strict JSON array with `intent`, `sentiment`, `urgency`, `suggested_action`, `triage_note`, `draft_reply`.
+  - Registered in `delegate_to` tool enum and specialist → tools mapping (no tools needed).
+- **api/inbox.js** — Extended pull-fetch with batch AI triage:
+  - After Zernio upsert, queries which pulled items still lack `ai_triage_note`.
+  - Calls Claude once per batch with the `inbox_assistant` prompt + brand voice context.
+  - Parses JSON response and PATCHes each row with `ai_triage_note` (JSON) and `ai_draft`.
+  - Imports `fetchBrandProfile` and `getModel` from shared lib (no duplication).
+- **app/store.jsx** — APPEND-ONLY `TRACK KIMI` block:
+  - Reducer cases: `INBOX_TRIAGE_LOAD`, `INBOX_TRIAGE_PATCH`, `INBOX_ARCHIVE`, `INSIGHTS_LOAD`.
+  - Actions: `loadInbox`, `triageInboxItem`, `draftInboxReply`, `archiveInboxItem`, `loadInsightCards`.
+- **app/workspaces3.jsx** — InboxEscalation UI updates:
+  - Parses `ai_triage_note` JSON safely; renders intent + urgency + sentiment chips on each row and in the detail header.
+  - Shows `ai_draft` as prefilled reply textarea (unchanged flow, verified).
+  - `archive` and `sendReply` now optimistically update `fetchedItems` local state so rows disappear immediately.
+  - `archive` writes `archived_at` to DB; `sendReply` writes `replied_at` to DB.
+  - Empty state enhanced with sub-line copy.
+
+### Gaps closed
+1. Pull-fetched items now get triage + draft within the same request (batch Claude call).
+2. Webhook path items will also get triage on the next `/api/inbox` poll if they arrived untriaged.
+3. Archive/reply now set timestamp columns for analytics.
+4. UI reflects intent/urgency/sentiment visually.
+
+### Health check
+- `node --check api/inbox.js` ✅
+- `node --check api/chat.js` ✅
+- `node scripts/health-check.mjs` ✅ (2 pre-existing cron-schedule warnings)
+
+---
+
+
+---
+
 ## 2026-05-29 · PR M3 — Real Reddit subreddit search via Zernio
 
 **Scope:** Replace the stub `search_subreddits` handler in `api/reddit.js` with a real implementation that searches Reddit posts via Zernio's `/v1/reddit/search` endpoint and extracts unique subreddits from the results.
