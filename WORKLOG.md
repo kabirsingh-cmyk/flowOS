@@ -4,44 +4,29 @@ Reverse-chronological record of notable changes. New entries on top.
 
 ---
 
-## 2026-05-29 · PR K1 — Inbox e2e validation
+## 2026-05-29 · C4 verdict — paid-social provider routing
 
-**Scope:** End-to-end AI triage + draft for inbox items pulled from Zernio (DMs + comments).
+**Scope:** Read-only spike. No code changes.
 
-### Changes
+Verified end-to-end whether the 5 paid-social platforms (metaads, liads, ttads, xads, pinads) route through Zernio or Composio. Settled following a contradictory claim that Composio was still in the Connect path.
 
-- **db/migrations/2026-06-06-inbox-triage.sql** — NEW. Adds `replied_at` and `archived_at` timestamps to `inbox_events` for lifecycle analytics.
-- **api/chat.js** — Added `inbox_assistant` specialist:
-  - Prompt returns strict JSON array with `intent`, `sentiment`, `urgency`, `suggested_action`, `triage_note`, `draft_reply`.
-  - Registered in `delegate_to` tool enum and specialist → tools mapping (no tools needed).
-- **api/inbox.js** — Extended pull-fetch with batch AI triage:
-  - After Zernio upsert, queries which pulled items still lack `ai_triage_note`.
-  - Calls Claude once per batch with the `inbox_assistant` prompt + brand voice context.
-  - Parses JSON response and PATCHes each row with `ai_triage_note` (JSON) and `ai_draft`.
-  - Imports `fetchBrandProfile` and `getModel` from shared lib (no duplication).
-- **app/store.jsx** — APPEND-ONLY `TRACK KIMI` block:
-  - Reducer cases: `INBOX_TRIAGE_LOAD`, `INBOX_TRIAGE_PATCH`, `INBOX_ARCHIVE`, `INSIGHTS_LOAD`.
-  - Actions: `loadInbox`, `triageInboxItem`, `draftInboxReply`, `archiveInboxItem`, `loadInsightCards`.
-- **app/workspaces3.jsx** — InboxEscalation UI updates:
-  - Parses `ai_triage_note` JSON safely; renders intent + urgency + sentiment chips on each row and in the detail header.
-  - Shows `ai_draft` as prefilled reply textarea (unchanged flow, verified).
-  - `archive` and `sendReply` now optimistically update `fetchedItems` local state so rows disappear immediately.
-  - `archive` writes `archived_at` to DB; `sendReply` writes `replied_at` to DB.
-  - Empty state enhanced with sub-line copy.
+### Ground truth (per platform)
 
-### Gaps closed
-1. Pull-fetched items now get triage + draft within the same request (batch Claude call).
-2. Webhook path items will also get triage on the next `/api/inbox` poll if they arrived untriaged.
-3. Archive/reply now set timestamp columns for analytics.
-4. UI reflects intent/urgency/sentiment visually.
+- **metaads** — Connect: `/api/zernio` (seed `provider: "zernio"`). Actions: `/api/paid-social` → `zernioFetch` → Zernio `/ads/*`. ✅ all-Zernio.
+- **liads** — Connect: `/api/zernio`. Actions: `/api/paid-social` → Zernio. ✅ all-Zernio.
+- **ttads** — Connect: `/api/zernio`. Actions: `/api/paid-social` → Zernio. ✅ all-Zernio.
+- **xads** — Connect: `/api/zernio`. Actions: `/api/paid-social` → Zernio. ✅ all-Zernio.
+- **pinads** — Connect: `/api/zernio`. Actions: `/api/paid-social` → Zernio. ✅ all-Zernio.
 
-### Health check
-- `node --check api/inbox.js` ✅
-- `node --check api/chat.js` ✅
-- `node scripts/health-check.mjs` ✅ (2 pre-existing cron-schedule warnings)
+### Evidence
 
----
+- [app/seed.jsx:118-122](app/seed.jsx) — every paid-social row has `provider: "zernio"`.
+- [app/workspaces4.jsx:22-25](app/workspaces4.jsx) — `providerApiPath("zernio") → "/api/zernio"`; OAuth Connect flow in `handleConnectSubmit` (~line 715) uses that path.
+- [api/paid-social.js:31-35](api/paid-social.js) — imports only `zernioFetch`, `requireZernioAccountId`, `resolveAdsPlatform`, `SUPPORTED_PAID_PLATFORMS`. No Composio imports anywhere in the file. Env: `ZERNIO_API_KEY`. All action handlers (`list_campaigns`, `create_campaign`, `boost_post`, `bulk_status`, etc.) hit `/ads/*` Zernio endpoints.
 
+### Verdict
+
+All 5 paid-social platforms are consistently on Zernio for **both** Connect (OAuth) and Actions (campaigns, ad sets, ads, analytics). The earlier "Composio for Connect" claim was incorrect — no Composio surface remains on the paid-social path. No follow-up needed; no `FOLLOWUP-C4.md` filed.
 
 ---
 
