@@ -42,6 +42,8 @@
  *   resolve_authors      — list connected accounts / pages for a platform
  *   reply_comment        — reply to a comment (POST /inbox/comments/{postId})
  *   reply_dm             — reply to a DM (POST /inbox/conversations/{id}/messages)
+ *   private_reply_comment — IG/FB cold-DM-from-comment
+ *                          (POST /inbox/comments/{postId}/{commentId}/private-reply)
  */
 
 import { requireAuthOrCron, requireAuth } from "./lib/auth.js";
@@ -487,6 +489,72 @@ async function handleReplyDm(body) {
   }
 }
 
+/**
+ * private_reply_comment
+ * POST /v1/inbox/comments/{postId}/{commentId}/private-reply
+ * Body per Zernio OpenAPI: { accountId, message, quickReplies?, buttons? }
+ *
+ * Cold-DM-from-comment. IG + FB only. One private reply per comment, must be
+ * sent within 7 days of the comment.
+ *
+ * `quickReplies` (max 13) — chip buttons above keyboard. Do NOT render in
+ * IG Message Requests folder where DMs from non-followers land.
+ * `buttons` (1-3) — inline buttons in the message bubble. Do render in
+ * Message Requests folder; recommended for cold reach.
+ * `quickReplies` and `buttons` are mutually exclusive per OpenAPI.
+ *
+ * Client contract: snake_case (post_id, comment_id, quick_replies, buttons).
+ */
+async function handlePrivateReplyComment(body) {
+  const {
+    tenantId,
+    platform,
+    post_id:       postId,
+    comment_id:    commentId,
+    text,
+    quick_replies: quickReplies,
+    buttons,
+    accountId:     bodyAccountId,
+  } = body;
+
+  if (!platform)  return errResponse("platform required");
+  if (!postId)    return errResponse("post_id required");
+  if (!commentId) return errResponse("comment_id required");
+  if (!text)      return errResponse("text required");
+
+  if (platform !== "ig" && platform !== "fb") {
+    return errResponse(`private_reply_comment is IG/FB only — got ${platform}`);
+  }
+  if (Array.isArray(quickReplies) && Array.isArray(buttons)) {
+    return errResponse("quick_replies and buttons are mutually exclusive");
+  }
+  if (Array.isArray(quickReplies) && quickReplies.length > 13) {
+    return errResponse("quick_replies max 13");
+  }
+  if (Array.isArray(buttons) && (buttons.length < 1 || buttons.length > 3)) {
+    return errResponse("buttons must be 1-3 items");
+  }
+
+  const accountId = bodyAccountId || await getZernioAccountId(tenantId, platform);
+  if (!accountId) return errResponse(`No connected account for ${platform}. Reconnect and try again.`);
+
+  const reqBody = { accountId, message: text };
+  if (Array.isArray(quickReplies)) reqBody.quickReplies = quickReplies;
+  if (Array.isArray(buttons))      reqBody.buttons      = buttons;
+
+  const path = `/inbox/comments/${encodeURIComponent(postId)}/${encodeURIComponent(commentId)}/private-reply`;
+  const data = await zernioFetch(path, {
+    method: "POST",
+    body:   JSON.stringify(reqBody),
+  });
+
+  return jsonResponse({
+    ok:        true,
+    messageId: data.data?.messageId || data.message?._id || data.id || null,
+    raw:       data,
+  });
+}
+
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
 export default async function handler(req) {
@@ -501,6 +569,7 @@ export default async function handler(req) {
     "publish_now", "schedule_post", "get_analytics",
     "get_dms", "get_comments", "boost_post",
     "resolve_authors", "reply_comment", "reply_dm",
+    "private_reply_comment",
   ];
   if (!VALID_ACTIONS.includes(body.action)) {
     return errResponse(
@@ -538,11 +607,12 @@ export default async function handler(req) {
       case "resolve_authors":      return await handleResolveAuthors(body);
       case "reply_comment":        return await handleReplyComment(body);
       case "reply_dm":             return await handleReplyDm(body);
+      case "private_reply_comment":return await handlePrivateReplyComment(body);
       default:
         return errResponse(
           `Unknown action "${action}". Supported: initiate_connection, connection_status, disconnect, ` +
           `publish_now, schedule_post, get_analytics, get_dms, get_comments, boost_post, ` +
-          `resolve_authors, reply_comment, reply_dm`,
+          `resolve_authors, reply_comment, reply_dm, private_reply_comment`,
         );
     }
   } catch (e) {

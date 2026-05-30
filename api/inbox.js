@@ -28,21 +28,33 @@ import { requireAuth } from "./lib/auth.js";
 import { corsPreflightResponse, jsonResponse, errResponse } from "./lib/cors.js";
 import { fetchBrandProfile } from "./lib/supabase.js";
 import { getModel } from "./lib/anthropic.js";
+import { INBOX_CAPABILITIES, dmPullPlatforms } from "./lib/inboxCapabilities.js";
 
 export const config = { runtime: "edge" };
 
 const ZERNIO_BASE = "https://zernio.com/api/v1";
 const ANTHROPIC_BASE = "https://api.anthropic.com/v1";
 
-// v1 scope — FlowOS connector IDs
-const V1_PLATFORMS     = ["ig", "fb", "li", "x"];
-const DM_PLATFORMS     = new Set(["ig", "fb", "x"]);   // LinkedIn not DM-capable
+// Platforms we attempt DM pull on, derived from the capability matrix.
+// Source of truth: api/lib/inboxCapabilities.js. K3 removed the hardcoded
+// V1_PLATFORMS / DM_PLATFORMS in favour of the matrix so adding a platform
+// is a single-file edit instead of a hunt across the codebase.
+const DM_PULL_PLATFORMS = new Set(dmPullPlatforms());
 
+// FlowOS connector IDs → Zernio platform slugs. Centralised in
+// api/lib/zernioMap.js for publish paths; mirrored here for inbox paths
+// because /api/inbox is independent of /api/zernio. Keeping the inline map
+// avoids a circular dependency through zernioClient (which pulls auth +
+// account-id helpers we don't need here).
 const PLATFORM_ID_MAP  = {
-  ig: "instagram",
-  fb: "facebook",
-  li: "linkedin",
-  x:  "twitter",
+  ig:      "instagram",
+  fb:      "facebook",
+  li:      "linkedin",
+  x:       "twitter",
+  yt:      "youtube",
+  reddit:  "reddit",
+  bluesky: "bluesky",
+  threads: "threads",
 };
 
 function resolvePlatform(id) {
@@ -91,7 +103,11 @@ function sbHeaders() {
 }
 
 async function getConnectedPlatforms(tenantId) {
-  const inList = V1_PLATFORMS.map(id => `"${id}"`).join(",");
+  // Query every platform in the capability matrix; the DM-pull fan-out
+  // filters by DM_PULL_PLATFORMS below. Doing the platform filter here too
+  // would force two queries when matrix expands (e.g. K4 adds bluesky/reddit
+  // DMs); the SQL filter is the cheap side.
+  const inList = Object.keys(INBOX_CAPABILITIES).map(id => `"${id}"`).join(",");
   const url    = `${process.env.SUPABASE_URL}/rest/v1/channels` +
     `?user_id=eq.${encodeURIComponent(tenantId)}` +
     `&platform=in.(${inList})` +
@@ -357,7 +373,7 @@ export default async function handler(req) {
     // platforms); Threads comments are pulled separately by the K4 cron.
     let inboxAddonDisabled = false;
     const fetches = connected.flatMap(({ platform, composio_connection_id: accountId }) => {
-      if (!DM_PLATFORMS.has(platform) || !accountId) return [];
+      if (!DM_PULL_PLATFORMS.has(platform) || !accountId) return [];
       const resolvedPlatform = resolvePlatform(platform);
       const qs = new URLSearchParams({ platform: resolvedPlatform, accountId });
       if (profileId) qs.set("profileId", profileId);
