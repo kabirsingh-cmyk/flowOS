@@ -59,7 +59,23 @@ function autoMapColumns(header) {
 }
 
 // ────────────────────────────── PUBLISHING QUEUE ──────────────────────────────
-function PublishingQueue({ state, actions }) {
+function PublishingQueue({ state, actions, go }) {
+  // === C2: SOURCE-BRIEF UI === Lookup map from sourceBriefId → campaign plan,
+  // so draft cards/drawer can render a "From: <plan title>" chip without
+  // re-scanning state.campaignPlans on every render.
+  const plansById = useMemo3(() => {
+    const m = new Map();
+    for (const p of (state.campaignPlans || [])) m.set(p.id, p);
+    return m;
+  }, [state.campaignPlans]);
+  // Jump to the Campaign Planner workspace with this plan focused.
+  const openSourcePlan = (planId) => {
+    const plan = plansById.get(planId);
+    if (!plan) return;
+    actions.setActivePlan(plan);
+    if (typeof go === "function") go("planner");
+  };
+  // === END C2 ===
   const [view, setView]           = useState3("calendar"); // "calendar" | "list"
   const [editItem, setEditItem]   = useState3(null);
   const [editDraft, setEditDraft] = useState3(null); // controlled form state
@@ -644,6 +660,26 @@ function PublishingQueue({ state, actions }) {
                       <div style={{ fontSize: 10, color: "var(--muted)" }}>
                         {abbr} · {item.kind || item.contentType || "Post"} · draft
                       </div>
+                      {item.sourceBriefId && plansById.has(item.sourceBriefId) && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); openSourcePlan(item.sourceBriefId); }}
+                          title="Open the campaign plan that produced this draft"
+                          style={{
+                            display: "inline-flex", alignItems: "center", gap: 4,
+                            alignSelf: "flex-start", maxWidth: "100%",
+                            padding: "2px 6px", borderRadius: 3,
+                            background: "var(--accent-wash)", border: "1px solid var(--rule)",
+                            color: "var(--accent-ink)", fontSize: 9.5, lineHeight: 1.2,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <Icon name="file" size={9}/>
+                          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            From: {(plansById.get(item.sourceBriefId)?.title || "Plan").slice(0, 28)}
+                          </span>
+                        </button>
+                      )}
                       {item.noPublishPath && (
                         <div style={{
                           fontSize: 10, padding: "3px 6px", borderRadius: 3,
@@ -1319,6 +1355,23 @@ function PublishingQueue({ state, actions }) {
                   {editItem.status}
                 </Chip>
                 {editItem.fromChat && <Chip tone="accent">from chat</Chip>}
+                {editItem.sourceBriefId && plansById.has(editItem.sourceBriefId) && (
+                  <button
+                    type="button"
+                    onClick={() => openSourcePlan(editItem.sourceBriefId)}
+                    title="Open the campaign plan that produced this draft"
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 4,
+                      padding: "2px 8px", borderRadius: 999,
+                      background: "var(--accent-wash)", border: "1px solid var(--rule)",
+                      color: "var(--accent-ink)", fontSize: 11, lineHeight: 1.3,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <Icon name="file" size={10}/>
+                    <span>From: {(plansById.get(editItem.sourceBriefId)?.title || "Plan").slice(0, 40)}</span>
+                  </button>
+                )}
                 {editItem.publishStatus === "published" && <Chip tone="ok">published</Chip>}
                 {editItem.publishStatus === "failed" && <Chip tone="warn">publish failed</Chip>}
               </div>

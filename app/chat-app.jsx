@@ -1139,7 +1139,11 @@ function ChatOSAuthed({ auth, brand, seedMode, onLogout }) {
     if (args.kind === "queue_draft") {
       const d = args.data;
       const draftId = "d_" + crypto.randomUUID();
-      actions.addDraft(d.platform, d.contentType, d.copy, d.imagePrompt, draftId);
+      // If a campaign plan is active in this chat session, stamp the draft
+      // with its id so the queue/calendar can surface the linkage. Null when
+      // the user is drafting outside a plan context (one-off post).
+      const sourceBriefId = state.activePlan?.id || null;
+      actions.addDraft(d.platform, d.contentType, d.copy, d.imagePrompt, draftId, sourceBriefId);
 
       // Fire image generation async — Runware returns the URL inline, so the
       // typical happy path is a single fetch with status === "completed".

@@ -155,10 +155,15 @@ function BriefMarkdown({ source }) {
 }
 
 // ────────────────────────────── ACTIVE PLAN VIEW ──────────────────────────────
-function ActivePlanView({ plan, actions, go }) {
+function ActivePlanView({ plan, state, actions, go }) {
   const channelList = Array.isArray(plan.channels) && plan.channels.length
     ? plan.channels.join(" · ")
     : "—";
+  // === C2: SOURCE-BRIEF UI === Drafts created in chat while this plan was
+  // active carry plan.id as sourceBriefId. Surface them here so the brief
+  // → draft → publish loop is visible without leaving the workspace.
+  const linkedDrafts = (state?.calendar || []).filter(c => c.sourceBriefId === plan.id);
+  // === END C2 ===
   return (
     <div className="anim-fade" style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: 16, height: "100%", overflow: "hidden" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
@@ -207,6 +212,45 @@ function ActivePlanView({ plan, actions, go }) {
         {plan.brief
           ? <BriefMarkdown source={plan.brief}/>
           : <div style={{ color: "var(--muted)", fontSize: 13 }}>This brief has no body content. Ask Flow to regenerate the campaign plan.</div>}
+
+        {linkedDrafts.length > 0 && (
+          <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid var(--rule)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                Linked drafts · {linkedDrafts.length}
+              </div>
+              <Btn size="sm" variant="ghost" onClick={() => go("publish")}>
+                Open queue <Icon name="arrow-right" size={11}/>
+              </Btn>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {linkedDrafts.slice(0, 8).map(d => (
+                <button key={d.id} onClick={() => go("publish")}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "8px 10px", border: "1px solid var(--rule)", borderRadius: 4,
+                    background: "var(--paper-2)", cursor: "pointer", textAlign: "left",
+                    fontFamily: "var(--font-sans)",
+                  }}>
+                  <span style={{
+                    fontSize: 9.5, padding: "1px 6px", borderRadius: 3,
+                    background: "var(--paper-3)", color: "var(--ink-2)",
+                    textTransform: "uppercase", letterSpacing: "0.06em",
+                  }}>{d.platform || d.channel || "—"}</span>
+                  <span style={{ flex: 1, fontSize: 12, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {(d.body || d.title || "").slice(0, 70) || "Untitled draft"}
+                  </span>
+                  <span style={{ fontSize: 10.5, color: "var(--muted)" }}>{d.status}</span>
+                </button>
+              ))}
+              {linkedDrafts.length > 8 && (
+                <div style={{ fontSize: 11, color: "var(--muted)", paddingLeft: 4 }}>
+                  …and {linkedDrafts.length - 8} more in the publishing queue.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -227,6 +271,18 @@ function CampaignPlansSidebar({ state, actions }) {
   const [filter, setFilter] = useState2("all");
   const plans  = state.campaignPlans || [];
   const active = state.activePlan;
+
+  // === C2: SOURCE-BRIEF UI === Count drafts per plan from state.calendar so
+  // each sidebar row can show a "N drafts" indicator and close the loop:
+  // user sees that drafts created from a plan are reachable from the plan.
+  const draftsByPlan = useMemo2(() => {
+    const m = {};
+    for (const c of (state.calendar || [])) {
+      if (c.sourceBriefId) m[c.sourceBriefId] = (m[c.sourceBriefId] || 0) + 1;
+    }
+    return m;
+  }, [state.calendar]);
+  // === END C2 ===
 
   const filtered = useMemo2(() => {
     const list = filter === "all" ? plans : plans.filter(p => p.status === filter);
@@ -321,6 +377,16 @@ function CampaignPlansSidebar({ state, actions }) {
                   fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.06em",
                   color: "var(--muted)",
                 }}>{p.status}</span>
+                {draftsByPlan[p.id] > 0 && (
+                  <span title={`${draftsByPlan[p.id]} draft${draftsByPlan[p.id] === 1 ? "" : "s"} from this plan`}
+                    style={{
+                      marginLeft: "auto", fontSize: 9.5, padding: "1px 5px",
+                      borderRadius: 999, background: "var(--accent-wash)",
+                      color: "var(--accent-ink)", letterSpacing: "0.04em",
+                    }}>
+                    {draftsByPlan[p.id]} draft{draftsByPlan[p.id] === 1 ? "" : "s"}
+                  </span>
+                )}
               </div>
               <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--ink)", marginBottom: 2, lineHeight: 1.3 }}>
                 {p.title || "Untitled"}
@@ -420,7 +486,7 @@ function CampaignPlanner({ state, actions, payload, go }) {
   // Main content is either ActivePlanView (when a plan is focused) or the
   // default weekly grid.
   const mainContent = state.activePlan
-    ? <ActivePlanView plan={state.activePlan} actions={actions} go={go}/>
+    ? <ActivePlanView plan={state.activePlan} state={state} actions={actions} go={go}/>
     : (<DefaultGrid
         state={state} actions={actions} go={go}
         channels={channels} days={days} dates={dates}
