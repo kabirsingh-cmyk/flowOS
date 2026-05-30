@@ -4,6 +4,47 @@ Reverse-chronological record of notable changes. New entries on top.
 
 ---
 
+## 2026-05-29 · PR C1 — Campaign draft persistence
+
+**Scope:** Persist chat-authored campaign plans across refreshes. New `campaign_plans` table + `/api/campaign-plans` CRUD route + store hydration + CampaignPlanner sidebar with lifecycle controls.
+
+### Changes
+- **[db/migrations/2026-06-05-campaign-plans.sql](db/migrations/2026-06-05-campaign-plans.sql)** — NEW. `campaign_plans` table with `status` (draft|active|paused|archived), timestamp columns (`activated_at`, `archived_at`), and full plan fields (title, summary, goal, audience, timeline, budget, channels jsonb, brief, source tracking). RLS scoped to `tenant_id = auth.uid()::text`.
+- **[api/campaign-plans.js](api/campaign-plans.js)** — NEW edge route. Actions: `list_plans`, `get_plan`, `create_plan`, `update_plan`, `activate_plan`, `pause_plan`, `archive_plan`, `delete_plan` (drafts only). All `requireAuth`; `tenantId` from JWT only.
+- **[app/store.jsx](app/store.jsx)** — APPEND-ONLY `// === TRACK CLAUDE: LEADS + CAMPAIGNS ===` block:
+  - New state slice: `campaignPlans: []`.
+  - Reducer cases: `CAMPAIGN_PLAN_LOAD`, `CAMPAIGN_PLAN_UPSERT`, `CAMPAIGN_PLAN_REMOVE`.
+  - Actions: `loadCampaignPlans`, `createCampaignPlan`, `updateCampaignPlan`, `activateCampaignPlan`, `pauseCampaignPlan`, `archiveCampaignPlan`, `deleteCampaignPlan`.
+  - **`setActivePlan` extended** (one targeted surgical change to an existing action) — when the chat emits a plan without an id, fire-and-forget `createCampaignPlan` and re-dispatch with the DB-stamped id so subsequent edits patch the same row. Existing callers untouched.
+- **[app/workspaces2.jsx](app/workspaces2.jsx)** — `CampaignPlanner` now renders a 2-col layout (260px sidebar + main):
+  - `CampaignPlansSidebar` — filter chips (all/draft/active/paused/archived), counts, status pill per row, inline state-machine-aware buttons (Activate/Pause/Resume/Archive), "New" draft button.
+  - Hydration on mount: `useEffect2(() => actions.loadCampaignPlans?.(), [])`.
+  - Default grid view extracted to `DefaultGrid` so it can compose with the sidebar without bloating the parent render. Props are exactly the state CampaignPlanner already maintained — no behavior change in the grid itself.
+- **[CLAUDE.md](CLAUDE.md)** — documented `state.campaignPlans` shape, `campaign_plans` table, and `/api/campaign-plans` route.
+
+### Lifecycle
+```
+chat-emitted brief → setActivePlan() → dual-write → row in campaign_plans (status=draft)
+                                                  → state.activePlan now has DB id
+sidebar click "Activate" → activateCampaignPlan() → status='active', activated_at=now
+sidebar click "Pause"    → pauseCampaignPlan()    → status='paused'
+sidebar click "Archive"  → archiveCampaignPlan()  → status='archived', archived_at=now
+sidebar click "New"      → setActivePlan(empty)   → fresh draft row + focus
+```
+
+### Race / scope notes
+- If the user dismisses an active plan before the dual-write returns, the late re-dispatch will re-open it. Acceptable for first cut — user re-dismisses.
+- `delete_plan` is hard-delete and only allowed for drafts. Active/paused/archived must go through archive (preserves history).
+- Acceptance criterion "draft from a plan carries plan id as `sourceBriefId`" was already wired pre-C1 — `addDraft(..., sourceBriefId)` exists. With plans now having persistent ids, the link is durable.
+
+### Verification
+- `node --check api/campaign-plans.js` ✅
+- `npx esbuild app/store.jsx --loader:.jsx=jsx --bundle` ✅
+- `npx esbuild app/workspaces2.jsx --loader:.jsx=jsx --bundle` ✅
+- `node scripts/health-check.mjs` ✅ (2 pre-existing cron-schedule warnings only)
+
+---
+
 ## 2026-05-29 · PR M3 — Real Reddit subreddit search via Zernio
 
 **Scope:** Replace the stub `search_subreddits` handler in `api/reddit.js` with a real implementation that searches Reddit posts via Zernio's `/v1/reddit/search` endpoint and extracts unique subreddits from the results.
