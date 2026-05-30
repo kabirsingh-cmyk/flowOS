@@ -150,10 +150,25 @@ state.brandPreset     // currently active brand object (null = default MVEDA)
 state.notifications   // toast array
 state.activity        // audit log
 state.activePlan      // chat-authored campaign brief (set by campaign_planner specialist)
-                      // null when no plan; { title, summary, itemCount, goal, audience,
+                      // null when no plan; { id, title, summary, itemCount, goal, audience,
                       // timeline, budget, channels[], brief (markdown), createdAt }
                       // CampaignPlanner workspace renders this when present; falls back
                       // to default grid when null. Actions: setActivePlan, clearActivePlan.
+                      // As of PR C1, setActivePlan dual-writes to campaign_plans on first
+                      // emit and re-dispatches with the DB id so the focused plan survives
+                      // refresh and subsequent edits patch the same row.
+state.campaignPlans   // persisted campaign plans hydrated from /api/campaign-plans (PR C1).
+                      // Array of rows: { id, tenant_id, title, status, summary, goal,
+                      // audience, timeline, budget, channels, brief, source_chat_thread_id,
+                      // source_specialist, created_at, updated_at, activated_at, archived_at }
+                      // (also mirrored as camelCase createdAt/updatedAt/etc.).
+                      // status ∈ draft | active | paused | archived.
+                      // Hydrated by actions.loadCampaignPlans() when CampaignPlanner mounts.
+                      // CampaignPlansSidebar reads from this; clicking a row calls
+                      // actions.setActivePlan(plan) to focus it.
+                      // Actions: loadCampaignPlans, createCampaignPlan, updateCampaignPlan,
+                      // activateCampaignPlan, pauseCampaignPlan, archiveCampaignPlan,
+                      // deleteCampaignPlan (drafts only — others must archive).
 state.calendar items shape:
   { id, platform, kind, title, body, imagePrompt, imageUrl, imageStatus,
     status, scheduledAt, scheduledDate, day, channel, tone, campaign, fromChat, sourceBriefId, createdAt,
@@ -452,6 +467,7 @@ All in `/api/`. All use `export const config = { runtime: "edge" }`.
 | `POST /api/zernio-publish` | **Track A Phase 1 publishing actions** for already-published posts. Actions: `edit_post`, `unpublish_post`, `retry_post`, `update_metadata`, `bulk_upload`, plus 8 validators (`validate_post_length`, `validate_post`, `validate_media`, `validate_subreddit`, `queue_slots`, `queue_next_slot`, `queue_preview`). |
 | `POST /api/zernio-analytics` | **Track B analytics** — per-platform + primitive Zernio analytics actions. Kimi-owned. |
 | `POST /api/zernio-platform` | **Track B Phase 3 — Google Business Profile**. Actions: `list_reviews`, `reply_to_review`, `create_post` (STANDARD / EVENT / OFFER), `list_posts`. Kimi-owned. |
+| `POST /api/campaign-plans` | **PR C1** — persistent campaign briefs. Actions: `list_plans` (optional `status` filter), `get_plan`, `create_plan`, `update_plan`, `activate_plan`, `pause_plan`, `archive_plan`, `delete_plan` (drafts only). All requireAuth; tenantId resolved from JWT, never the body. Backs `state.campaignPlans` + CampaignPlansSidebar. |
 | `POST /api/replicate` `POST /api/higgsfield` | Direct-API connector routes (provider: "direct" in seed.jsx). Actions: `initiate_connection` (validates apiKey against the provider's REST API, persists to `connector_credentials`, flips `channels` to connected), `disconnect`. Shared persistence helper in [api/lib/directCredentials.js](api/lib/directCredentials.js). `/api/luma` and `/api/audiostack` exist as tombstones (connectors removed from catalog 2026-05-24). |
 | `GET/POST /api/google-ads-auth` | **REMOVED — 410 Gone tombstone.** Returns `{ error: "Google Ads OAuth has moved to Composio…", code: "GONE_USE_COMPOSIO" }`. Connect flow now goes through `/api/composio` like every other OAuth connector. The old `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET` env vars are no longer read at runtime. |
 
@@ -525,6 +541,7 @@ All public-schema tables have RLS enabled (see [db/migrations/007_core_schema_an
 - `proactive_drafts` — weekly social calendar drafts (status `pending`/`archived`). Keys: `tenant_id`, `status`.
 - `proactive_emails` — analytics-triggered email drafts. Keys: `tenant_id`, `rule`, `source_insight_id`. Unique index enforces idempotency. Status: `proactive_draft` → `pushed` (via /api/klaviyo) | `dismissed`.
 - `proactive_sms` — analytics-triggered SMS drafts (flavor #1 for SMS channel). Keys: `tenant_id`, `rule`, `source_insight_id`. 4 rules: S1_winback, S2_replenish, S3_cart, S4_vip. Status: `proactive_draft` → `pushed` | `dismissed`. Surfaced in SmsCenter as `ProactiveSmsDrafts`. Migration: [supabase/migrations/2026-05-23-proactive-sms.sql](supabase/migrations/2026-05-23-proactive-sms.sql).
+- `campaign_plans` — **PR C1** persistent campaign briefs. Columns: `id uuid pk`, `tenant_id text`, `title text`, `status text` (draft|active|paused|archived), `summary`, `goal`, `audience`, `timeline`, `budget`, `channels jsonb`, `brief text` (markdown body), `source_chat_thread_id`, `source_specialist`, `created_at`, `updated_at`, `activated_at`, `archived_at`. RLS scoped to `tenant_id = auth.uid()::text`. Migration: [db/migrations/2026-06-05-campaign-plans.sql](db/migrations/2026-06-05-campaign-plans.sql).
 - `generation_usage` — per-job AI generation cost tracking. Columns: `id uuid`, `tenant_id text`, `provider text` (runware/replicate/heygen/higgsfield/elevenlabs), `model text`, `job_type text` (image/video/voice/avatar), `job_id text`, `cost_estimate numeric`, `status text`, `created_at timestamptz`. Written by `/api/generate` on every generate_image and generate_video call (fire-and-forget, non-blocking). RLS: tenant can read own rows. Migration: [supabase/migrations/2026-05-24-generation-usage.sql](supabase/migrations/2026-05-24-generation-usage.sql).
 
 ---

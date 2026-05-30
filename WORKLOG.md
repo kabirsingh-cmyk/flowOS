@@ -4,26 +4,44 @@ Reverse-chronological record of notable changes. New entries on top.
 
 ---
 
-## 2026-05-29 · PR D1 — Zernio lib extraction follow-through
+## 2026-05-29 · PR C1 — Campaign draft persistence
 
-**Scope:** Refactor `api/zernio.js` to consume the shared lib modules instead of inlining the maps + client. No behavior changes; all 12 actions preserved.
+**Scope:** Persist chat-authored campaign plans across refreshes. New `campaign_plans` table + `/api/campaign-plans` CRUD route + store hydration + CampaignPlanner sidebar with lifecycle controls.
 
 ### Changes
-- **[api/zernio.js](api/zernio.js)** — replaced inline declarations with imports from `./lib/zernioMap.js` and `./lib/zernioClient.js`:
-  - Removed: `ZERNIO_BASE`, `PLATFORM_ID_MAP`, `ZERNIO_TO_FLOWOS`, `SUPPORTED_PLATFORMS`, `ADS_TO_ORGANIC`, `resolvePlatform`, `flowOSId`, `zernioHeaders`, `zernioFetch`, `sbHeaders`, `getZernioProfileId`, `storeZernioProfileId`, `getOrCreateZernioProfile`, `getZernioAccountId` (all duplicates of lib exports).
-  - Kept: `buildMediaArray` (post-construction helper, not in lib), all 12 action handlers, the action router.
-  - Wherever the old code called `getZernioProfileId` (read-only, no-create) — `connection_status`, `get_dms`, `get_comments`, `resolve_authors` — now calls `getCachedZernioProfile` from the lib (same semantics).
-  - File size: 673 → 505 lines (-168, ~25%).
+- **[db/migrations/2026-06-05-campaign-plans.sql](db/migrations/2026-06-05-campaign-plans.sql)** — NEW. `campaign_plans` table with `status` (draft|active|paused|archived), timestamp columns (`activated_at`, `archived_at`), and full plan fields (title, summary, goal, audience, timeline, budget, channels jsonb, brief, source tracking). RLS scoped to `tenant_id = auth.uid()::text`.
+- **[api/campaign-plans.js](api/campaign-plans.js)** — NEW edge route. Actions: `list_plans`, `get_plan`, `create_plan`, `update_plan`, `activate_plan`, `pause_plan`, `archive_plan`, `delete_plan` (drafts only). All `requireAuth`; `tenantId` from JWT only.
+- **[app/store.jsx](app/store.jsx)** — APPEND-ONLY `// === TRACK CLAUDE: LEADS + CAMPAIGNS ===` block:
+  - New state slice: `campaignPlans: []`.
+  - Reducer cases: `CAMPAIGN_PLAN_LOAD`, `CAMPAIGN_PLAN_UPSERT`, `CAMPAIGN_PLAN_REMOVE`.
+  - Actions: `loadCampaignPlans`, `createCampaignPlan`, `updateCampaignPlan`, `activateCampaignPlan`, `pauseCampaignPlan`, `archiveCampaignPlan`, `deleteCampaignPlan`.
+  - **`setActivePlan` extended** (one targeted surgical change to an existing action) — when the chat emits a plan without an id, fire-and-forget `createCampaignPlan` and re-dispatch with the DB-stamped id so subsequent edits patch the same row. Existing callers untouched.
+- **[app/workspaces2.jsx](app/workspaces2.jsx)** — `CampaignPlanner` now renders a 2-col layout (260px sidebar + main):
+  - `CampaignPlansSidebar` — filter chips (all/draft/active/paused/archived), counts, status pill per row, inline state-machine-aware buttons (Activate/Pause/Resume/Archive), "New" draft button.
+  - Hydration on mount: `useEffect2(() => actions.loadCampaignPlans?.(), [])`.
+  - Default grid view extracted to `DefaultGrid` so it can compose with the sidebar without bloating the parent render. Props are exactly the state CampaignPlanner already maintained — no behavior change in the grid itself.
+- **[CLAUDE.md](CLAUDE.md)** — documented `state.campaignPlans` shape, `campaign_plans` table, and `/api/campaign-plans` route.
+
+### Lifecycle
+```
+chat-emitted brief → setActivePlan() → dual-write → row in campaign_plans (status=draft)
+                                                  → state.activePlan now has DB id
+sidebar click "Activate" → activateCampaignPlan() → status='active', activated_at=now
+sidebar click "Pause"    → pauseCampaignPlan()    → status='paused'
+sidebar click "Archive"  → archiveCampaignPlan()  → status='archived', archived_at=now
+sidebar click "New"      → setActivePlan(empty)   → fresh draft row + focus
+```
+
+### Race / scope notes
+- If the user dismisses an active plan before the dual-write returns, the late re-dispatch will re-open it. Acceptable for first cut — user re-dismisses.
+- `delete_plan` is hard-delete and only allowed for drafts. Active/paused/archived must go through archive (preserves history).
+- Acceptance criterion "draft from a plan carries plan id as `sourceBriefId`" was already wired pre-C1 — `addDraft(..., sourceBriefId)` exists. With plans now having persistent ids, the link is durable.
 
 ### Verification
-- `node --check api/zernio.js` ✅
-- `node --check api/lib/zernioClient.js` ✅
-- `node --check api/lib/zernioMap.js` ✅
+- `node --check api/campaign-plans.js` ✅
+- `npx esbuild app/store.jsx --loader:.jsx=jsx --bundle` ✅
+- `npx esbuild app/workspaces2.jsx --loader:.jsx=jsx --bundle` ✅
 - `node scripts/health-check.mjs` ✅ (2 pre-existing cron-schedule warnings only)
-
-### Notes for next reader
-- `api/paid-social.js` already consumes the same lib modules — this PR brings `api/zernio.js` to parity.
-- No callers of `api/zernio.js` change (no exported helpers were removed; the actions are still POSTed via the same JSON shapes).
 
 ---
 

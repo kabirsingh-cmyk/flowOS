@@ -137,6 +137,15 @@ function mveda_initialState({ seedMode = null, userId = null } = {}) {
     // default grid view when null.
     // Shape: { title, summary, itemCount, goal, audience, timeline, budget, channels[], brief (markdown), createdAt }
     activePlan: null,
+
+    // === TRACK CLAUDE: LEADS + CAMPAIGNS ===
+    // Persistent campaign plans hydrated from /api/campaign-plans (PR C1).
+    // Each row: { id, tenantId, title, status, summary, goal, audience,
+    //   timeline, budget, channels[], brief, sourceChatThreadId, sourceSpecialist,
+    //   createdAt, updatedAt, activatedAt, archivedAt }
+    // status ∈ draft | active | paused | archived
+    campaignPlans: [],
+    // === END TRACK CLAUDE ===
   };
 }
 
@@ -602,24 +611,26 @@ function mveda_reducer(s, a) {
       return { ...s, connectors: next };
     }
     // === END TRACK B ===
-    // === TRACK KIMI: INBOX + INSIGHTS ===
-    case "INBOX_TRIAGE_LOAD": {
-      return { ...s, inbox: a.items || [] };
+    // === TRACK CLAUDE: LEADS + CAMPAIGNS ===
+    case "CAMPAIGN_PLAN_LOAD": {
+      // Replace the whole list (called by loadCampaignPlans after a fresh fetch).
+      const plans = Array.isArray(a.plans) ? a.plans : [];
+      return { ...s, campaignPlans: plans };
     }
-    case "INBOX_TRIAGE_PATCH": {
-      return { ...s, inbox: s.inbox.map(i => i.id === a.id ? { ...i, ...a.patch } : i) };
+    case "CAMPAIGN_PLAN_UPSERT": {
+      // Insert or merge a single plan row. Used after create/update/status transitions.
+      if (!a.plan?.id) return s;
+      const idx = s.campaignPlans.findIndex(p => p.id === a.plan.id);
+      const next = idx >= 0
+        ? s.campaignPlans.map((p, i) => i === idx ? { ...p, ...a.plan } : p)
+        : [a.plan, ...s.campaignPlans];
+      return { ...s, campaignPlans: next };
     }
-    case "INBOX_ARCHIVE": {
-      return { ...s,
-        inbox: s.inbox.map(i => i.id === a.id ? { ...i, status: "archived", archivedAt: new Date().toISOString() } : i),
-        activity: [log("Ana O.", `archived · ${s.inbox.find(i=>i.id===a.id)?.author || a.id}`), ...s.activity],
-        notifications: [notify("neutral", "Archived"), ...s.notifications],
-      };
+    case "CAMPAIGN_PLAN_REMOVE": {
+      if (!a.id) return s;
+      return { ...s, campaignPlans: s.campaignPlans.filter(p => p.id !== a.id) };
     }
-    case "INSIGHTS_LOAD": {
-      return { ...s, insightCards: a.cards || [] };
-    }
-    // === END TRACK KIMI ===
+    // === END TRACK CLAUDE ===
     default: return s;
   }
 }
@@ -701,7 +712,32 @@ function useMvedaStore(seedMode = null, userId = null) {
       dispatch({ type: "PROACTIVE_SMS_UPDATE", id, patch, notify: opts.notify }),
     removeProactiveSms: (id, opts = {}) =>
       dispatch({ type: "PROACTIVE_SMS_REMOVE", id, notify: opts.notify }),
-    setActivePlan: (plan) => dispatch({ type: "ACTIVE_PLAN_SET", plan }),
+    // PR C1: dispatches as before AND fires a one-time DB persist so the
+    // chat-emitted plan survives refresh. If the plan already has a DB id
+    // (came from loadCampaignPlans or createCampaignPlan), the persist is
+    // skipped. Fire-and-forget — on failure the plan stays in-memory and the
+    // user can retry via the Save button in CampaignPlanner.
+    setActivePlan: (plan) => {
+      dispatch({ type: "ACTIVE_PLAN_SET", plan });
+      if (plan && !plan.id && window.apiFetch) {
+        actions.createCampaignPlan({
+          title:              plan.title || "Untitled campaign",
+          summary:            plan.summary,
+          goal:               plan.goal,
+          audience:           plan.audience,
+          timeline:           plan.timeline,
+          budget:             plan.budget,
+          channels:           plan.channels,
+          brief:              plan.brief,
+          sourceSpecialist:   "campaign_planner",
+        }).then(r => {
+          if (r.ok && r.plan?.id) {
+            // Re-dispatch with the DB id stamped so subsequent edits patch the same row.
+            dispatch({ type: "ACTIVE_PLAN_SET", plan: { ...plan, id: r.plan.id } });
+          }
+        }).catch(() => {});
+      }
+    },
     clearActivePlan: () => dispatch({ type: "ACTIVE_PLAN_CLEAR" }),
 
     // === TRACK A: PUBLISHING + ADS ===
@@ -816,13 +852,143 @@ function useMvedaStore(seedMode = null, userId = null) {
     loadAccountHealth: (items) =>
       dispatch({ type: "CONN_HEALTH_LOAD", items: items || [] }),
     // === END TRACK B ===
-    // === TRACK KIMI: INBOX + INSIGHTS ===
-    loadInbox:        (items)      => dispatch({ type: "INBOX_TRIAGE_LOAD", items }),
-    triageInboxItem:  (id, triage) => dispatch({ type: "INBOX_TRIAGE_PATCH", id, patch: triage }),
-    draftInboxReply:  (id, draft)  => dispatch({ type: "INBOX_TRIAGE_PATCH", id, patch: { draft } }),
-    archiveInboxItem: (id)         => dispatch({ type: "INBOX_ARCHIVE", id }),
-    loadInsightCards: (cards)      => dispatch({ type: "INSIGHTS_LOAD", cards }),
-    // === END TRACK KIMI ===
+    // === TRACK CLAUDE: LEADS + CAMPAIGNS ===
+    // All campaign-plan helpers wrap window.apiFetch + dispatch.
+    // Each resolves to { ok, plan? } so callers can toast/log.
+    loadCampaignPlans: async ({ status } = {}) => {
+      try {
+        const res = await window.apiFetch("/api/campaign-plans", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ action: "list_plans", ...(status ? { status } : {}) }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) return { ok: false, error: data.error || `HTTP ${res.status}` };
+        // DB rows come back snake_case; expose them as-is + add a camelCase mirror
+        // for the few fields the UI reads frequently.
+        const plans = (data.rows || []).map(row => ({
+          ...row,
+          createdAt:   row.created_at,
+          updatedAt:   row.updated_at,
+          activatedAt: row.activated_at,
+          archivedAt:  row.archived_at,
+        }));
+        dispatch({ type: "CAMPAIGN_PLAN_LOAD", plans });
+        // If a plan is currently active in the UI and we just hydrated a fresher
+        // copy of it, sync activePlan so it doesn't show stale data after refresh.
+        return { ok: true, plans };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    },
+    createCampaignPlan: async (plan) => {
+      try {
+        const res = await window.apiFetch("/api/campaign-plans", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ action: "create_plan", ...plan }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          dispatch({ type: "NOTIFY", tone: "warn", text: `Plan create failed: ${data.error || res.status}` });
+          return { ok: false, error: data.error || `HTTP ${res.status}` };
+        }
+        dispatch({ type: "CAMPAIGN_PLAN_UPSERT", plan: data.plan });
+        return { ok: true, plan: data.plan };
+      } catch (e) {
+        dispatch({ type: "NOTIFY", tone: "warn", text: `Plan create failed: ${e.message}` });
+        return { ok: false, error: e.message };
+      }
+    },
+    updateCampaignPlan: async (id, patch) => {
+      if (!id) return { ok: false, error: "id required" };
+      try {
+        const res = await window.apiFetch("/api/campaign-plans", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ action: "update_plan", id, ...patch }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) return { ok: false, error: data.error || `HTTP ${res.status}` };
+        dispatch({ type: "CAMPAIGN_PLAN_UPSERT", plan: data.plan });
+        return { ok: true, plan: data.plan };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    },
+    // Status transitions — thin wrappers that hit /api/campaign-plans and
+    // patch the matching row in state.campaignPlans. They DO NOT touch
+    // state.activePlan; that's the caller's responsibility (CampaignPlanner
+    // sidebar manages focus).
+    activateCampaignPlan: async (id) => {
+      if (!id) return { ok: false, error: "id required" };
+      try {
+        const res = await window.apiFetch("/api/campaign-plans", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ action: "activate_plan", id }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          dispatch({ type: "NOTIFY", tone: "warn", text: `Activate failed: ${data.error || res.status}` });
+          return { ok: false, error: data.error || `HTTP ${res.status}` };
+        }
+        dispatch({ type: "CAMPAIGN_PLAN_UPSERT", plan: data.plan });
+        dispatch({ type: "NOTIFY", tone: "ok", text: `Activated: ${data.plan.title}` });
+        return { ok: true, plan: data.plan };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    },
+    pauseCampaignPlan: async (id) => {
+      if (!id) return { ok: false, error: "id required" };
+      try {
+        const res = await window.apiFetch("/api/campaign-plans", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ action: "pause_plan", id }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) return { ok: false, error: data.error || `HTTP ${res.status}` };
+        dispatch({ type: "CAMPAIGN_PLAN_UPSERT", plan: data.plan });
+        return { ok: true, plan: data.plan };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    },
+    archiveCampaignPlan: async (id) => {
+      if (!id) return { ok: false, error: "id required" };
+      try {
+        const res = await window.apiFetch("/api/campaign-plans", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ action: "archive_plan", id }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) return { ok: false, error: data.error || `HTTP ${res.status}` };
+        dispatch({ type: "CAMPAIGN_PLAN_UPSERT", plan: data.plan });
+        return { ok: true, plan: data.plan };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    },
+    deleteCampaignPlan: async (id) => {
+      if (!id) return { ok: false, error: "id required" };
+      try {
+        const res = await window.apiFetch("/api/campaign-plans", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ action: "delete_plan", id }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) return { ok: false, error: data.error || `HTTP ${res.status}` };
+        dispatch({ type: "CAMPAIGN_PLAN_REMOVE", id });
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    },
+    // === END TRACK CLAUDE ===
   };
   return [state, actions];
 }

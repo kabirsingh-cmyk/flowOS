@@ -212,6 +212,158 @@ function ActivePlanView({ plan, actions, go }) {
   );
 }
 
+// ────────────────────────────── CAMPAIGN PLANS SIDEBAR (PR C1) ───────────────
+// Persistent plans hydrated from /api/campaign-plans. Sits left of the planner
+// content. Filter chips by status. Click a row → setActivePlan focuses it.
+const STATUS_ORDER = { draft: 0, active: 1, paused: 2, archived: 3 };
+const STATUS_COLOR = {
+  draft:    "oklch(72% 0.04 240)",
+  active:   "oklch(62% 0.14 155)",
+  paused:   "oklch(72% 0.1 85)",
+  archived: "oklch(58% 0.02 240)",
+};
+
+function CampaignPlansSidebar({ state, actions }) {
+  const [filter, setFilter] = useState2("all");
+  const plans  = state.campaignPlans || [];
+  const active = state.activePlan;
+
+  const filtered = useMemo2(() => {
+    const list = filter === "all" ? plans : plans.filter(p => p.status === filter);
+    return [...list].sort((a, b) => {
+      const so = (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9);
+      if (so !== 0) return so;
+      return new Date(b.updated_at || b.updatedAt || 0) - new Date(a.updated_at || a.updatedAt || 0);
+    });
+  }, [plans, filter]);
+
+  const counts = useMemo2(() => {
+    const c = { all: plans.length, draft: 0, active: 0, paused: 0, archived: 0 };
+    for (const p of plans) c[p.status] = (c[p.status] || 0) + 1;
+    return c;
+  }, [plans]);
+
+  const focusPlan = (plan) => {
+    // setActivePlan dispatches ACTIVE_PLAN_SET. Because plan.id is already set
+    // (DB-persisted), the auto-dual-write in store.jsx is a no-op.
+    actions.setActivePlan(plan);
+  };
+
+  const newDraft = () => {
+    actions.setActivePlan({
+      title:    "Untitled campaign",
+      summary:  "",
+      goal:     "",
+      audience: "",
+      timeline: "",
+      budget:   "",
+      channels: [],
+      brief:    "",
+    });
+  };
+
+  const onAction = (e, plan, kind) => {
+    e.stopPropagation();
+    if (kind === "activate") return actions.activateCampaignPlan(plan.id);
+    if (kind === "pause")    return actions.pauseCampaignPlan(plan.id);
+    if (kind === "archive")  return actions.archiveCampaignPlan(plan.id);
+  };
+
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column", height: "100%",
+      borderRight: "1px solid var(--rule)", background: "var(--paper)",
+      overflow: "hidden",
+    }}>
+      <div style={{ padding: "16px 16px 10px", borderBottom: "1px solid var(--rule)" }}>
+        <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Plans</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+          <div style={{ fontSize: 13, fontWeight: 500 }}>{counts.all} total</div>
+          <Btn size="sm" variant="ghost" onClick={newDraft}><Icon name="plus" size={11}/> New</Btn>
+        </div>
+        <div style={{ display: "flex", gap: 4, marginTop: 8, flexWrap: "wrap" }}>
+          {["all","draft","active","paused","archived"].map(k => (
+            <button key={k} onClick={() => setFilter(k)}
+              style={{
+                padding: "3px 8px", border: 0, borderRadius: 3,
+                background: filter === k ? "var(--paper-3)" : "transparent",
+                color:      filter === k ? "var(--ink)" : "var(--ink-2)",
+                fontSize: 10.5, fontFamily: "var(--font-sans)", cursor: "pointer",
+                fontWeight: 500, textTransform: "capitalize",
+              }}>{k}{counts[k] != null && counts[k] !== counts.all ? ` (${counts[k]})` : ""}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+        {filtered.length === 0 ? (
+          <div style={{ padding: 20, color: "var(--muted)", fontSize: 12 }}>
+            {filter === "all"
+              ? "No plans yet. Ask Flow to draft a campaign in chat, or click New."
+              : `No ${filter} plans.`}
+          </div>
+        ) : filtered.map(p => {
+          const isActive = active?.id === p.id;
+          return (
+            <div key={p.id} onClick={() => focusPlan(p)}
+              style={{
+                padding: "10px 14px", borderBottom: "1px solid var(--rule)",
+                cursor: "pointer",
+                background: isActive ? "var(--accent-wash)" : "transparent",
+                borderLeft: isActive ? "2px solid var(--accent)" : "2px solid transparent",
+              }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                <span style={{
+                  width: 6, height: 6, borderRadius: "50%",
+                  background: STATUS_COLOR[p.status] || STATUS_COLOR.draft,
+                  flexShrink: 0,
+                }}/>
+                <span style={{
+                  fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.06em",
+                  color: "var(--muted)",
+                }}>{p.status}</span>
+              </div>
+              <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--ink)", marginBottom: 2, lineHeight: 1.3 }}>
+                {p.title || "Untitled"}
+              </div>
+              {p.summary && (
+                <div style={{
+                  fontSize: 11, color: "var(--muted)", lineHeight: 1.35,
+                  overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box",
+                  WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+                }}>{p.summary}</div>
+              )}
+              <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
+                {p.status === "draft" && (
+                  <button onClick={(e) => onAction(e, p, "activate")} style={miniBtn}>Activate</button>
+                )}
+                {p.status === "active" && (
+                  <>
+                    <button onClick={(e) => onAction(e, p, "pause")}   style={miniBtn}>Pause</button>
+                    <button onClick={(e) => onAction(e, p, "archive")} style={miniBtn}>Archive</button>
+                  </>
+                )}
+                {p.status === "paused" && (
+                  <>
+                    <button onClick={(e) => onAction(e, p, "activate")} style={miniBtn}>Resume</button>
+                    <button onClick={(e) => onAction(e, p, "archive")}  style={miniBtn}>Archive</button>
+                  </>
+                )}
+                {/* archived: no inline actions — read-only history */}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const miniBtn = {
+  padding: "2px 7px", border: "1px solid var(--rule-strong)", borderRadius: 3,
+  background: "var(--paper-2)", color: "var(--ink-2)", fontSize: 10.5,
+  fontFamily: "var(--font-sans)", cursor: "pointer", fontWeight: 500,
+};
+
 // ────────────────────────────── CAMPAIGN PLANNER ──────────────────────────────
 function CampaignPlanner({ state, actions, payload, go }) {
   const [dialogOpen, setDialogOpen] = useState2(false);
@@ -226,6 +378,10 @@ function CampaignPlanner({ state, actions, payload, go }) {
     if (payload?.openNew) setDialogOpen(true);
     if (payload?.filterStatus) setStatusFilter(payload.filterStatus);
   }, [payload?.openNew, payload?.filterStatus]);
+
+  // PR C1: hydrate persisted plans once when the workspace opens.
+  // Subsequent dispatches keep state.campaignPlans in sync optimistically.
+  useEffect2(() => { actions.loadCampaignPlans?.(); }, []);
 
   let filtered = state.calendar;
   if (filter && filter !== "all") filtered = filtered.filter(ci => ci.channel === filter);
@@ -260,12 +416,32 @@ function CampaignPlanner({ state, actions, payload, go }) {
     return g;
   }, [filtered]);
 
-  // If the chat has authored a campaign brief, render it instead of the default grid.
-  // Hooks above run unconditionally so React's hooks order stays stable as activePlan toggles.
-  if (state.activePlan) {
-    return <ActivePlanView plan={state.activePlan} actions={actions} go={go}/>;
-  }
+  // PR C1: 2-col layout — persisted plans sidebar (260px) + main content.
+  // Main content is either ActivePlanView (when a plan is focused) or the
+  // default weekly grid.
+  const mainContent = state.activePlan
+    ? <ActivePlanView plan={state.activePlan} actions={actions} go={go}/>
+    : (<DefaultGrid
+        state={state} actions={actions} go={go}
+        channels={channels} days={days} dates={dates}
+        byDay={byDay} filter={filter} setFilter={setFilter}
+        statusFilter={statusFilter} setStatusFilter={setStatusFilter}
+        dialogOpen={dialogOpen} setDialogOpen={setDialogOpen}
+        newlyAdded={newlyAdded} addCampaign={addCampaign}
+      />);
 
+  return (
+    <div className="anim-fade" style={{ display: "grid", gridTemplateColumns: "260px 1fr", height: "100%", overflow: "hidden" }}>
+      <CampaignPlansSidebar state={state} actions={actions}/>
+      <div style={{ minHeight: 0, overflowY: "auto" }}>{mainContent}</div>
+    </div>
+  );
+}
+
+// DefaultGrid — the pre-C1 grid view, extracted so CampaignPlanner can compose
+// it with the new sidebar without a giant inline render. Props are exactly the
+// state CampaignPlanner already maintained.
+function DefaultGrid({ state, actions, go, channels, days, dates, byDay, filter, setFilter, statusFilter, setStatusFilter, dialogOpen, setDialogOpen, newlyAdded, addCampaign }) {
   return (
     <div className="anim-fade" style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: 20, height: "100%" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
