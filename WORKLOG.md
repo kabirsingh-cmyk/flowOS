@@ -4,6 +4,92 @@ Reverse-chronological record of notable changes. New entries on top.
 
 ---
 
+## 2026-05-29 · C4 verdict — paid-social provider routing
+
+**Scope:** Read-only spike. No code changes.
+
+Verified end-to-end whether the 5 paid-social platforms (metaads, liads, ttads, xads, pinads) route through Zernio or Composio. Settled following a contradictory claim that Composio was still in the Connect path.
+
+### Ground truth (per platform)
+
+- **metaads** — Connect: `/api/zernio` (seed `provider: "zernio"`). Actions: `/api/paid-social` → `zernioFetch` → Zernio `/ads/*`. ✅ all-Zernio.
+- **liads** — Connect: `/api/zernio`. Actions: `/api/paid-social` → Zernio. ✅ all-Zernio.
+- **ttads** — Connect: `/api/zernio`. Actions: `/api/paid-social` → Zernio. ✅ all-Zernio.
+- **xads** — Connect: `/api/zernio`. Actions: `/api/paid-social` → Zernio. ✅ all-Zernio.
+- **pinads** — Connect: `/api/zernio`. Actions: `/api/paid-social` → Zernio. ✅ all-Zernio.
+
+### Evidence
+
+- [app/seed.jsx:118-122](app/seed.jsx) — every paid-social row has `provider: "zernio"`.
+- [app/workspaces4.jsx:22-25](app/workspaces4.jsx) — `providerApiPath("zernio") → "/api/zernio"`; OAuth Connect flow in `handleConnectSubmit` (~line 715) uses that path.
+- [api/paid-social.js:31-35](api/paid-social.js) — imports only `zernioFetch`, `requireZernioAccountId`, `resolveAdsPlatform`, `SUPPORTED_PAID_PLATFORMS`. No Composio imports anywhere in the file. Env: `ZERNIO_API_KEY`. All action handlers (`list_campaigns`, `create_campaign`, `boost_post`, `bulk_status`, etc.) hit `/ads/*` Zernio endpoints.
+
+### Verdict
+
+All 5 paid-social platforms are consistently on Zernio for **both** Connect (OAuth) and Actions (campaigns, ad sets, ads, analytics). The earlier "Composio for Connect" claim was incorrect — no Composio surface remains on the paid-social path. No follow-up needed; no `FOLLOWUP-C4.md` filed.
+
+---
+
+## 2026-05-29 · PR M3 — Real Reddit subreddit search via Zernio
+
+**Scope:** Replace the stub `search_subreddits` handler in `api/reddit.js` with a real implementation that searches Reddit posts via Zernio's `/v1/reddit/search` endpoint and extracts unique subreddits from the results.
+
+### Changes
+- **[api/reddit.js](api/reddit.js)** — `search_subreddits` action:
+  - Fetches the tenant's Reddit accountId via `getZernioAccountId`
+  - Calls `GET /v1/reddit/search?q=<query>&accountId=<id>&limit=25&sort=relevance`
+  - Extracts unique subreddits from returned posts (name + first 120 chars of selftext as description)
+  - Returns `{ ok: true, subreddits: [...] }` matching the UI contract
+  - Gracefully returns `[]` when Reddit is not connected (no 500)
+  - Empty query returns `[]` cleanly
+
+### Acceptance
+- Zernio search returns real posts; unique subreddits extracted from them
+- Empty query → `[]`, no error
+- Reddit not connected → `[]`, no error
+
+---
+
+## 2026-05-29 · PR M2 — Prune merged local branches
+
+Deleted 21 merged-to-main local branches:
+
+```
+chore/auth-rls-audit
+chore/backlog-engine
+chore/connector-cleanup-drops
+chore/remove-publer
+docs/audit-backlog
+feat/brand-voice
+feat/campaign-planner
+feat/connectors-redesign-composio-e2e
+feat/direct-connectors-ab-testing-audiostack-wordpress
+feat/direct-connectors-image-video
+feat/direct-connectors-oauth-msads-attentive
+feat/drafter-channel-format-rules
+feat/fix-insights-center
+feat/klaviyo-sms
+feat/proactive-email-drafts
+feat/proactive-sms-image-drawer
+feat/runware-provider-adapter
+feat/scheduled-posting
+feat/scheduled-posts
+feat/seo-auditor
+fix/dark-theme-workspace-buttons
+```
+
+No force-deleted branches — all were cleanly merged.
+
+## 2026-05-29 · PR M1 — Remove legacy app.html
+
+**Scope:** Delete `app.html` (legacy Babel-CDN entry point) and update `server.py` to serve `index.html` (Vite entry) at `/`.
+
+### Changes
+- **app.html** — deleted. Was the Babel-CDN era entry with Jost/Cormorant fonts; `index.html` is the live Vite entry with Inter Tight fonts. No deploy config referenced it.
+- **server.py** — updated `do_GET` to serve `/index.html` at root, updated startup URL print.
+
+---
+
 ## 2026-05-28 · Track B · Phase 4 PR B.3 — Cohort drill-downs (demographics)
 
 **Scope:** Persist and surface demographic breakdowns from Instagram and YouTube analytics. New `analytics_cohorts` table, cron extraction, and audience-breakdown UI cards.
