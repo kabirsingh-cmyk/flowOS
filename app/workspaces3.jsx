@@ -1863,15 +1863,18 @@ function InboxEscalation({ state, actions }) {
             author: row.author_name || row.author_handle || "Unknown",
             source: `${row.platform} · ${row.event_type}`,
             text: row.text || "",
-            risk: row.risk || "low",
+            sourceUrl: row.source_url || null,
+            risk: row.risk || "low",                            // re-derived from triage urgency at render
             status: row.status || "open",
             draft: row.ai_draft || "",
             reason: row.ai_triage_note || "",
+            raw: row.raw || null,                               // Bluesky reply needs cid/rootUri/rootCid
             timeAgo: timeAgoFromDate(row.created_at),
             category: row.event_type,
             platform: row.platform,
             eventType: row.event_type,
             externalId: row.external_id,
+            parentExternalId: row.parent_external_id,
           })));
         } else {
           setFetchedItems([]);
@@ -1893,11 +1896,28 @@ function InboxEscalation({ state, actions }) {
     };
   }, []);
 
-  const inboxSource = (fetchedItems && fetchedItems.length > 0) ? fetchedItems : state.inbox;
-  const open     = inboxSource.filter(i => i.status !== "replied" && i.status !== "archived");
-  const urgent   = open.filter(i => i.risk === "high" || i.risk === "medium")
-                       .sort((a, b) => (a.risk === "high" ? -1 : b.risk === "high" ? 1 : 0));
-  const ready    = open.filter(i => i.risk === "low");
+  // R7 — derive risk at render time from parsed triage urgency. The pull
+  // path always writes risk='low' to the DB (correct: it's a placeholder
+  // until triage runs), so reading the column alone collapses every fetched
+  // row into the "ready" bucket. We re-evaluate per-row after parsing the
+  // triage note. Webhook-set risk (e.g. low-rating reviews → high) still
+  // wins because we only override when triage urgency is present.
+  function deriveRisk(item) {
+    try {
+      const t = item.reason ? JSON.parse(item.reason) : null;
+      if (t?.urgency === "high")   return "high";
+      if (t?.urgency === "medium") return "medium";
+      if (t?.urgency === "low")    return "low";
+    } catch { /* legacy plain-text reason — fall through */ }
+    return item.risk || "low";
+  }
+
+  const rawSource   = (fetchedItems && fetchedItems.length > 0) ? fetchedItems : state.inbox;
+  const inboxSource = rawSource.map(i => ({ ...i, risk: deriveRisk(i) }));
+  const open        = inboxSource.filter(i => i.status !== "replied" && i.status !== "archived");
+  const urgent      = open.filter(i => i.risk === "high" || i.risk === "medium")
+                          .sort((a, b) => (a.risk === "high" ? -1 : b.risk === "high" ? 1 : 0));
+  const ready       = open.filter(i => i.risk === "low");
 
   const defaultId = (urgent[0] || ready[0])?.id;
   const [selectedId, setSelectedId] = useState3(defaultId);
@@ -1962,27 +1982,43 @@ function InboxEscalation({ state, actions }) {
     sb.from("inbox_events").update({ status: "archived", archived_at: nowIso }).eq("id", item.id).then(() => {}, () => {});
   };
 
-  const INBOX_CHANNEL_NAMES = ["Instagram", "LinkedIn", "TikTok", "Facebook", "X", "Twitter", "YouTube", "Email", "Pinterest"];
+  // Map FlowOS short connector IDs → display names used in state.channelRules.
+  // PR K3 will replace this with the capability matrix from
+  // api/lib/inboxCapabilities.js. Keep it minimal here: the rule lookup is
+  // the only consumer, and matching on platform (the row column) is far more
+  // robust than matching on source-label substring.
+  const PLATFORM_TO_RULE_NAME = {
+    fb: "Facebook", ig: "Instagram", li: "LinkedIn", x: "X",
+    yt: "YouTube",  reddit: "Reddit", bluesky: "Bluesky", threads: "Threads",
+  };
+
   const sendReply = async (item, replyDraft) => {
-    // Enforce reply rule from Autonomy Settings
-    const matchedChannel = INBOX_CHANNEL_NAMES.find(ch => (item.source || "").startsWith(ch));
-    const rule = matchedChannel ? (state.channelRules || []).find(r => r.name === matchedChannel) : null;
+    const ruleName = PLATFORM_TO_RULE_NAME[item.platform] || null;
+    const rule = ruleName ? (state.channelRules || []).find(r => r.name === ruleName) : null;
     if (rule && rule.reply === "n/a") {
-      actions.notify("warn", `${matchedChannel}: replies not configured — check Autonomy Settings`);
+      actions.notify("warn", `${ruleName}: replies not configured — check Autonomy Settings`);
       return;
     }
 
-    // Daily cap enforcement for auto mode
-    if (state.autonomyMode === "auto" && rule && rule.reply === "auto") {
+    // Structural blocks before any network call.
+    if (item.platform === "li" && item.eventType === "dm") {
+      actions.notify("warn", "LinkedIn DMs aren't exposed by Zernio — reply via the LinkedIn app.");
+      return;
+    }
+
+    // Per-channel daily auto-reply cap (was global pre-K2). Bucket by the
+    // row's platform so a busy IG day doesn't starve a quiet FB account.
+    if (state.autonomyMode === "auto" && rule && rule.reply === "auto" && item.platform) {
       const startOfDay = new Date();
       startOfDay.setUTCHours(0, 0, 0, 0);
       const { count, error } = await sb
         .from("inbox_events")
         .select("id", { count: "exact" })
         .eq("status", "replied")
+        .eq("platform", item.platform)
         .gte("updated_at", startOfDay.toISOString());
       if (!error && count >= state.thresholds.dailyCap) {
-        actions.notify("warn", `Daily auto-reply cap reached (${state.thresholds.dailyCap}) — reply queued for manual review`);
+        actions.notify("warn", `${ruleName}: daily auto-reply cap reached (${state.thresholds.dailyCap}) — reply queued for manual review`);
         return;
       }
     }
@@ -2009,7 +2045,19 @@ function InboxEscalation({ state, actions }) {
     if (action === "reply_dm") {
       payload.conversation_id = item.externalId;
     } else {
+      // Comment reply requires the parent post_id in the URL path. Captured
+      // by normalizeComment into parent_external_id during K2.
+      if (!item.parentExternalId) {
+        actions.notify("danger", "Reply failed — missing parent post id (re-sync the inbox).");
+        return;
+      }
+      payload.post_id    = item.parentExternalId;
       payload.comment_id = item.externalId;
+      // Bluesky needs ATProto refs on every reply; pluck from raw if present.
+      const r = item.raw || {};
+      if (r.cid)     payload.parent_cid = r.cid;
+      if (r.rootUri) payload.root_uri   = r.rootUri;
+      if (r.rootCid) payload.root_cid   = r.rootCid;
     }
 
     try {
@@ -2020,6 +2068,12 @@ function InboxEscalation({ state, actions }) {
       });
       const result = await res.json().catch(() => ({ ok: false, error: "Invalid response" }));
       if (!result.ok) {
+        // Defensive: X DM Pro-tier surfaces as a structured 403 from the
+        // server. Show a clearer message than the raw error string.
+        if ((result.error || "").includes("X_DM_PRO_TIER_REQUIRED")) {
+          actions.notify("warn", "X DM reply requires X API Pro tier — manual reply on x.com.");
+          return;
+        }
         actions.notify("danger", `Reply failed — ${result.error || "check connection"}`);
         return;
       }
@@ -2134,6 +2188,12 @@ function InboxEscalation({ state, actions }) {
             <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid var(--rule)" }}>
               <div className="mono" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
                 {selected.source} · {selected.timeAgo} ago
+                {selected.sourceUrl && (
+                  <> · <a href={selected.sourceUrl} target="_blank" rel="noopener noreferrer"
+                          style={{ color: "var(--accent-ink)", textDecoration: "underline" }}>
+                    View original
+                  </a></>
+                )}
               </div>
               <div style={{ fontSize: 20, fontWeight: 500, letterSpacing: "-0.02em" }}>{selected.author}</div>
               <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
