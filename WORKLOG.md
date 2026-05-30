@@ -4,29 +4,26 @@ Reverse-chronological record of notable changes. New entries on top.
 
 ---
 
-## 2026-05-29 · C4 verdict — paid-social provider routing
+## 2026-05-29 · PR D1 — Zernio lib extraction follow-through
 
-**Scope:** Read-only spike. No code changes.
+**Scope:** Refactor `api/zernio.js` to consume the shared lib modules instead of inlining the maps + client. No behavior changes; all 12 actions preserved.
 
-Verified end-to-end whether the 5 paid-social platforms (metaads, liads, ttads, xads, pinads) route through Zernio or Composio. Settled following a contradictory claim that Composio was still in the Connect path.
+### Changes
+- **[api/zernio.js](api/zernio.js)** — replaced inline declarations with imports from `./lib/zernioMap.js` and `./lib/zernioClient.js`:
+  - Removed: `ZERNIO_BASE`, `PLATFORM_ID_MAP`, `ZERNIO_TO_FLOWOS`, `SUPPORTED_PLATFORMS`, `ADS_TO_ORGANIC`, `resolvePlatform`, `flowOSId`, `zernioHeaders`, `zernioFetch`, `sbHeaders`, `getZernioProfileId`, `storeZernioProfileId`, `getOrCreateZernioProfile`, `getZernioAccountId` (all duplicates of lib exports).
+  - Kept: `buildMediaArray` (post-construction helper, not in lib), all 12 action handlers, the action router.
+  - Wherever the old code called `getZernioProfileId` (read-only, no-create) — `connection_status`, `get_dms`, `get_comments`, `resolve_authors` — now calls `getCachedZernioProfile` from the lib (same semantics).
+  - File size: 673 → 505 lines (-168, ~25%).
 
-### Ground truth (per platform)
+### Verification
+- `node --check api/zernio.js` ✅
+- `node --check api/lib/zernioClient.js` ✅
+- `node --check api/lib/zernioMap.js` ✅
+- `node scripts/health-check.mjs` ✅ (2 pre-existing cron-schedule warnings only)
 
-- **metaads** — Connect: `/api/zernio` (seed `provider: "zernio"`). Actions: `/api/paid-social` → `zernioFetch` → Zernio `/ads/*`. ✅ all-Zernio.
-- **liads** — Connect: `/api/zernio`. Actions: `/api/paid-social` → Zernio. ✅ all-Zernio.
-- **ttads** — Connect: `/api/zernio`. Actions: `/api/paid-social` → Zernio. ✅ all-Zernio.
-- **xads** — Connect: `/api/zernio`. Actions: `/api/paid-social` → Zernio. ✅ all-Zernio.
-- **pinads** — Connect: `/api/zernio`. Actions: `/api/paid-social` → Zernio. ✅ all-Zernio.
-
-### Evidence
-
-- [app/seed.jsx:118-122](app/seed.jsx) — every paid-social row has `provider: "zernio"`.
-- [app/workspaces4.jsx:22-25](app/workspaces4.jsx) — `providerApiPath("zernio") → "/api/zernio"`; OAuth Connect flow in `handleConnectSubmit` (~line 715) uses that path.
-- [api/paid-social.js:31-35](api/paid-social.js) — imports only `zernioFetch`, `requireZernioAccountId`, `resolveAdsPlatform`, `SUPPORTED_PAID_PLATFORMS`. No Composio imports anywhere in the file. Env: `ZERNIO_API_KEY`. All action handlers (`list_campaigns`, `create_campaign`, `boost_post`, `bulk_status`, etc.) hit `/ads/*` Zernio endpoints.
-
-### Verdict
-
-All 5 paid-social platforms are consistently on Zernio for **both** Connect (OAuth) and Actions (campaigns, ad sets, ads, analytics). The earlier "Composio for Connect" claim was incorrect — no Composio surface remains on the paid-social path. No follow-up needed; no `FOLLOWUP-C4.md` filed.
+### Notes for next reader
+- `api/paid-social.js` already consumes the same lib modules — this PR brings `api/zernio.js` to parity.
+- No callers of `api/zernio.js` change (no exported helpers were removed; the actions are still POSTed via the same JSON shapes).
 
 ---
 
