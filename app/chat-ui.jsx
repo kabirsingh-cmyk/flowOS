@@ -98,6 +98,7 @@ function DraftCreatedCard({ artifact, onOpen }) {
           {platformLabel} · {artifact.contentType || "Post"}
         </span>
         <Chip tone="accent">draft</Chip>
+        {artifact.nonPublishable && <Chip tone="warn">draft only</Chip>}
       </div>
 
       {/* Copy body */}
