@@ -88,6 +88,48 @@ The `ad_analytics` drill-down (PR B.1) supports Meta/TikTok demographic breakdow
 
 ---
 
+## 2026-05-28 · Track A · PR 4c — Spark Ads UI + Lead Gen forms + conversions
+
+**Scope:** Phase 4 final chunk — surface TikTok Spark Ads in a Boost drawer, add Meta Lead Gen form CRUD with a third workspace sub-tab, add server-side `send_conversions` for Meta/Google/LinkedIn CAPI, and a `subscribe_lead` action on `/api/klaviyo` so leads can be pushed into Klaviyo with one click.
+
+### Changes
+
+- **[api/zernio-ads.js](api/zernio-ads.js)** — 5 new actions, all Meta-gated where appropriate:
+  - `lead_forms_list` — `GET /v1/ads/lead-forms` (Meta only).
+  - `lead_forms_get` — `GET /v1/ads/lead-forms/{formId}` (Meta only).
+  - `lead_forms_create` — `POST /v1/ads/lead-forms` (Meta only). Local validation: name, privacyPolicyUrl, and ≥1 question required before the call.
+  - `leads_list` — when `formId` is passed: `GET /v1/ads/lead-forms/{formId}/leads`. Otherwise the cross-form CRM view via `GET /v1/ads/leads`.
+  - `send_conversions` — `POST /v1/ads/conversions`. Platform inferred from `accountId` on Zernio's side; if the caller passes `platform` only, accountId is resolved from the connected channel. Pass-through for events / testCode / consent.
+
+- **[api/klaviyo.js](api/klaviyo.js)** — new action `subscribe_lead`:
+  - Wraps Composio's `KLAVIYO_CREATE_PROFILE` + optional `KLAVIYO_SUBSCRIBE_PROFILE_TO_MARKETING`.
+  - Takes `{ email?, phone?, firstName?, lastName?, properties?, listId? }`. Either email or phone is required.
+  - Handles the 409 "profile already exists" path by parsing the existing profile-id out of Klaviyo's conflict response.
+  - Returns `{ profileId, subscribed, create, subscribe }` for inline UI feedback.
+
+- **[app/ads-workspace.jsx](app/ads-workspace.jsx)** — three additions:
+  - **BoostDrawer** (new). Reachable from the Campaigns left column ("Boost existing post" button next to "+ New campaign"). Form: postId (with checkbox to switch to platform-native ID), goal picker, daily budget, then TargetingBuilder (with `showReach={false}` since the boost spec is smaller and Zernio's reach estimate is create-only). On TikTok the drawer surfaces the Spark Ads block: `sparkAuthCode` input, `linkUrl` (required when goal is traffic/conversion), `callToAction` picker with TikTok's standard CTA enum (LEARN_MORE / SHOP_NOW / DOWNLOAD_NOW / SIGN_UP / WATCH_NOW / GET_QUOTE / BOOK_NOW / CONTACT_US / APPLY_NOW / ORDER_NOW). The API already accepted these from PR 4a — this is just the UI surface.
+  - **LeadFormsPane** (new) + topbar tab "Lead forms". Three-pane layout (forms list / leads list for selected form / lead detail with Push-to-Klaviyo). Non-Meta platforms render a "Lead forms are Meta-only — switch to Meta" panel and skip API calls entirely.
+  - **NewLeadFormDrawer** (new). Inside LeadFormsPane. Captures name + privacyPolicyUrl + thank-you copy + a dynamic questions list (any of EMAIL / PHONE / FULL_NAME / FIRST_NAME / LAST_NAME / CITY / STATE / COUNTRY auto-fill from Meta, or CUSTOM with a label). The drawer normalises custom-question keys before the API call.
+  - **PushToKlaviyoButton** (new, inside the Lead detail panel). Extracts email / phone / first_name / last_name from the lead's normalized `fields` map (falls back to raw `fieldData`), posts to `/api/klaviyo` `subscribe_lead` with the lead's id + form-id + campaign-id + ad-id as Klaviyo profile properties. One lead per click — batch push is deferred.
+  - **TargetingBuilder** gained a `showReach` prop (default `true`) so the BoostDrawer can render the targeting UI without the reach-estimate panel that doesn't apply to boost.
+
+### Deliberately not in this PR
+
+- **Lead form archive (DELETE) + test-lead generation** — Zernio exposes both, but neither is in the Phase 4 acceptance criteria. Easy follow-up if needed.
+- **Conversions API UI** — `send_conversions` is wired server-side but has no UI surface yet. The right home for this is probably a backend trigger tied to Shopify / Klaviyo order events (server-side CAPI), not a manual form in the Ads workspace.
+- **Saved-targeting picker in BoostDrawer** — Zernio's `/v1/ads/create` supports `savedTargetingId`, and we already have a Saved targeting type in Audiences. Cross-wiring is one more iteration of polish; current behaviour is inline targeting only.
+- **Batch lead export (CSV download)** — out of scope; one-at-a-time push is the headline acceptance criterion.
+- **Spark Ads pre-flight validation** — Zernio validates `callToAction` enum values server-side; the UI is restricted to a known-good subset, but exotic CTAs accepted by TikTok would need an "Other…" input. Not yet.
+
+### Files touched
+
+- `api/zernio-ads.js` (extended, no breaking changes to 4a/4b actions).
+- `api/klaviyo.js` (one new action; existing actions untouched).
+- `app/ads-workspace.jsx` (extended; CampaignsPane gained a Boost button + state; main shell routes to LeadFormsPane; TargetingBuilder gained the `showReach` prop with default `true` so 4a/4b call sites are unaffected).
+
+---
+
 ## 2026-05-28 · Track A · PR 4b — Ads audiences + customer-list CSV upload
 
 **Scope:** Phase 4 PR 2/3 — audiences CRUD on the API side, a new Audiences sub-tab in the Ads workspace, and CSV upload for customer-list audiences (the headline acceptance criterion: "Upload a 500-email CSV to a Meta customer_list audience → audience populated").

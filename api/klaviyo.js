@@ -309,6 +309,62 @@ async function handleListAudiences(req) {
   return json(200, { ok: true, lists, segments });
 }
 
+// ─── action: subscribe_lead (PR 4c) ──────────────────────────────────────────
+// Pushes a single lead (email + optional phone + optional custom properties)
+// into Klaviyo. If `listId` is provided, also subscribes the profile to that
+// list. Used by the Ads workspace Lead-forms tab "Push to Klaviyo" button —
+// one lead at a time, fan-out is the caller's job.
+
+async function handleSubscribeLead(req) {
+  const { tenantId, email, phone, firstName, lastName, properties, listId } = req;
+  if (!tenantId)         return json(400, { ok: false, error: "tenantId required" });
+  if (!email && !phone)  return json(400, { ok: false, error: "email or phone required" });
+
+  // Klaviyo's create-profile tool accepts the JSON:API resource envelope.
+  // We pass plain top-level fields and let Composio's adapter wrap them.
+  const profileAttrs = {
+    ...(email     ? { email }     : {}),
+    ...(phone     ? { phone_number: phone } : {}),
+    ...(firstName ? { first_name: firstName } : {}),
+    ...(lastName  ? { last_name:  lastName }  : {}),
+    ...(properties && typeof properties === "object" ? { properties } : {}),
+  };
+  const createRes = await runTool("KLAVIYO_CREATE_PROFILE", { data: { type: "profile", attributes: profileAttrs } }, tenantId);
+  // Profile-id surfaces in several shapes depending on Composio's mapper.
+  const profileId =
+    createRes?.data?.data?.id ||
+    createRes?.data?.id ||
+    createRes?.id ||
+    createRes?.response_data?.data?.id ||
+    null;
+
+  // Klaviyo's API treats POST on an existing profile as a 409 conflict.
+  // We treat that as "already exists" and continue with the subscribe step
+  // when possible — the conflict body usually carries the existing id.
+  const conflictId = !profileId && createRes?.error
+    ? String(createRes.error.message || "").match(/profile id ([a-zA-Z0-9]+)/)?.[1] || null
+    : null;
+  const finalProfileId = profileId || conflictId;
+
+  let subscribeRes = null;
+  if (listId && (email || phone)) {
+    subscribeRes = await runTool("KLAVIYO_SUBSCRIBE_PROFILE_TO_MARKETING", {
+      list_id:          listId,
+      email,
+      phone_number:     phone,
+      consented_at:     new Date().toISOString(),
+    }, tenantId);
+  }
+
+  return json(200, {
+    ok:         true,
+    profileId:  finalProfileId,
+    subscribed: !!(listId && subscribeRes && !subscribeRes.error),
+    create:     createRes?.error ? { error: createRes.error } : { ok: true },
+    subscribe:  subscribeRes ? (subscribeRes.error ? { error: subscribeRes.error } : { ok: true }) : null,
+  });
+}
+
 // ─── handler ─────────────────────────────────────────────────────────────────
 
 export default async function handler(req) {
@@ -327,6 +383,7 @@ export default async function handler(req) {
     if (action === "create_draft_campaign") return await handleCreateDraftCampaign(body);
     if (action === "create_draft_sms")      return await handleCreateDraftSms(body);
     if (action === "list_audiences")        return await handleListAudiences(body);
+    if (action === "subscribe_lead")        return await handleSubscribeLead(body);
     return json(400, { ok: false, error: `unknown action: ${action}` });
   } catch (e) {
     return json(500, { ok: false, error: e.message || "internal error" });

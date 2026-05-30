@@ -156,6 +156,7 @@ async function sendAIMessage({
     const sequenceTool  = spec.tools.find(t => t.name === "create_email_sequence");
     const emailTool     = spec.tools.find(t => t.name === "create_email_draft");
     const smsTool       = spec.tools.find(t => t.name === "create_sms_draft");
+    const unpublishableTool = spec.tools.find(t => t.name === "create_unpublishable_draft");
     const draftTool     = spec.tools.find(t => t.name === "create_draft");
     const planTool      = spec.tools.find(t => t.name === "create_campaign_plan");
     const auditTool     = spec.tools.find(t => t.name === "create_seo_audit");
@@ -223,6 +224,13 @@ async function sendAIMessage({
       audienceHint:      smsTool.input.audienceHint || "",
       campaignName:      smsTool.input.campaignName || smsTool.input.body.slice(0, 40),
       includeStopFooter: !!smsTool.input.includeStopFooter,
+    } : unpublishableTool ? {
+      type:           "draft_created",
+      platform:       unpublishableTool.input.platform,
+      contentType:    unpublishableTool.input.contentType,
+      copy:           unpublishableTool.input.copy,
+      imagePrompt:    unpublishableTool.input.imagePrompt || null,
+      nonPublishable: true,
     } : draftTool ? {
       type:        "draft_created",
       platform:    draftTool.input.platform,
