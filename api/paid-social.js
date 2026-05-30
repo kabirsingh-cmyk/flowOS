@@ -463,10 +463,10 @@ async function boostPost({
     ...(dsaPayor       ? { dsaPayor }       : {}),
     ...buildTargetingForBoost(platform, targeting),
     ...pickBidFields({ bidStrategy, bidAmount, roasAverageFloor }),
-    // TikTok Spark Ad passthrough — Zernio ignores these on other platforms.
-    ...(sparkAuthCode ? { sparkAuthCode } : {}),
-    ...(linkUrl       ? { linkUrl }       : {}),
-    ...(callToAction  ? { callToAction }  : {}),
+    // TikTok Spark Ad passthrough — silently ignored for other platforms.
+    ...(platform === "ttads" && sparkAuthCode ? { sparkAuthCode } : {}),
+    ...(platform === "ttads" && linkUrl       ? { linkUrl }       : {}),
+    ...(platform === "ttads" && callToAction  ? { callToAction }  : {}),
     platform: platformSlug,
   };
   for (const k of Object.keys(payload)) if (payload[k] === undefined) delete payload[k];

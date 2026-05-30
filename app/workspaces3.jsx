@@ -9,7 +9,7 @@ const { useState: useState3, useMemo: useMemo3, useEffect: useEffect3, useRef: u
 function getZernioPostId(item) {
   if (!item) return null;
   return item.linkedinPostId  || item.facebookPostId  || item.xPostId
-      || item.instagramPostId || item.redditPostId    || null;
+      || item.instagramPostId || item.redditPostId    || item.tiktokPostId || null;
 }
 
 // Minimal RFC4180-ish CSV parser. Handles quoted fields with embedded
@@ -88,10 +88,34 @@ function PublishingQueue({ state, actions }) {
   // Array of ISO date strings; empty when no queue is configured yet.
   const [smartSlots, setSmartSlots] = useState3([]);
 
+  // Spark Ad boost modal (Track A — PR A1)
+  const [sparkItem, setSparkItem]   = useState3(null);
+  const [sparkForm, setSparkForm]   = useState3({ budget: 20, duration: 7, cta: "LEARN_MORE", sparkAuthCode: "", linkUrl: "" });
+  const [boosting, setBoosting]     = useState3(false);
+
   const resetCsv = () => {
     setCsvFileName(""); setCsvHeader([]); setCsvRows([]);
     setCsvMapping({ platform: "", content: "", scheduled_for: "", media_urls: "" });
     setCsvResult(null);
+  };
+
+  const handleBoostSpark = async () => {
+    if (!sparkItem?.tiktokPostId) {
+      actions.notify("warn", "No TikTok post ID — publish the video first");
+      setSparkItem(null);
+      return;
+    }
+    setBoosting(true);
+    const res = await actions.boostAsSpark(sparkItem.id, {
+      postId: sparkItem.tiktokPostId,
+      budgetDaily: Number(sparkForm.budget) || 20,
+      durationDays: Number(sparkForm.duration) || 7,
+      callToAction: sparkForm.cta,
+      linkUrl: sparkForm.linkUrl || undefined,
+      sparkAuthCode: sparkForm.sparkAuthCode || undefined,
+    });
+    setBoosting(false);
+    if (res?.ok) setSparkItem(null);
   };
 
   // Hydrate scheduled_posts rows into the calendar on mount. The cron writes
@@ -129,6 +153,10 @@ function PublishingQueue({ state, actions }) {
         redditPostId:    result?.postId || null,
         redditUrl:       result?.postUrl || null,
         redditSubreddit: payload?.subreddit || null,
+      }),
+      tiktok: (result) => ({
+        tiktokPostId: result?.postId || null,
+        tiktokUrl:    result?.postUrl || null,
       }),
     };
 
@@ -729,6 +757,7 @@ function PublishingQueue({ state, actions }) {
                       <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
                         <span style={{ width: 6, height: 6, borderRadius: "50%", background: color, flexShrink: 0 }}/>
                         {abbr}
+                        {item.boosted && <Chip tone="accent">Boosted</Chip>}
                       </span>
                       <span style={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 12 }}>
                         {item.body || item.title || ""}
@@ -753,6 +782,16 @@ function PublishingQueue({ state, actions }) {
                               });
                             }}>
                             <Icon name="x" size={11}/>
+                          </Btn>
+                        )}
+                        {(pkey === "tt" || pkey === "tiktok") && item.publishStatus === "published" && item.tiktokPostId && (
+                          <Btn size="sm" variant="ghost" title="Boost as Spark Ad"
+                            onClick={() => {
+                              const url = (item.body || "").match(/https?:\/\/[^\s]+/)?.[0] || "";
+                              setSparkForm({ budget: 20, duration: 7, cta: "LEARN_MORE", sparkAuthCode: "", linkUrl: url });
+                              setSparkItem(item);
+                            }}>
+                            <Icon name="flash" size={11}/>
                           </Btn>
                         )}
                       </div>
@@ -869,6 +908,47 @@ function PublishingQueue({ state, actions }) {
           </div>
         )}
       </div>
+
+      {/* ── Spark Ad boost modal ── */}
+      {sparkItem && (
+        <Dialog open={true} onClose={() => { if (!boosting) setSparkItem(null); }}
+          title="Boost as Spark Ad" width={420}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <FormRow label="Budget (USD / day)" hint="Minimum $20 on TikTok">
+              <Input type="number" min={20} value={sparkForm.budget}
+                onChange={e => setSparkForm(f => ({ ...f, budget: e.target.value }))}/>
+            </FormRow>
+            <FormRow label="Duration (days)" hint="Campaign will run for this many days">
+              <Input type="number" min={1} value={sparkForm.duration}
+                onChange={e => setSparkForm(f => ({ ...f, duration: e.target.value }))}/>
+            </FormRow>
+            <FormRow label="Call to Action">
+              <select value={sparkForm.cta}
+                onChange={e => setSparkForm(f => ({ ...f, cta: e.target.value }))}
+                style={{ ...inputCSS, cursor: "pointer" }}>
+                {["LEARN_MORE","SHOP_NOW","SIGN_UP","WATCH_NOW","DOWNLOAD_NOW","BUY_NOW","SUBSCRIBE","GET_QUOTE"].map(c => (
+                  <option key={c} value={c}>{c.replace(/_/g, " ")}</option>
+                ))}
+              </select>
+            </FormRow>
+            <FormRow label="Landing page URL" hint="Required for traffic / conversion goals">
+              <Input type="url" value={sparkForm.linkUrl} placeholder="https://…"
+                onChange={e => setSparkForm(f => ({ ...f, linkUrl: e.target.value }))}/>
+            </FormRow>
+            <FormRow label="Spark auth code"
+              hint="Cross-creator? Paste the creator's Spark code from Promote settings">
+              <Input value={sparkForm.sparkAuthCode} placeholder="Optional"
+                onChange={e => setSparkForm(f => ({ ...f, sparkAuthCode: e.target.value }))}/>
+            </FormRow>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+              <Btn variant="ghost" onClick={() => setSparkItem(null)} disabled={boosting}>Cancel</Btn>
+              <Btn variant="primary" onClick={handleBoostSpark} disabled={boosting || !sparkForm.linkUrl}>
+                {boosting ? "Boosting…" : "Boost"}
+              </Btn>
+            </div>
+          </div>
+        </Dialog>
+      )}
 
       {/* ── Edit drawer ── */}
       {editItem && editDraft && (() => {
