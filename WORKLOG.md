@@ -4,6 +4,26 @@ Reverse-chronological record of notable changes. New entries on top.
 
 ---
 
+## 2026-05-29 · PR M3 — Real Reddit subreddit search via Zernio
+
+**Scope:** Replace the stub `search_subreddits` handler in `api/reddit.js` with a real implementation that searches Reddit posts via Zernio's `/v1/reddit/search` endpoint and extracts unique subreddits from the results.
+
+### Changes
+- **[api/reddit.js](api/reddit.js)** — `search_subreddits` action:
+  - Fetches the tenant's Reddit accountId via `getZernioAccountId`
+  - Calls `GET /v1/reddit/search?q=<query>&accountId=<id>&limit=25&sort=relevance`
+  - Extracts unique subreddits from returned posts (name + first 120 chars of selftext as description)
+  - Returns `{ ok: true, subreddits: [...] }` matching the UI contract
+  - Gracefully returns `[]` when Reddit is not connected (no 500)
+  - Empty query returns `[]` cleanly
+
+### Acceptance
+- Zernio search returns real posts; unique subreddits extracted from them
+- Empty query → `[]`, no error
+- Reddit not connected → `[]`, no error
+
+---
+
 ## 2026-05-29 · PR M2 — Prune merged local branches
 
 Deleted 21 merged-to-main local branches:
