@@ -330,50 +330,56 @@ const SLUG_TO_CHANNEL = {
 
 // ─── Claude insight generator ─────────────────────────────────────────────────
 
-async function generateInsights(snapshots, brand, period) {
-  if (!ANTHROPIC_KEY || snapshots.length === 0) return null;
-
-  const brandName = brand?.name || "this brand";
-  const industry  = brand?.industry || "ecommerce";
-
-  const snapshotText = snapshots.map(s => (
-    `CHANNEL: ${s.channel}\n${JSON.stringify(s.metrics, null, 2)}`
-  )).join("\n\n---\n\n");
-
-  const systemPrompt = `You are Analyst — the data AI for FlowOS Reach, an AI marketing OS for ${brandName} (${industry}).
-
-Analyze the marketing performance data below and produce a structured JSON response.
-
-Response must be valid JSON with these exact keys:
-{
-  "summary": "2-3 sentence executive brief. Lead with the most important number or trend. Be direct.",
-  "recommended_actions": [
+const FALLBACK_INSIGHTS = {
+  summary: "Not enough data to generate insights. Connect a marketing platform or click Refresh after data is available.",
+  insights: [
     {
-      "action": "Short imperative — what to do",
-      "reason": "One sentence — why, grounded in the data",
-      "priority": "high|medium|low",
-      "channel": "channel name or 'all'",
-      "workspace": "studio|emailstudio|searchstudio|organic|planner|insights|connections"
-    }
+      title: "No data",
+      body: "Connect a platform in Settings → Connections to see analytics.",
+      channel: "cross-channel",
+      severity: "info",
+    },
   ],
-  "insights": [
+  recommended_actions: [
     {
-      "title": "Short observation title",
-      "body": "2-3 sentences explaining the insight with specific numbers",
-      "channel": "channel name or 'cross-channel'",
-      "severity": "warning|ok|info"
-    }
-  ]
+      action: "Connect a platform",
+      reason: "Analytics require at least one connected data source.",
+      priority: "high",
+      channel: "all",
+      workspace: "connections",
+    },
+  ],
+};
+
+function validateInsightShape(obj) {
+  if (!obj || typeof obj !== "object") return false;
+  if (typeof obj.summary !== "string") return false;
+  if (!Array.isArray(obj.insights)) return false;
+  if (!Array.isArray(obj.recommended_actions)) return false;
+  // Validate insights entries
+  for (const ins of obj.insights) {
+    if (typeof ins?.title !== "string" || typeof ins?.body !== "string") return false;
+    if (!["warning", "ok", "info"].includes(ins?.severity)) return false;
+  }
+  // Validate actions entries
+  for (const act of obj.recommended_actions) {
+    if (typeof act?.action !== "string" || typeof act?.reason !== "string") return false;
+    if (!["high", "medium", "low"].includes(act?.priority)) return false;
+  }
+  return true;
 }
 
-Rules:
-- Max 3 recommended actions (highest priority first)
-- Max 6 insights
-- Always reference specific numbers from the data
-- severity "warning" = needs attention, "ok" = performing well, "info" = neutral observation
-- workspace must be one of the valid enum values above
-- Return ONLY the JSON object, no markdown, no prose`;
+function parseInsightJson(text) {
+  if (!text) return null;
+  const clean = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+  try {
+    const parsed = JSON.parse(clean);
+    if (validateInsightShape(parsed)) return parsed;
+  } catch { /* invalid JSON */ }
+  return null;
+}
 
+async function callClaude(systemPrompt, userContent) {
   const res = await fetch(`${ANTHROPIC_BASE}/messages`, {
     method: "POST",
     headers: {
@@ -385,23 +391,77 @@ Rules:
       model: getModel(),
       max_tokens: 2048,
       system: systemPrompt,
-      messages: [{
-        role: "user",
-        content: `Here is the ${period} marketing performance data:\n\n${snapshotText}\n\nGenerate the JSON analysis now.`,
-      }],
+      messages: [{ role: "user", content: userContent }],
     }),
   });
-
   if (!res.ok) return null;
   const data = await res.json();
-  const text = data?.content?.[0]?.text || "";
-  try {
-    // Strip any accidental markdown fences
-    const clean = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-    return JSON.parse(clean);
-  } catch {
-    return { summary: text, insights: [], recommended_actions: [] };
-  }
+  return data?.content?.[0]?.text || "";
+}
+
+async function generateInsights(snapshots, brand, period) {
+  if (!ANTHROPIC_KEY) return FALLBACK_INSIGHTS;
+  if (snapshots.length === 0) return FALLBACK_INSIGHTS;
+
+  const brandName = brand?.name || "this brand";
+  const industry  = brand?.industry || "ecommerce";
+
+  const snapshotText = snapshots.map(s => (
+    `CHANNEL: ${s.channel}\n${JSON.stringify(s.metrics, null, 2)}`
+  )).join("\n\n---\n\n");
+
+  const schemaBlock = JSON.stringify({
+    summary: "string (2-3 sentence executive brief)",
+    recommended_actions: [
+      {
+        action: "string (short imperative)",
+        reason: "string (one sentence, grounded in data)",
+        priority: "high | medium | low",
+        channel: "string (channel name or 'all')",
+        workspace: "studio | emailstudio | searchstudio | organic | planner | insights | connections",
+      },
+    ],
+    insights: [
+      {
+        title: "string (short observation title)",
+        body: "string (2-3 sentences with specific numbers)",
+        channel: "string (channel name or 'cross-channel')",
+        severity: "warning | ok | info",
+      },
+    ],
+  }, null, 2);
+
+  const systemPrompt = `You are Analyst — the data AI for FlowOS Reach, an AI marketing OS for ${brandName} (${industry}).
+
+Analyze the marketing performance data below and produce a structured JSON response.
+
+REQUIRED JSON SCHEMA:
+${schemaBlock}
+
+RULES
+- Max 3 recommended actions (highest priority first).
+- Max 6 insights.
+- Always reference specific numbers from the data.
+- severity "warning" = needs attention, "ok" = performing well, "info" = neutral observation.
+- workspace must be one of the valid enum values above.
+- Return ONLY the JSON object. No markdown fences, no prose, no trailing commas.`;
+
+  const userContent = `Here is the ${period} marketing performance data:\n\n${snapshotText}\n\nGenerate the JSON analysis now.`;
+
+  // Attempt 1
+  const text1 = await callClaude(systemPrompt, userContent);
+  const parsed1 = parseInsightJson(text1);
+  if (parsed1) return parsed1;
+
+  // Attempt 2 — stronger reminder
+  const retryContent = `${userContent}\n\n[REMINDER] Your previous response was not valid JSON. Return ONLY a valid JSON object matching the schema exactly. No markdown, no prose.`;
+  const text2 = await callClaude(systemPrompt, retryContent);
+  const parsed2 = parseInsightJson(text2);
+  if (parsed2) return parsed2;
+
+  // Fallback
+  console.error("[analytics-ingest] Claude returned unparseable JSON after retry. Using fallback.");
+  return FALLBACK_INSIGHTS;
 }
 
 // ─── Main handler ──────────────────────────────────────────────────────────────
