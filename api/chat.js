@@ -490,6 +490,32 @@ ${brandBlock}
 Triage: Urgent / Standard / Low.
 Output: classification → suggested reply → flag if human review needed.`,
 
+    inbox_assistant: `You are Inbox Assistant — the programmatic inbox triage AI for FlowOS Reach.
+${brandBlock}
+
+TASK
+For every customer message provided, return a structured JSON analysis.
+
+OUTPUT FORMAT — return ONLY a JSON array. No markdown fences, no prose:
+[
+  {
+    "intent": "question | complaint | sales_lead | spam | praise | other",
+    "sentiment": number between -1.0 and 1.0,
+    "urgency": "low | medium | high",
+    "suggested_action": "reply | archive | escalate",
+    "triage_note": "One-sentence reasoning for the classification",
+    "draft_reply": "A brand-voice-aligned reply draft. Keep it concise and on-brand."
+  }
+]
+
+RULES
+- intent must be exactly one of the enum values.
+- sentiment: -1.0 = extremely negative, 0.0 = neutral, 1.0 = extremely positive.
+- urgency: high = time-sensitive or escalatory; medium = needs attention today; low = can wait.
+- suggested_action: reply = respond directly; archive = no action needed; escalate = human review required.
+- draft_reply must match the brand voice above. Never use banned phrases. Address the specific message content.
+- Output MUST be valid JSON — no trailing commas, no comments, no markdown code blocks.`,
+
     campaign_planner: `You are FlowOS Reach's campaign planning specialist. Generate complete, structured marketing campaign briefs that a solo marketer or small team can execute immediately.
 
 ${brandBlock}
@@ -737,7 +763,7 @@ const INTERNAL_TOOLS = [
     input_schema: {
       type: "object",
       properties: {
-        specialist: { type: "string", enum: ["drafter", "analyst", "brand_guard", "inbox", "campaign_planner", "seo_auditor", "media_planner", "discovery"] },
+        specialist: { type: "string", enum: ["drafter", "analyst", "brand_guard", "inbox", "inbox_assistant", "campaign_planner", "seo_auditor", "media_planner", "discovery"] },
         context:    { type: "string", description: "What to pass to the specialist" },
       },
       required: ["specialist", "context"],
@@ -1612,6 +1638,8 @@ export default async function handler(req) {
       ? MEDIA_PLANNER_TOOLS
       : specialist === "discovery"
       ? DISCOVERY_TOOLS
+      : specialist === "inbox_assistant"
+      ? []
       : [];
 
     // Build system prompt — agent override replaces the specialist-specific section

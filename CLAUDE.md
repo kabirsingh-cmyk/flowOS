@@ -297,7 +297,7 @@ if (hasCreateVerb && hasContentNoun) { return makeDraftArtifact(t); }
 
 | Tool | Available to | Effect |
 |---|---|---|
-| `delegate_to` | Supervisor | Routes to specialist (enum: drafter, analyst, brand_guard, inbox, campaign_planner, seo_auditor, media_planner, discovery) |
+| `delegate_to` | Supervisor | Routes to specialist (enum: drafter, analyst, brand_guard, inbox, inbox_assistant, campaign_planner, seo_auditor, media_planner, discovery) |
 | `open_workspace` | Supervisor, **Campaign Planner**, **SEO Auditor**, **Media Planner**, **Discovery** | Opens a workspace panel. SEO Auditor calls it with target `"seo"` after producing an audit. Media Planner and Discovery have no dedicated workspace yet, but the tool is in their sets for future use. |
 | `show_drafts` | Supervisor | Opens drafts canvas |
 | `show_metric` | Supervisor | Shows metric card |
